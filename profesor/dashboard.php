@@ -31,6 +31,7 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,6 +39,7 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <link rel="stylesheet" href="../assets/css/styles.css">
 </head>
+
 <body>
     <div class="container-fluid">
         <div class="row">
@@ -99,7 +101,8 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <td><?php echo htmlspecialchars($curso['curso']) . ' ' . htmlspecialchars($curso['paralelo']); ?></td>
                                                 <td><?php echo htmlspecialchars($curso['nombre_materia']); ?></td>
                                                 <td>
-                                                    <button class="btn btn-primary btn-sm">Cargar</button>
+                                                    <a href="cargar_notas.php?curso_materia=1" class="btn btn-primary btn-sm">Cargar</a>
+
                                                 </td>
                                                 <td>
                                                     <?php if ($curso['estado'] == 'FALTA'): ?>
@@ -129,4 +132,5 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="../js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>
