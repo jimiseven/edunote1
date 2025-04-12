@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->beginTransaction();
         
-        if(isset($_POST['guardar_notas'])) {
+        if (isset($_POST['guardar_notas'])) {
             // Procesamiento manual de notas
             foreach ($_POST['notas'] as $id_est => $bimestres) {
                 foreach ($bimestres as $bim => $valor) {
@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if ($valor === '') {
                         $conn->prepare("DELETE FROM calificaciones 
-                                      WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?")
+                                       WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?")
                              ->execute([$id_est, $curso['id_materia'], $bim]);
                         continue;
                     }
@@ -87,27 +87,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $nota_valor = floatval(str_replace(',', '.', $valor));
                     
                     $conn->prepare("INSERT INTO calificaciones 
-                                  (id_estudiante, id_materia, bimestre, calificacion)
-                                  VALUES (?, ?, ?, ?)
-                                  ON DUPLICATE KEY UPDATE calificacion = ?")
+                                   (id_estudiante, id_materia, bimestre, calificacion)
+                                   VALUES (?, ?, ?, ?)
+                                   ON DUPLICATE KEY UPDATE calificacion = ?")
                          ->execute([$id_est, $curso['id_materia'], $bim, $nota_valor, $nota_valor]);
                 }
             }
         }
         
-        if(isset($_POST['guardar_excel'])) {
-            // Procesamiento de notas desde Excel
+        if (isset($_POST['guardar_excel'])) {
+            // Procesamiento de notas desde el modal (textarea)
             $bimestre_excel = $_POST['bimestre_excel'];
             $datos_excel = explode("\n", trim($_POST['datos_excel']));
             
-            if(count($datos_excel) !== count($estudiantes)) {
+            if (count($datos_excel) !== count($estudiantes)) {
                 throw new Exception("La cantidad de notas no coincide con el número de estudiantes");
             }
             
-            foreach($estudiantes as $index => $est) {
+            foreach ($estudiantes as $index => $est) {
                 $valor = trim($datos_excel[$index]);
                 
-                if(!is_numeric(str_replace(',', '.', $valor))) {
+                if (!is_numeric(str_replace(',', '.', $valor))) {
                     throw new Exception("Nota inválida en la línea " . ($index + 1));
                 }
                 
@@ -155,18 +155,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .nota-input {
             width: 80px;
             text-align: center;
-            padding: 0.3rem;
         }
-        .excel-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        .highlight-box {
-            border: 2px dashed #007bff;
-            padding: 15px;
-            margin: 15px 0;
+        .modal-body textarea {
+            width: 100%;
+            height: 150px;
+            resize: none;
+            font-family: monospace;
         }
     </style>
 </head>
@@ -182,37 +176,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <h4 class="text-secondary"><?php echo $curso['nombre_materia']; ?></h4>
                     </div>
 
-                    <?php if(isset($error)): ?>
+                    <?php if (isset($error)): ?>
                         <div class="alert alert-danger"><?php echo $error; ?></div>
-                    <?php elseif(isset($_GET['success'])): ?>
-                        <div class="alert alert-success">¡Notas guardadas correctamente!</div>
+                    <?php elseif (isset($_GET['success'])): ?>
+                        <div class="alert alert-success">¡Notas cargadas correctamente!</div>
                     <?php endif; ?>
 
-                    <!-- Sección para pegar desde Excel -->
-                    <div class="excel-section">
-                        <h5>Cargar desde Excel</h5>
-                        <div class="highlight-box">
-                            <form method="post">
-                                <div class="mb-3">
-                                    <label>1. Seleccione el bimestre:</label>
-                                    <select name="bimestre_excel" class="form-select mb-3">
-                                        <?php for($i=1; $i<=$cantidad_bimestres; $i++): ?>
-                                            <option value="<?php echo $i; ?>">Bimestre <?php echo $i; ?></option>
-                                        <?php endfor; ?>
-                                    </select>
-                                    
-                                    <label>2. Pegue aquí la columna de notas:</label>
-                                    <textarea 
-                                        name="datos_excel" 
-                                        class="form-control" 
-                                        rows="5"
-                                        placeholder="Pegue aquí SOLO la columna de notas desde Excel (una nota por línea)"
-                                        style="font-family: monospace;"></textarea>
+                    <!-- Botón para abrir el modal -->
+                    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel">
+                        Cargar desde Excel
+                    </button>
+
+                    <!-- Modal para pegar notas desde Excel -->
+                    <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="modalExcelLabel">Cargar Notas desde Excel</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                 </div>
-                                <button type="submit" name="guardar_excel" class="btn btn-success">
-                                    Cargar Notas desde Excel
-                                </button>
-                            </form>
+                                <form method="post">
+                                    <div class="modal-body">
+                                        <div class="mb-3">
+                                            <label>Seleccione el bimestre:</label>
+                                            <select name="bimestre_excel" class="form-select mb-3">
+                                                <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
+                                                    <option value="<?php echo $i; ?>">Bimestre <?php echo $i; ?></option>
+                                                <?php endfor; ?>
+                                            </select>
+                                            <label>Pegue aquí la columna de notas:</label>
+                                            <textarea name="datos_excel" class="form-control" placeholder="Pegue aquí SOLO la columna de notas desde Excel"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" name="guardar_excel" class="btn btn-primary">Cargar Notas</button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
                     </div>
 
@@ -224,19 +225,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <tr>
                                         <th>#</th>
                                         <th>Estudiante</th>
-                                        <?php for($i=1; $i<=$cantidad_bimestres; $i++): ?>
-                                            <th class="text-center">Bim <?php echo $i; ?></th>
+                                        <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
+                                            <th class="text-center">Bimestre <?php echo $i; ?></th>
                                         <?php endfor; ?>
                                         <th>Promedio</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php $contador = 1; ?>
-                                    <?php foreach($estudiantes as $est): ?>
+                                    <?php foreach ($estudiantes as $est): ?>
                                     <tr>
                                         <td><?php echo $contador++; ?></td>
                                         <td><?php echo htmlspecialchars($est['nombre']); ?></td>
-                                        <?php for($i=1; $i<=$cantidad_bimestres; $i++): ?>
+                                        <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
                                             <td>
                                                 <input type="text" 
                                                        class="form-control nota-input" 
@@ -263,14 +264,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
-    <script>
-        // Validación de entrada
-        document.querySelectorAll('.nota-input').forEach(input => {
-            input.addEventListener('input', function(e) {
-                this.value = this.value.replace(/[^0-9,.]/g, '')
-                                       .replace(/(\..*)\./g, '$1');
-            });
-        });
-    </script>
+    <script src="../js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
