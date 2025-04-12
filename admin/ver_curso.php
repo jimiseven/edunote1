@@ -347,7 +347,10 @@ foreach ($promedios_generales as $id_est => $promedio) {
 
                     <div class="d-flex justify-content-between mt-4 no-print">
                         <a href="dashboard.php" class="btn btn-secondary">Volver</a>
-                        <button onclick="window.print()" class="btn btn-primary">Imprimir</button>
+                        <div>
+                            <a href="editar_notas.php?id=<?php echo $id_curso; ?>" class="btn btn-warning">Editar Notas</a>
+                            <button onclick="window.print()" class="btn btn-primary">Imprimir</button>
+                        </div>
                     </div>
                 </div>
             </main>
