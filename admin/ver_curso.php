@@ -131,33 +131,27 @@ foreach ($estudiantes as $estudiante) {
     }
 }
 
-// Ordenar estudiantes por promedio general (mayor a menor)
-arsort($promedios_generales);
+// SOLUCIÓN: Usar copia de promedios para calcular posiciones sin alterar el orden alfabético
+$promedios_ordenados = $promedios_generales;
+arsort($promedios_ordenados);
 
 // Determinar posiciones considerando empates
 $posiciones = [];
 $posicion_actual = 1;
 $promedio_anterior = null;
 
-foreach ($promedios_generales as $id_est => $promedio) {
+foreach ($promedios_ordenados as $id_est => $promedio) {
     if ($promedio_anterior !== null && $promedio < $promedio_anterior) {
-        $posicion_actual = count($posiciones) + 1;
+        $posicion_actual++;
     }
     $posiciones[$id_est] = $posicion_actual;
     $promedio_anterior = $promedio;
 }
 
-// Reordenar estudiantes según posición
-$estudiantes_ordenados = [];
-foreach ($promedios_generales as $id_est => $promedio) {
-    foreach ($estudiantes as $estudiante) {
-        if ($estudiante['id_estudiante'] == $id_est) {
-            $estudiantes_ordenados[] = $estudiante;
-            break;
-        }
-    }
-}
+// Estudiantes ya están ordenados alfabéticamente, no necesitan reordenarse
+$estudiantes_ordenados = $estudiantes;
 ?>
+
 
 <!DOCTYPE html>
 <html lang="es">
