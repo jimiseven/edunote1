@@ -79,9 +79,11 @@ $promedios_materias = [];
 foreach ($estudiantes as $estudiante) {
     foreach ($materias as $materia) {
         $notas = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']] ?? [];
-        $notas_validas = array_filter($notas, function($v) { return $v !== '' && $v !== null; });
+        $notas_validas = array_filter($notas, function ($v) {
+            return $v !== '' && $v !== null;
+        });
         if (count($notas_validas) > 0) {
-            $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] = 
+            $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] =
                 number_format(array_sum($notas_validas) / count($notas_validas), 2);
         } else {
             $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] = '';
@@ -97,7 +99,7 @@ foreach ($estudiantes as $estudiante) {
     // Para vista anual - promedio de los promedios de materias
     $suma_promedios = 0;
     $contador = 0;
-    
+
     foreach ($materias as $materia) {
         $promedio_materia = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
         if ($promedio_materia !== '') {
@@ -105,17 +107,17 @@ foreach ($estudiantes as $estudiante) {
             $contador++;
         }
     }
-    
+
     if ($contador > 0) {
         $promedios_generales[$estudiante['id_estudiante']] = number_format($suma_promedios / $contador, 2);
     } else {
         $promedios_generales[$estudiante['id_estudiante']] = 0;
     }
-    
+
     // Para vista trimestral - promedio de las notas del trimestre seleccionado
     $suma_trimestre = 0;
     $contador_trimestre = 0;
-    
+
     foreach ($materias as $materia) {
         $nota_trimestre = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$trimestre] ?? '';
         if ($nota_trimestre !== '') {
@@ -123,7 +125,7 @@ foreach ($estudiantes as $estudiante) {
             $contador_trimestre++;
         }
     }
-    
+
     if ($contador_trimestre > 0) {
         $promedios_trimestre[$estudiante['id_estudiante']] = number_format($suma_trimestre / $contador_trimestre, 2);
     } else {
@@ -155,6 +157,7 @@ $estudiantes_ordenados = $estudiantes;
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -165,78 +168,96 @@ $estudiantes_ordenados = $estudiantes;
             background-color: #f8f9fa;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
+
         .content-wrapper {
             background-color: white;
             border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
             padding: 25px;
             margin: 20px;
         }
+
         .course-title {
             font-size: 1.5rem;
             font-weight: 600;
             margin-bottom: 20px;
         }
+
         .table-container {
             overflow-x: auto;
         }
+
         .table {
             border-collapse: collapse;
             width: 100%;
         }
-        .table th, .table td {
+
+        .table th,
+        .table td {
             text-align: center;
             padding: 10px;
             font-size: 0.9rem;
             border: 1px solid #dee2e6;
             vertical-align: middle;
         }
+
         .table th {
             background-color: #f1f8ff;
             color: #345995;
             font-weight: 600;
             white-space: nowrap;
         }
+
         .table th.main-header {
             background-color: #e9ecef;
             font-weight: 700;
         }
+
         .table th.subject-header {
             background-color: #e9ecef;
             border-bottom: 2px solid #dee2e6;
         }
+
         .table th.trimester-header {
             background-color: #f8f9fa;
         }
+
         .table td.student-name {
             text-align: left;
             font-weight: 500;
             white-space: nowrap;
         }
+
         .table td.position-cell {
             font-weight: 700;
             color: #2c3e50;
         }
+
         .table td.number-cell {
             color: #6c757d;
         }
+
         .table td.average-cell {
             font-weight: 600;
             background-color: #f8f9fa;
         }
+
         .table td.final-average {
             font-weight: 700;
             background-color: #e3f2fd;
             color: #0d47a1;
         }
+
         .selector-container {
             display: flex;
             gap: 10px;
         }
+
         @media print {
             .no-print {
                 display: none !important;
             }
+
             .content-wrapper {
                 box-shadow: none;
                 margin: 0;
@@ -245,6 +266,7 @@ $estudiantes_ordenados = $estudiantes;
         }
     </style>
 </head>
+
 <body>
     <div class="container-fluid">
         <div class="row">
@@ -262,17 +284,17 @@ $estudiantes_ordenados = $estudiantes;
                                     <option value="anual" <?php echo ($vista == 'anual') ? 'selected' : ''; ?>>Anual</option>
                                 </select>
                             </form>
-                            
+
                             <?php if ($vista == 'trimestral'): ?>
-                            <form method="GET" action="">
-                                <input type="hidden" name="id" value="<?php echo $id_curso; ?>">
-                                <input type="hidden" name="vista" value="trimestral">
-                                <select class="form-select" name="trimestre" onchange="this.form.submit()">
-                                    <option value="1" <?php echo ($trimestre == 1) ? 'selected' : ''; ?>>Trimestre 1</option>
-                                    <option value="2" <?php echo ($trimestre == 2) ? 'selected' : ''; ?>>Trimestre 2</option>
-                                    <option value="3" <?php echo ($trimestre == 3) ? 'selected' : ''; ?>>Trimestre 3</option>
-                                </select>
-                            </form>
+                                <form method="GET" action="">
+                                    <input type="hidden" name="id" value="<?php echo $id_curso; ?>">
+                                    <input type="hidden" name="vista" value="trimestral">
+                                    <select class="form-select" name="trimestre" onchange="this.form.submit()">
+                                        <option value="1" <?php echo ($trimestre == 1) ? 'selected' : ''; ?>>Trimestre 1</option>
+                                        <option value="2" <?php echo ($trimestre == 2) ? 'selected' : ''; ?>>Trimestre 2</option>
+                                        <option value="3" <?php echo ($trimestre == 3) ? 'selected' : ''; ?>>Trimestre 3</option>
+                                    </select>
+                                </form>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -284,7 +306,7 @@ $estudiantes_ordenados = $estudiantes;
                                     <th rowspan="2" class="main-header" style="width: 50px;">#</th>
                                     <th rowspan="2" class="main-header" style="width: 60px;">Pos.</th>
                                     <th rowspan="2" class="main-header" style="width: 250px;">Estudiante</th>
-                                    
+
                                     <?php if ($vista == 'anual'): ?>
                                         <?php foreach ($materias as $materia): ?>
                                             <th colspan="4" class="subject-header"><?php echo htmlspecialchars($materia['nombre_materia']); ?></th>
@@ -297,16 +319,16 @@ $estudiantes_ordenados = $estudiantes;
                                         <th class="subject-header">PROM. GENERAL</th>
                                     <?php endif; ?>
                                 </tr>
-                                
+
                                 <?php if ($vista == 'anual'): ?>
-                                <tr>
-                                    <?php foreach ($materias as $materia): ?>
-                                        <th class="trimester-header">T1</th>
-                                        <th class="trimester-header">T2</th>
-                                        <th class="trimester-header">T3</th>
-                                        <th class="trimester-header">Prom</th>
-                                    <?php endforeach; ?>
-                                </tr>
+                                    <tr>
+                                        <?php foreach ($materias as $materia): ?>
+                                            <th class="trimester-header">T1</th>
+                                            <th class="trimester-header">T2</th>
+                                            <th class="trimester-header">T3</th>
+                                            <th class="trimester-header">Prom</th>
+                                        <?php endforeach; ?>
+                                    </tr>
                                 <?php endif; ?>
                             </thead>
                             <tbody>
@@ -318,7 +340,7 @@ $estudiantes_ordenados = $estudiantes;
                                         <td class="student-name">
                                             <?php echo htmlspecialchars(strtoupper($estudiante['apellido_paterno'] . ' ' . $estudiante['apellido_materno'] . ', ' . $estudiante['nombres'])); ?>
                                         </td>
-                                        
+
                                         <?php if ($vista == 'anual'): ?>
                                             <?php foreach ($materias as $materia): ?>
                                                 <td><?php echo $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][1] ?? ''; ?></td>
@@ -340,15 +362,29 @@ $estudiantes_ordenados = $estudiantes;
                     </div>
 
                     <div class="d-flex justify-content-between mt-4 no-print">
-                        <a href="dashboard.php" class="btn btn-secondary">Volver</a>
+                        <?php
+                        // Asegúrate de tener la variable $nivel o $curso_info['nivel'] disponible
+                        $nivel = isset($curso_info['nivel']) ? $curso_info['nivel'] : '';
+                        $volver_url = 'dashboard.php';
+                        if ($nivel == 'Inicial') {
+                            $volver_url = 'dash_iniciales.php';
+                        } elseif ($nivel == 'Primaria') {
+                            $volver_url = 'dashboard_primaria.php';
+                        } elseif ($nivel == 'Secundaria') {
+                            $volver_url = 'dashboard_secundaria.php';
+                        }
+                        ?>
+                        <a href="<?php echo $volver_url; ?>" class="btn btn-secondary">Volver</a>
                         <div>
                             <a href="editar_notas.php?id=<?php echo $id_curso; ?>" class="btn btn-warning">Editar Notas</a>
                             <button onclick="window.print()" class="btn btn-primary">Imprimir</button>
                         </div>
                     </div>
+
                 </div>
             </main>
         </div>
     </div>
 </body>
+
 </html>
