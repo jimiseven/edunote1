@@ -2,9 +2,6 @@
 session_start();
 require_once '../config/database.php';
 
-/**
- * Calcula el promedio de notas (solo aplica para niveles no iniciales)
- */
 function calcularPromedio($notas) {
     if (empty($notas)) return 'N/A';
     $suma = array_sum(array_filter($notas, 'is_numeric'));
@@ -18,18 +15,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     exit();
 }
 
-// Datos del profesor
 $profesor_id = $_SESSION['user_id'];
 $id_curso_materia = $_GET['curso_materia'] ?? header('Location: dashboard.php?error=params');
 
-// Conexión a la base de datos
 $conn = (new Database())->connect();
 
-// Configuración de bimestres
+// ======== [MODIFICACIÓN 1] Obtener bimestres activos como enteros ========
+$stmt = $conn->query("SELECT numero_bimestre FROM bimestres_activos WHERE esta_activo = 1");
+$bimestres_activos = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
 $stmt = $conn->query("SELECT cantidad_bimestres FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
 $cantidad_bimestres = $stmt->fetchColumn() ?: 3;
 
-// Información del curso
 $stmt = $conn->prepare("SELECT c.id_curso, c.nivel, m.id_materia, 
                         CONCAT(c.nivel, ' ', c.curso, ' \"', c.paralelo, '\"') AS curso_nombre,
                         m.nombre_materia
@@ -42,10 +39,8 @@ $curso = $stmt->fetch();
 
 if (!$curso) header('Location: dashboard.php?error=notfound');
 
-// Determinar si es nivel inicial
 $es_inicial = ($curso['nivel'] == 'Inicial');
 
-// Estudiantes ordenados alfabéticamente
 $stmt = $conn->prepare("SELECT id_estudiante, 
                         CONCAT_WS(' ', nombres, apellido_paterno, apellido_materno) AS nombre 
                         FROM estudiantes 
@@ -54,9 +49,8 @@ $stmt = $conn->prepare("SELECT id_estudiante,
 $stmt->execute([$curso['id_curso']]);
 $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Notas existentes
 $notas = [];
-$campo = $es_inicial ? 'comentario' : 'calificacion'; // Campo dinámico según nivel
+$campo = $es_inicial ? 'comentario' : 'calificacion';
 $stmt = $conn->prepare("SELECT id_estudiante, bimestre, $campo 
                         FROM calificaciones 
                         WHERE id_materia = ?");
@@ -65,24 +59,33 @@ foreach ($stmt->fetchAll() as $row) {
     $notas[$row['id_estudiante']][$row['bimestre']] = $row[$campo];
 }
 
-// Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->beginTransaction();
 
+        // ======== [MODIFICACIÓN 2] Verificar existencia de bimestres activos ========
+        if (empty($bimestres_activos)) {
+            throw new Exception("No hay bimestres habilitados para carga de notas. Contacte al administrador.");
+        }
+
         if (isset($_POST['guardar_notas'])) {
             foreach ($_POST['notas'] as $id_est => $bimestres) {
                 foreach ($bimestres as $bim => $valor) {
+                    // ======== [MODIFICACIÓN 3] Convertir y validar bimestre ========
+                    $bim_int = (int)$bim;
+                    if (!in_array($bim_int, $bimestres_activos)) {
+                        continue; // Ignorar bimestres inactivos
+                    }
+                    
                     $valor = trim($valor);
 
                     if ($es_inicial) {
-                        // Procesar comentarios para nivel inicial
                         if ($valor === '') {
                             $conn->prepare("DELETE FROM calificaciones 
                                             WHERE id_estudiante = ? 
                                             AND id_materia = ? 
                                             AND bimestre = ?")
-                                 ->execute([$id_est, $curso['id_materia'], $bim]);
+                                 ->execute([$id_est, $curso['id_materia'], $bim_int]);
                             continue;
                         }
 
@@ -90,15 +93,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         (id_estudiante, id_materia, bimestre, comentario)
                                         VALUES (?, ?, ?, ?)
                                         ON DUPLICATE KEY UPDATE comentario = ?")
-                             ->execute([$id_est, $curso['id_materia'], $bim, $valor, $valor]);
+                             ->execute([$id_est, $curso['id_materia'], $bim_int, $valor, $valor]);
                     } else {
-                        // Procesar notas numéricas para otros niveles
                         if ($valor === '') {
                             $conn->prepare("DELETE FROM calificaciones 
                                             WHERE id_estudiante = ? 
                                             AND id_materia = ? 
                                             AND bimestre = ?")
-                                 ->execute([$id_est, $curso['id_materia'], $bim]);
+                                 ->execute([$id_est, $curso['id_materia'], $bim_int]);
                             continue;
                         }
 
@@ -113,14 +115,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                        (id_estudiante, id_materia, bimestre, calificacion)
                                        VALUES (?, ?, ?, ?)
                                        ON DUPLICATE KEY UPDATE calificacion = ?")
-                             ->execute([$id_est, $curso['id_materia'], $bim, $nota_valor, $nota_valor]);
+                             ->execute([$id_est, $curso['id_materia'], $bim_int, $nota_valor, $nota_valor]);
                     }
                 }
             }
         }
 
         if (isset($_POST['guardar_excel'])) {
-            $bimestre_excel = $_POST['bimestre_excel'];
+            // ======== [MODIFICACIÓN 4] Validar bimestre Excel ========
+            $bimestre_excel = (int)$_POST['bimestre_excel'];
+            if (!in_array($bimestre_excel, $bimestres_activos)) {
+                throw new Exception("El bimestre $bimestre_excel no está habilitado para carga de notas");
+            }
+
             $datos_excel = explode("\n", trim($_POST['datos_excel']));
 
             if (count($datos_excel) !== count($estudiantes)) {
@@ -131,14 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $valor = trim($datos_excel[$index]);
 
                 if ($es_inicial) {
-                    // Procesar comentarios desde Excel para nivel inicial
                     $conn->prepare("INSERT INTO calificaciones 
                                     (id_estudiante, id_materia, bimestre, comentario)
                                     VALUES (?, ?, ?, ?)
                                     ON DUPLICATE KEY UPDATE comentario = ?")
                          ->execute([$est['id_estudiante'], $curso['id_materia'], $bimestre_excel, $valor, $valor]);
                 } else {
-                    // Procesar notas numéricas desde Excel para otros niveles
                     if (!is_numeric(str_replace(',', '.', $valor))) {
                         throw new Exception("Nota inválida en la línea " . ($index + 1));
                     }
@@ -154,7 +159,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Actualizar estado del curso
         $conn->prepare("UPDATE profesores_materias_cursos
                        SET estado = 'CARGADO'
                        WHERE id_personal = ? AND id_curso_materia = ?")
@@ -167,10 +171,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Exception $e) {
         $conn->rollBack();
         $error = $e->getMessage();
+        if (strpos($error, 'no está habilitado') !== false) {
+            $error .= ". Contacte al administrador del sistema.";
+        }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -189,6 +195,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .nota-input {
             width: 80px;
             text-align: center;
+        }
+        .nota-disabled,
+        .coment-disabled {
+            background: #f2f2f2 !important;
+            border-color: #d1d5db !important;
+            color: #888 !important;
+            cursor: not-allowed;
+        }
+        .bim-inactivo-th {
+            background: #f8f8f8 !important;
+            color: #999 !important;
+            font-weight: 400;
+        }
+        .bim-activo-th {
+            background: #e8f4ff !important;
+            color: #244876 !important;
+            font-weight: 600;
         }
         .modal-body textarea {
             width: 100%;
@@ -218,46 +241,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php if (isset($error)): ?>
                         <div class="alert alert-danger"><?php echo $error; ?></div>
                     <?php elseif (isset($_GET['success'])): ?>
-                        <div class="alert alert-success">¡Datos cargados correctamente!</div>
+                        <div class="alert alert-success">¡Notas cargadas correctamente!</div>
                     <?php endif; ?>
 
-                    <!-- Modal para cargar desde Excel -->
-                    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel">
-                        <?php echo $es_inicial ? 'Cargar Comentarios desde Excel' : 'Cargar Notas desde Excel'; ?>
-                    </button>
+                    <!-- Modal para pegar notas desde Excel (Solo para niveles no inicial) -->
+                    <?php if (!$es_inicial): ?>
+                        <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel">
+                            Cargar desde Excel
+                        </button>
 
-                    <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                                <form method="post">
+                        <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
                                     <div class="modal-header">
-                                        <h5 class="modal-title">
-                                            <?php echo $es_inicial ? 'Cargar Comentarios desde Excel' : 'Cargar Notas desde Excel'; ?>
-                                        </h5>
+                                        <h5 class="modal-title" id="modalExcelLabel">Cargar Notas desde Excel</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                     </div>
-                                    <div class="modal-body">
-                                        <div class="mb-3">
-                                            <label>Seleccione el bimestre:</label>
-                                            <select name="bimestre_excel" class="form-select mb-3">
-                                                <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
-                                                    <option value="<?php echo $i; ?>">Bimestre <?php echo $i; ?></option>
-                                                <?php endfor; ?>
-                                            </select>
-                                            <label>
-                                                <?php echo $es_inicial ? 'Pega aquí los comentarios (uno por estudiante):' : 'Pega aquí las notas (una por línea):'; ?>
-                                            </label>
-                                            <textarea name="datos_excel" class="form-control" placeholder="<?php echo $es_inicial ? 'Comentario por línea...' : 'Nota por línea...'; ?>"></textarea>
+                                    <form method="post">
+                                        <div class="modal-body">
+                                            <div class="mb-3">
+                                                <label>Seleccione el bimestre:</label>
+                                                <select name="bimestre_excel" class="form-select mb-3">
+                                                    <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
+                                                        <option value="<?php echo $i; ?>" <?php echo in_array($i, $bimestres_activos) ? "" : "disabled"; ?>>
+                                                            Bimestre <?php echo $i; ?><?php echo in_array($i, $bimestres_activos) ? "" : " (no habilitado)"; ?>
+                                                        </option>
+                                                    <?php endfor; ?>
+                                                </select>
+                                                <label>Pegue aquí la columna de notas:</label>
+                                                <textarea name="datos_excel" class="form-control" placeholder="Pegue aquí SOLO la columna de notas desde Excel"></textarea>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                        <button type="submit" name="guardar_excel" class="btn btn-primary">Cargar</button>
-                                    </div>
-                                </form>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                            <button type="submit" name="guardar_excel" class="btn btn-primary">Cargar Notas</button>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    <?php endif; ?>
 
                     <!-- Formulario regular -->
                     <form method="post">
@@ -268,7 +291,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <th>#</th>
                                         <th>Estudiante</th>
                                         <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
-                                            <th class="text-center">Bimestre <?php echo $i; ?></th>
+                                            <th class="text-center <?php echo in_array($i, $bimestres_activos) ? 'bim-activo-th' : 'bim-inactivo-th'; ?>">
+                                                Bimestre <?php echo $i; ?>
+                                                <?php if (!in_array($i, $bimestres_activos)): ?>
+                                                    <span class="badge bg-secondary ms-1">No habilitado</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-success ms-1">Activo</span>
+                                                <?php endif; ?>
+                                            </th>
                                         <?php endfor; ?>
                                         <th>Promedio</th>
                                     </tr>
@@ -285,18 +315,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <!-- Nivel inicial: comentarios -->
                                                     <textarea 
                                                         name="notas[<?php echo $est['id_estudiante']; ?>][<?php echo $i; ?>]"
-                                                        class="coment-textarea"
-                                                        placeholder="Ingrese el comentario para este bimestre"><?= htmlspecialchars($notas[$est['id_estudiante']][$i] ?? '') ?></textarea>
+                                                        class="coment-textarea <?php echo !in_array($i, $bimestres_activos) ? 'coment-disabled' : ''; ?>"
+                                                        placeholder="<?php echo in_array($i, $bimestres_activos) ? 'Comentario bimestre '.$i : 'No habilitado'; ?>"
+                                                        <?php echo !in_array($i, $bimestres_activos) ? 'readonly disabled' : ''; ?>
+                                                    ><?php echo htmlspecialchars($notas[$est['id_estudiante']][$i] ?? '') ?></textarea>
                                                 <?php else: ?>
                                                     <!-- Otros niveles: notas numéricas -->
                                                     <input 
                                                         type="number"
                                                         name="notas[<?php echo $est['id_estudiante']; ?>][<?php echo $i; ?>]"
-                                                        class="form-control nota-input"
+                                                        class="form-control nota-input <?php echo !in_array($i, $bimestres_activos) ? 'nota-disabled' : ''; ?>"
                                                         value="<?php echo $notas[$est['id_estudiante']][$i] ?? ''; ?>"
                                                         step="0.01"
                                                         min="0"
                                                         max="100"
+                                                        <?php echo !in_array($i, $bimestres_activos) ? 'readonly disabled' : ''; ?>
                                                     >
                                                 <?php endif; ?>
                                             </td>
@@ -313,10 +346,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </tbody>
                             </table>
                         </div>
-
                         <div class="d-flex justify-content-between mt-4">
                             <a href="dashboard.php" class="btn btn-secondary">Volver</a>
-                            <button type="submit" name="guardar_notas" class="btn btn-primary">Guardar</button>
+                            <button type="submit" name="guardar_notas" class="btn btn-primary">Guardar Notas</button>
                         </div>
                     </form>
                 </div>

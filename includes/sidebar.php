@@ -114,6 +114,17 @@ function active($str, $current)
                     </li>
                 </ul>
             </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Panel de Control</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('personal', $current); ?>" href="personal.php">
+                            <span data-feather="layers"></span>
+                            Personal
+                        </a>
+                    </li>
+                </ul>
+            </div>
         <?php elseif ($role == 2): // Profesor 
         ?>
             <div class="sidebar-section">
