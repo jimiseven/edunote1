@@ -20,7 +20,7 @@ $id_curso_materia = $_GET['curso_materia'] ?? header('Location: dashboard.php?er
 
 $conn = (new Database())->connect();
 
-// ======== [MODIFICACIÓN 1] Obtener bimestres activos como enteros ========
+// Obtener bimestres activos como enteros
 $stmt = $conn->query("SELECT numero_bimestre FROM bimestres_activos WHERE esta_activo = 1");
 $bimestres_activos = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
 
@@ -63,7 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->beginTransaction();
 
-        // ======== [MODIFICACIÓN 2] Verificar existencia de bimestres activos ========
         if (empty($bimestres_activos)) {
             throw new Exception("No hay bimestres habilitados para carga de notas. Contacte al administrador.");
         }
@@ -71,10 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['guardar_notas'])) {
             foreach ($_POST['notas'] as $id_est => $bimestres) {
                 foreach ($bimestres as $bim => $valor) {
-                    // ======== [MODIFICACIÓN 3] Convertir y validar bimestre ========
                     $bim_int = (int)$bim;
                     if (!in_array($bim_int, $bimestres_activos)) {
-                        continue; // Ignorar bimestres inactivos
+                        continue;
                     }
                     
                     $valor = trim($valor);
@@ -122,7 +120,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (isset($_POST['guardar_excel'])) {
-            // ======== [MODIFICACIÓN 4] Validar bimestre Excel ========
             $bimestre_excel = (int)$_POST['bimestre_excel'];
             if (!in_array($bimestre_excel, $bimestres_activos)) {
                 throw new Exception("El bimestre $bimestre_excel no está habilitado para carga de notas");
@@ -224,6 +221,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             height: 100px;
             resize: none;
         }
+        
+        /* Nuevos estilos para la tabla con scroll */
+        .table-container {
+            max-height: 70vh;
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .table-container table {
+            margin-bottom: 0;
+        }
+        .table-container thead th {
+            position: sticky;
+            top: 0;
+            background-color: #f8f9fa;
+            z-index: 10;
+        }
+        .table-container tbody td:first-child,
+        .table-container thead th:first-child {
+            position: sticky;
+            left: 0;
+            background-color: white;
+            z-index: 5;
+        }
+        .table-container tbody td:nth-child(2),
+        .table-container thead th:nth-child(2) {
+            position: sticky;
+            left: 40px; /* Aprox el ancho de la columna # */
+            background-color: white;
+            z-index: 5;
+        }
+        .table-container thead th:first-child,
+        .table-container thead th:nth-child(2) {
+            z-index: 15;
+        }
     </style>
 </head>
 <body>
@@ -284,7 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <!-- Formulario regular -->
                     <form method="post">
-                        <div class="table-responsive">
+                        <div class="table-container"> <!-- Contenedor con scroll -->
                             <table class="table table-bordered">
                                 <thead class="table-light">
                                     <tr>
