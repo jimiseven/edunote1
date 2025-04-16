@@ -580,7 +580,7 @@ foreach ($estudiantes as $est) {
                 doc.text("UNIDAD EDUCATIVA", 25, 35);
                 doc.text(":", 85, 35);
                 doc.setFont('helvetica', 'normal');
-                doc.text("Colegio San Agustín", 90, 35);
+                doc.text("Colegio Simón BOlivar", 90, 35);
 
                 doc.setFont('helvetica', 'bold');
                 doc.text("DOCENTE", 25, 42);
