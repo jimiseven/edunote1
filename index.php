@@ -23,7 +23,7 @@
                             <div class="row g-0">
                                 <!-- Logo -->
                                 <div class="col-md-6 d-flex align-items-center justify-content-center p-5">
-                                    <img src="assets/img/logo.png" class="img-fluid" style="max-width: 200px;" alt="EduNote Logo">
+                                    <img src="assets/img/info.png" class="img-fluid" style="max-width: 200px;" alt="EduNote Logo">
                                 </div>
                                 <!-- Formulario -->
                                 <div class="col-md-6 bg-light p-4 rounded-end d-flex flex-column justify-content-center">
