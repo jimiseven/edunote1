@@ -343,21 +343,46 @@ $estudiantes_ordenados = $estudiantes;
 
                                         <?php if ($vista == 'anual'): ?>
                                             <?php foreach ($materias as $materia): ?>
-                                                <td><?php echo $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][1] ?? ''; ?></td>
-                                                <td><?php echo $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][2] ?? ''; ?></td>
-                                                <td><?php echo $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][3] ?? ''; ?></td>
-                                                <td class="average-cell"><?php echo $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? ''; ?></td>
-                                            <?php endforeach; ?>
-                                            <td class="final-average"><?php echo $promedios_generales[$estudiante['id_estudiante']]; ?></td>
-                                        <?php else: ?>
-                                            <?php foreach ($materias as $materia): ?>
-                                                <td><?php echo $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$trimestre] ?? ''; ?></td>
-                                            <?php endforeach; ?>
-                                            <td class="final-average"><?php echo $promedios_trimestre[$estudiante['id_estudiante']]; ?></td>
-                                        <?php endif; ?>
+                                                <?php
+                                                $n1 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][1] ?? '';
+                                                $n2 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][2] ?? '';
+                                                $n3 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][3] ?? '';
+                                                $pm = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
+                                                ?>
+                                                <td<?= (is_numeric($n1) && $n1 < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>><?= $n1 ?></td>
+                                                    <td<?= (is_numeric($n2) && $n2 < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>><?= $n2 ?></td>
+                                                        <td<?= (is_numeric($n3) && $n3 < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>><?= $n3 ?></td>
+                                                            <td class="average-cell" <?= (is_numeric($pm) && $pm < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>>
+                                                                <?= $pm ?>
+                                                            </td>
+                                                        <?php endforeach; ?>
+
+                                                        <?php
+                                                        $pg = $promedios_generales[$estudiante['id_estudiante']];
+                                                        ?>
+                                                        <td class="final-average" <?= (is_numeric($pg) && $pg < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>>
+                                                            <?php echo $pg; ?>
+                                                        </td>
+                                                    <?php else: ?>
+                                                        <?php foreach ($materias as $materia): ?>
+                                                            <?php
+                                                            $nt = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$trimestre] ?? '';
+                                                            ?>
+                                                            <td<?= (is_numeric($nt) && $nt < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>>
+                                                                <?php echo $nt; ?>
+                                                                </td>
+                                                            <?php endforeach; ?>
+                                                            <?php
+                                                            $pt = $promedios_trimestre[$estudiante['id_estudiante']];
+                                                            ?>
+                                                            <td class="final-average" <?= (is_numeric($pt) && $pt < 50) ? ' style="color:#d81b1b;font-weight:bold"' : '' ?>>
+                                                                <?php echo $pt; ?>
+                                                            </td>
+                                                        <?php endif; ?>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
+
                         </table>
                     </div>
 
