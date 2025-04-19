@@ -1,4 +1,4 @@
-<!-- Version que funciona el anual pero no trimestral  -->
+<!-- Version que funciona el anual pero no trimestral, exclucion de materias extra en promedio gen,   -->
 <?php
 session_start();
 require_once '../config/database.php';

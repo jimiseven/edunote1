@@ -300,29 +300,7 @@ $estudiantes_ordenados = $estudiantes;
                 background: #fff !important;
             }
         }
-
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-
-            .centralizador-table,
-            .centralizador-table * {
-                visibility: visible;
-            }
-
-            .centralizador-table {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-        }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 </head>
 
 <body>
@@ -344,10 +322,9 @@ $estudiantes_ordenados = $estudiantes;
                         <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
                             <i class="bi bi-pencil"></i> Editar
                         </a>
-                        <button onclick="generatePDF()" class="btn btn-primary btn-sm">
-                            <i class="bi bi-printer"></i> Imprimir/Guardar PDF
+                        <button onclick="window.print()" class="btn btn-primary btn-sm">
+                            <i class="bi bi-printer"></i> Imprimir
                         </button>
-
                     </div>
                 </div>
 
@@ -409,41 +386,6 @@ $estudiantes_ordenados = $estudiantes;
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        async function generatePDF() {
-            // Configuración del PDF (tamaño carta en horizontal)
-            const pdf = new jspdf.jsPDF({
-                orientation: 'landscape',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            // Captura la tabla
-            const table = document.querySelector('.centralizador-table');
-
-            // Opciones de html2canvas (aumenta la escala para mejor resolución)
-            const options = {
-                scale: 3, // 3x resolución
-                useCORS: true,
-                scrollY: 0
-            };
-
-            // Convierte la tabla a imagen
-            const canvas = await html2canvas(table, options);
-            const imgData = canvas.toDataURL('image/png');
-
-            // Tamaño del PDF (A4 horizontal: 297mm x 210mm)
-            const pdfWidth = 297;
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-            // Añade la imagen al PDF
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-
-            // Descarga el PDF
-            pdf.save('centralizador.pdf');
-        }
-    </script>
-
 </body>
 
 </html>
