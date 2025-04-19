@@ -411,36 +411,60 @@ $estudiantes_ordenados = $estudiantes;
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         async function generatePDF() {
-            // Configuración del PDF (tamaño carta en horizontal)
+            // Crear contenedor temporal para el PDF
+            const pdfContainer = document.createElement('div');
+            pdfContainer.className = 'pdf-export';
+
+            // Clonar y modificar la tabla
+            const originalTable = document.querySelector('.centralizador-table');
+            const clonedTable = originalTable.cloneNode(true);
+
+            // Crear header del PDF
+            const header = `
+        <div class="pdf-header mb-4 text-center">
+            <h3 class="text-primary mb-1"><?= htmlspecialchars($nombre_curso) ?></h3>
+            <div class="text-secondary">Año Escolar <?= date('Y') ?></div>
+            <hr style="border-top: 2px solid #333; margin: 8px 0;">
+        </div>
+    `;
+
+            pdfContainer.innerHTML = header;
+            pdfContainer.appendChild(clonedTable);
+
+            // Aplicar estilos especiales
+            clonedTable.classList.add('table', 'table-sm');
+            clonedTable.style.fontSize = '12pt';
+            clonedTable.querySelectorAll('th, td').forEach(el => {
+                el.style.padding = '6px 8px';
+                el.style.border = '1px solid #dee2e6';
+            });
+
+            document.body.appendChild(pdfContainer);
+
+            // Generar PDF
             const pdf = new jspdf.jsPDF({
                 orientation: 'landscape',
                 unit: 'mm',
-                format: 'a4'
+                format: 'a4',
+                hotfixes: ["px_scaling"]
             });
 
-            // Captura la tabla
-            const table = document.querySelector('.centralizador-table');
-
-            // Opciones de html2canvas (aumenta la escala para mejor resolución)
             const options = {
-                scale: 3, // 3x resolución
+                scale: 2,
                 useCORS: true,
+                logging: true,
                 scrollY: 0
             };
 
-            // Convierte la tabla a imagen
-            const canvas = await html2canvas(table, options);
-            const imgData = canvas.toDataURL('image/png');
+            const canvas = await html2canvas(pdfContainer, options);
+            const imgWidth = 297; // Ancho A4 landscape
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            // Tamaño del PDF (A4 horizontal: 297mm x 210mm)
-            const pdfWidth = 297;
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(canvas, 'PNG', 8, 8, imgWidth - 16, imgHeight - 16);
 
-            // Añade la imagen al PDF
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-
-            // Descarga el PDF
-            pdf.save('centralizador.pdf');
+            // Limpiar y descargar
+            document.body.removeChild(pdfContainer);
+            pdf.save('Centralizador - <?= htmlspecialchars($nombre_curso) ?>.pdf');
         }
     </script>
 
