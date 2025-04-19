@@ -1,3 +1,7 @@
+<!-- - funcionalidad para vista anual
+- mateerias extra
+- materias padres e hijas
+- FALTA LA VISTA -->
 <?php
 session_start();
 require_once '../config/database.php';
