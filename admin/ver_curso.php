@@ -334,22 +334,26 @@ $estudiantes_ordenados = $estudiantes;
             <main class="col-md-10 ms-sm-auto col-lg-10 px-md-4">
                 <!-- Header con título y botones -->
                 <div class="header-controls d-flex flex-wrap justify-content-between align-items-center py-2 mb-3 no-print">
-                    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="history.back();">
-                            <i class="bi bi-arrow-left"></i> Volver
-                        </button>
-                        <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
-                            <i class="bi bi-pencil"></i> Editar
-                        </a>
-                        <button onclick="generatePDF()" class="btn btn-primary btn-sm">
-                            <i class="bi bi-printer"></i> Imprimir/Guardar PDF
-                        </button>
+    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+        <a href="ver_curso.php?id=<?= $id_curso ?>" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+        <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
+            <i class="bi bi-pencil"></i> Editar
+        </a>
+        <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
+            <i class="bi bi-calendar-week"></i> Ver Trimestre
+        </a>
+        <button onclick="generatePDFPanelBlocks()" class="btn btn-secondary btn-sm">
+            PDF Reporte
+        </button>
+    </div>
+</div>
 
-                    </div>
-                </div>
+
 
                 <section class="content-section">
                     <div class="table-responsive">
@@ -409,39 +413,77 @@ $estudiantes_ordenados = $estudiantes;
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+
     <script>
-        async function generatePDF() {
-            // Crear contenedor temporal para el PDF
+        async function generatePDFPanelBlocks() {
+            const nombreCurso = <?= json_encode($nombre_curso) ?>;
             const pdfContainer = document.createElement('div');
             pdfContainer.className = 'pdf-export';
 
-            // Clonar y modificar la tabla
-            const originalTable = document.querySelector('.centralizador-table');
-            const clonedTable = originalTable.cloneNode(true);
-
-            // Crear header del PDF
+            // Cabecera elegante
             const header = `
-        <div class="pdf-header mb-4 text-center">
-            <h3 class="text-primary mb-1"><?= htmlspecialchars($nombre_curso) ?></h3>
-            <div class="text-secondary">Año Escolar <?= date('Y') ?></div>
-            <hr style="border-top: 2px solid #333; margin: 8px 0;">
+        <div style="font-family: Arial, sans-serif; text-align:center; margin-bottom:8px;">
+            <div style="font-size:16pt; font-weight:bold;">U.E. SIMÓN BOLÍVAR</div>
+            <div style="font-size:15pt; font-weight:700; color:#003366;">CENTRALIZADOR DE NOTAS</div>
+            <div style="font-size:11.5pt; margin-top:1px; margin-bottom:3px;">${nombreCurso}</div>
+            <div style="font-size:10.5pt; color:#555;">Año Escolar ${new Date().getFullYear()}</div>
+            <hr style="border-top:1.2px solid #003366; width:75%; margin:6px auto;">
         </div>
     `;
 
-            pdfContainer.innerHTML = header;
-            pdfContainer.appendChild(clonedTable);
+            // Clona y personaliza la tabla
+            const originalTable = document.querySelector('.centralizador-table');
+            const table = originalTable.cloneNode(true);
 
-            // Aplicar estilos especiales
-            clonedTable.classList.add('table', 'table-sm');
-            clonedTable.style.fontSize = '12pt';
-            clonedTable.querySelectorAll('th, td').forEach(el => {
-                el.style.padding = '6px 8px';
-                el.style.border = '1px solid #dee2e6';
+            table.style.margin = "0 auto";
+            table.style.fontSize = "9pt";
+            table.style.width = "99%";
+            table.style.borderCollapse = "collapse";
+            table.style.tableLayout = "fixed";
+
+            // Celdas compactas y nítidas
+            table.querySelectorAll('th, td').forEach(el => {
+                el.style.padding = "3.3px 4.2px";
+                el.style.border = "1.6px solid #bbb";
+                el.style.fontSize = "9pt";
+                el.style.textAlign = "center";
+                el.style.wordBreak = "break-word";
             });
 
+            // Encabezado por bloques
+            table.querySelectorAll('th[colspan]').forEach(th => {
+                th.style.background = "#e3ecfa";
+                th.style.color = "#1e3d73";
+                th.style.fontWeight = "bold";
+                th.style.fontSize = "9.5pt";
+                th.style.borderBottom = "2.3px solid #6699cc";
+                th.style.letterSpacing = ".5px";
+            });
+            // Extras azul pálido
+            table.querySelectorAll('.materia-extra').forEach(td => {
+                td.style.background = "#e3f4ff";
+                td.style.color = "#18809b";
+                td.style.fontStyle = "italic";
+            });
+            // Promedios generales destacados
+            table.querySelectorAll('.final-average').forEach(td => {
+                td.style.background = "#f9edc1";
+                td.style.fontWeight = "bold";
+                td.style.color = "#ad5409";
+                td.style.fontSize = "10pt";
+            });
+
+            // Rayado de filas
+            [...table.tBodies[0].rows].forEach((row, i) => {
+                if (i % 2 === 1) row.style.background = "#f7f8fd";
+            });
+
+            pdfContainer.innerHTML = header;
+            pdfContainer.appendChild(table);
             document.body.appendChild(pdfContainer);
 
-            // Generar PDF
+            // ---- PDF con máxima resolución ----
             const pdf = new jspdf.jsPDF({
                 orientation: 'landscape',
                 unit: 'mm',
@@ -450,23 +492,30 @@ $estudiantes_ordenados = $estudiantes;
             });
 
             const options = {
-                scale: 2,
+                scale: 3, // MAX RESOLUCIÓN
                 useCORS: true,
-                logging: true,
-                scrollY: 0
+                logging: false,
+                scrollY: 0,
+                backgroundColor: "#fff"
             };
 
             const canvas = await html2canvas(pdfContainer, options);
-            const imgWidth = 297; // Ancho A4 landscape
+
+            // Medidas ajustadas para hoja carta horizontal
+            const pageWidth = 297;
+            const xPosition = 7,
+                yPosition = 9;
+            const imgWidth = pageWidth - 2 * xPosition;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            pdf.addImage(canvas, 'PNG', 8, 8, imgWidth - 16, imgHeight - 16);
+            pdf.addImage(canvas, 'PNG', xPosition, yPosition, imgWidth, imgHeight, undefined, 'FAST');
 
-            // Limpiar y descargar
             document.body.removeChild(pdfContainer);
-            pdf.save('Centralizador - <?= htmlspecialchars($nombre_curso) ?>.pdf');
+            pdf.save(`Centralizador - ${nombreCurso}.pdf`);
         }
     </script>
+
+
 
 </body>
 
