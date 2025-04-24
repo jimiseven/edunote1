@@ -234,6 +234,30 @@ function active($str, $current)
                         </a>
                     </li>
                 </ul>
+                <!-- asignacion de cursos -->
+                <div class="sidebar-section-title">ASIGNACION DE PROFESORES</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('asig_ini', $current); ?>" href="asig_ini.php">
+                            <span data-feather="users"></span>
+                            Inicial
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('asig_pri', $current); ?>" href="asig_pri.php">
+                            <span data-feather="calendar"></span>
+                            Primaria
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('asig_sec', $current); ?>" href="asig_sec.php">
+                            <span data-feather="calendar"></span>
+                            Secundaria
+                        </a>
+                    </li>
+                </ul>
+
+                
 
             <?php elseif ($role == 2): // Profesor ?>
                 <div class="sidebar-section-title">MIS CURSOS</div>
