@@ -152,7 +152,8 @@ foreach ($estudiantes as $estudiante) {
     $suma_promedios = 0;
     $contador = 0;
     foreach ($todas_materias as $materia) {
-        if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1) continue;
+        if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1)
+            continue;
         $promedio = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
         if ($promedio !== '') {
             $suma_promedios += floatval($promedio);
@@ -165,7 +166,8 @@ foreach ($estudiantes as $estudiante) {
     $suma_trimestre = 0;
     $contador_trimestre = 0;
     foreach ($todas_materias as $materia) {
-        if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1) continue;
+        if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1)
+            continue;
         $nota = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$trimestre] ?? '';
         if ($nota !== '') {
             $suma_trimestre += floatval($nota);
@@ -182,7 +184,8 @@ $posiciones = [];
 $pos_actual = 1;
 $prom_anterior = null;
 foreach ($promedios_ordenados as $id_est => $prom) {
-    if ($prom_anterior !== null && $prom < $prom_anterior) $pos_actual++;
+    if ($prom_anterior !== null && $prom < $prom_anterior)
+        $pos_actual++;
     $posiciones[$id_est] = $pos_actual;
     $prom_anterior = $prom;
 }
@@ -333,25 +336,27 @@ $estudiantes_ordenados = $estudiantes;
 
             <main class="col-md-10 ms-sm-auto col-lg-10 px-md-4">
                 <!-- Header con título y botones -->
-                <div class="header-controls d-flex flex-wrap justify-content-between align-items-center py-2 mb-3 no-print">
-    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
-        <a href="ver_curso.php?id=<?= $id_curso ?>" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-left"></i> Volver
-        </a>
-        <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
-            <i class="bi bi-pencil"></i> Editar
-        </a>
-        <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
-            <i class="bi bi-calendar-week"></i> Ver Trimestre
-        </a>
-        <button onclick="generatePDFPanelBlocks()" class="btn btn-secondary btn-sm">
-            PDF Reporte
-        </button>
-    </div>
-</div>
+                <div
+                    class="header-controls d-flex flex-wrap justify-content-between align-items-center py-2 mb-3 no-print">
+                    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+                        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-left"></i> Volver
+                        </a>
+
+                        <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
+                            <i class="bi bi-pencil"></i> Editar
+                        </a>
+                        <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
+                            <i class="bi bi-calendar-week"></i> Ver Trimestre
+                        </a>
+                        <button onclick="generatePDFPanelBlocks()" class="btn btn-secondary btn-sm">
+                            PDF Reporte
+                        </button>
+                    </div>
+                </div>
 
 
 
@@ -364,7 +369,8 @@ $estudiantes_ordenados = $estudiantes;
                                     <th rowspan="2" class="align-middle">Pos.</th>
                                     <th rowspan="2" class="align-middle text-start">Estudiante</th>
                                     <?php foreach ($materias as $materia): ?>
-                                        <th colspan="4" class="align-middle <?= $materia['es_extra'] ? 'extra-materia' : '' ?>">
+                                        <th colspan="4"
+                                            class="align-middle <?= $materia['es_extra'] ? 'extra-materia' : '' ?>">
                                             <?= htmlspecialchars($materia['nombre_materia']) ?>
                                             <?php if (!empty($materia['es_extra'])): ?>
                                                 <span class="badge badge-extra ms-1">Extra</span>
@@ -388,7 +394,9 @@ $estudiantes_ordenados = $estudiantes;
                                     <tr>
                                         <td class="number-cell"><?= $contador++ ?></td>
                                         <td class="position-cell"><?= $posiciones[$estudiante['id_estudiante']] ?></td>
-                                        <td class="student-name"><?= htmlspecialchars(strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}")) ?></td>
+                                        <td class="student-name">
+                                            <?= htmlspecialchars(strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}")) ?>
+                                        </td>
                                         <?php foreach ($materias as $materia): ?>
                                             <?php
                                             $clase_extra = !empty($materia['es_extra']) ? 'materia-extra' : '';
@@ -397,12 +405,21 @@ $estudiantes_ordenados = $estudiantes;
                                             $n3 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][3] ?? '';
                                             $pm = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
                                             ?>
-                                            <td class="<?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>"><?= $n1 ?></td>
-                                            <td class="<?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>"><?= $n2 ?></td>
-                                            <td class="<?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>"><?= $n3 ?></td>
-                                            <td class="average-cell <?= $clase_extra ?> <?= (is_numeric($pm) && $pm < 50) ? 'nota-baja' : '' ?>"><?= $pm ?></td>
+                                            <td
+                                                class="<?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>">
+                                                <?= $n1 ?></td>
+                                            <td
+                                                class="<?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>">
+                                                <?= $n2 ?></td>
+                                            <td
+                                                class="<?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>">
+                                                <?= $n3 ?></td>
+                                            <td
+                                                class="average-cell <?= $clase_extra ?> <?= (is_numeric($pm) && $pm < 50) ? 'nota-baja' : '' ?>">
+                                                <?= $pm ?></td>
                                         <?php endforeach; ?>
-                                        <td class="final-average"><?= $promedios_generales[$estudiante['id_estudiante']] ?></td>
+                                        <td class="final-average"><?= $promedios_generales[$estudiante['id_estudiante']] ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
