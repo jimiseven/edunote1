@@ -1,3 +1,4 @@
+
 <?php
 $role = $_SESSION['user_role'] ?? null;
 $current = basename($_SERVER['PHP_SELF']);
