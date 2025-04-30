@@ -243,7 +243,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
     <div class="container-fluid py-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0">Asignación de Profesores</h2>
-            <a href="asig_<?= strtolower($nivel) ?>.php" class="btn btn-outline-secondary btn-sm">
+            <a href="<?=
+                ($nivel === 'Inicial') ? 'asig_ini.php' :
+                ($nivel === 'Primaria' ? 'asig_pri.php' : 'asig_sec.php')
+            ?>" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left"></i> Volver
             </a>
         </div>
@@ -291,17 +294,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#asignarModal" data-id="<?= $materia['id_materia'] ?>" data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>">
-                                            <i class="bi bi-person-plus"></i> Asignar
-                                        </button>
-                                        <?php if (!empty($materia['id_profesor_materia_curso'])): ?>
-                                            <button type="button" class="btn btn-danger btn-sm ms-2 btn-eliminar"
+                                        <div class="d-flex gap-2 justify-content-center">
+                                            <!-- Botón Asignar -->
+                                            <button type="button"
+                                                class="btn btn-success btn-sm d-flex align-items-center"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#asignarModal"
+                                                data-id="<?= $materia['id_materia'] ?>"
+                                                data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="top"
+                                                title="Asignar profesor">
+                                                <i class="bi bi-person-plus me-1"></i>
+                                                <span class="d-none d-md-inline">Asignar</span>
+                                            </button>
+
+                                            <!-- Botón Quitar Profesor -->
+                                            <?php if (!empty($materia['id_profesor_materia_curso'])): ?>
+                                            <button type="button"
+                                                class="btn btn-danger btn-sm d-flex align-items-center btn-eliminar"
                                                 data-id="<?= $materia['id_profesor_materia_curso'] ?>"
                                                 data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>"
-                                                data-profesor="<?= htmlspecialchars($materia['nombre_profesor'] ?? '') ?>">
-                                                <i class="bi bi-trash"></i> Eliminar
+                                                data-profesor="<?= htmlspecialchars($materia['nombre_profesor'] ?? '') ?>"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="top"
+                                                title="Quitar profesor asignado">
+                                                <i class="bi bi-person-x me-1"></i>
+                                                <span class="d-none d-md-inline">Quitar Prof.</span>
                                             </button>
-                                        <?php endif; ?>
+                                            <?php endif; ?>
+
+                                            <!-- Botón Quitar Materia -->
+                                            <button type="button"
+                                                class="btn btn-outline-danger btn-sm d-flex align-items-center btn-eliminar-materia"
+                                                data-id="<?= $materia['id_materia'] ?>"
+                                                data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="top"
+                                                title="Eliminar materia del curso">
+                                                <i class="bi bi-journal-x me-1"></i>
+                                                <span class="d-none d-md-inline">Quitar Mat.</span>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -354,6 +388,150 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
     </div>
 
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Inicializar tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        // Efectos hover para botones
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('mouseenter', () => {
+                btn.style.transform = 'translateY(-2px)';
+                btn.style.transition = 'all 0.2s ease';
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = '';
+            });
+        });
+
+        // Manejar eliminación de materia del curso
+        document.querySelectorAll('.btn-eliminar-materia').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const materia = this.getAttribute('data-materia');
+                const idMateria = this.getAttribute('data-id');
+                
+                // Mostrar modal de confirmación con estilo
+                const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+                document.getElementById('confirmMessage').innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5><i class="bi bi-exclamation-triangle-fill"></i> ¿Eliminar materia?</h5>
+                        <p>¿Está seguro de eliminar la materia <strong>${materia}</strong> de este curso?</p>
+                        <p class="text-danger"><small>Esta acción no se puede deshacer.</small></p>
+                    </div>
+                `;
+                
+                document.getElementById('confirmButton').onclick = () => {
+                    const formData = new FormData();
+                    formData.append('id_materia', idMateria);
+                    formData.append('id_curso', <?= $id_curso ?>);
+                    formData.append('nivel', '<?= $nivel ?>');
+                    formData.append('curso', '<?= $curso ?>');
+                    formData.append('paralelo', '<?= $paralelo ?>');
+
+                    // Mostrar spinner durante la carga
+                    const spinner = document.createElement('span');
+                    spinner.className = 'spinner-border spinner-border-sm me-2';
+                    document.getElementById('confirmButton').prepend(spinner);
+                    document.getElementById('confirmButton').disabled = true;
+
+                    fetch('eliminar_materia_curso.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Mostrar notificación de éxito
+                            const toast = new bootstrap.Toast(document.getElementById('successToast'));
+                            document.getElementById('toastMessage').textContent = `Materia ${materia} eliminada correctamente`;
+                            toast.show();
+                            
+                            // Redireccionar después de 1.5 segundos
+                            setTimeout(() => {
+                                window.location.href = data.redirect;
+                            }, 1500);
+                        } else {
+                            modal.hide();
+                            alert('Error al eliminar la materia: ' + (data.error || 'Error desconocido'));
+                        }
+                    })
+                    .catch(error => {
+                        modal.hide();
+                        console.error('Error:', error);
+                        alert('Error al eliminar la materia');
+                    });
+                };
+
+                modal.show();
+            });
+        });
+    </script>
+
+    <!-- Modal de confirmación -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-white">
+                    <h5 class="modal-title">Confirmar acción</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="confirmMessage">
+                    <!-- Mensaje dinámico -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="confirmButton">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast de éxito -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="successToast" class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body" id="toastMessage"></div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Manejar eliminación de materia del curso
+        document.querySelectorAll('.btn-eliminar-materia').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const materia = this.getAttribute('data-materia');
+                const idMateria = this.getAttribute('data-id');
+                
+                if (confirm(`¿Está seguro de eliminar la materia ${materia} de este curso? Esta acción no se puede deshacer.`)) {
+                    const formData = new FormData();
+                    formData.append('id_materia', idMateria);
+                    formData.append('id_curso', <?= $id_curso ?>);
+                    formData.append('nivel', '<?= $nivel ?>');
+                    formData.append('curso', '<?= $curso ?>');
+                    formData.append('paralelo', '<?= $paralelo ?>');
+
+                    fetch('eliminar_materia_curso.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.href = data.redirect;
+                        } else {
+                            alert('Error al eliminar la materia: ' + (data.error || 'Error desconocido'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error al eliminar la materia');
+                    });
+                }
+            });
+        });
+    </script>
     <script>
         // Lista de profesores para búsqueda
         const profesores = <?= json_encode($profesores) ?>;

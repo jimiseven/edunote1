@@ -2,42 +2,41 @@
 session_start();
 require_once '../config/database.php';
 
-// Verificar acceso
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+// Verificar acceso y método
+if ($_SERVER['REQUEST_METHOD'] !== 'DELETE' || !isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1])) {
     http_response_code(403);
-    exit('Acceso denegado');
+    exit();
 }
 
-// Verificar método
-if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
-    http_response_code(405);
-    exit('Método no permitido');
-}
-
-// Obtener ID de asignación
+// Obtener ID de la asignación
 $id = $_GET['id'] ?? null;
 if (!$id) {
     http_response_code(400);
-    exit('ID de asignación no proporcionado');
+    echo json_encode(['error' => 'ID de asignación no proporcionado']);
+    exit();
 }
 
-// Conectar a la base de datos
-$database = new Database();
-$conn = $database->connect();
-
 try {
-    // Eliminar asignación
-    $stmt = $conn->prepare("DELETE FROM profesores_materias_cursos WHERE id_profesor_materia_curso = ?");
-    $stmt->execute([$id]);
+    $database = new Database();
+    $conn = $database->connect();
+
+    // Verificar si la asignación existe
+    $stmt_check = $conn->prepare("SELECT id_profesor_materia_curso FROM profesores_materias_cursos WHERE id_profesor_materia_curso = ?");
+    $stmt_check->execute([$id]);
     
-    if ($stmt->rowCount() > 0) {
-        http_response_code(200);
-        exit('Asignación eliminada correctamente');
-    } else {
+    if (!$stmt_check->fetch()) {
         http_response_code(404);
-        exit('Asignación no encontrada');
+        echo json_encode(['error' => 'Asignación no encontrada']);
+        exit();
     }
+
+    // Eliminar la asignación
+    $stmt_delete = $conn->prepare("DELETE FROM profesores_materias_cursos WHERE id_profesor_materia_curso = ?");
+    $stmt_delete->execute([$id]);
+
+    http_response_code(200);
+    echo json_encode(['success' => true]);
 } catch (PDOException $e) {
     http_response_code(500);
-    exit('Error al eliminar asignación: ' . $e->getMessage());
+    echo json_encode(['error' => 'Error en la base de datos: ' . $e->getMessage()]);
 }
