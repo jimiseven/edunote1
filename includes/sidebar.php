@@ -4,6 +4,9 @@ $role = $_SESSION['user_role'] ?? null;
 $current = basename($_SERVER['PHP_SELF']);
 function active($str, $current)
 {
+    if (isset($_SESSION['force_active']) && $str === $_SESSION['force_active']) {
+        return 'active';
+    }
     return (strpos($current, $str) !== false) ? 'active' : '';
 }
 ?>

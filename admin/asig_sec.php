@@ -52,9 +52,15 @@ for ($i = 1; $i <= 6; $i++) {
 
     <!-- Main content -->
     <div class="main-content">
-        <div class="bg-white rounded shadow-sm p-4 mb-4">
-            <h2 class="mb-0" style="color:#7bb27d;">Asignación de Profesores - Secundaria</h2>
-            <small class="text-muted">Seleccione el paralelo del curso que desea ver:</small>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="bg-white rounded shadow-sm p-4">
+                <h2 class="mb-0" style="color:#7bb27d;">Asignación de Profesores - Secundaria</h2>
+                <small class="text-muted">Seleccione el paralelo del curso que desea ver:</small>
+            </div>
+            <!-- Botón de reporte -->
+            <a href="reporte_secundaria.php" class="btn btn-info btn-sm">
+                <i class="bi bi-printer"></i> Ver Reporte
+            </a>
         </div>
         <div class="table-responsive">
             <table class="table table-asig align-middle">

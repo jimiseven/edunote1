@@ -294,6 +294,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
                                         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#asignarModal" data-id="<?= $materia['id_materia'] ?>" data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>">
                                             <i class="bi bi-person-plus"></i> Asignar
                                         </button>
+                                        <?php if (!empty($materia['id_profesor_materia_curso'])): ?>
+                                            <button type="button" class="btn btn-danger btn-sm ms-2 btn-eliminar"
+                                                data-id="<?= $materia['id_profesor_materia_curso'] ?>"
+                                                data-materia="<?= htmlspecialchars($materia['nombre_materia']) ?>"
+                                                data-profesor="<?= htmlspecialchars($materia['nombre_profesor'] ?? '') ?>">
+                                                <i class="bi bi-trash"></i> Eliminar
+                                            </button>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -423,6 +431,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
         // Enviar formulario al guardar
         document.getElementById('btn_guardar_asignacion').addEventListener('click', () => {
             document.getElementById('asignarForm').submit();
+        });
+
+        // Manejar eliminación de asignaciones
+        document.querySelectorAll('.btn-eliminar').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const materia = this.getAttribute('data-materia');
+                const profesor = this.getAttribute('data-profesor');
+                const idAsignacion = this.getAttribute('data-id');
+                
+                if (confirm(`¿Está seguro de eliminar la asignación de ${profesor} a ${materia}?`)) {
+                    fetch(`eliminar_asignacion.php?id=${idAsignacion}`, {
+                        method: 'DELETE'
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            location.reload();
+                        } else {
+                            alert('Error al eliminar la asignación');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error al eliminar la asignación');
+                    });
+                }
+            });
         });
     </script>
 </body>

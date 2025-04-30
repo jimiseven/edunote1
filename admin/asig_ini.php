@@ -60,11 +60,18 @@ $cursos_inicial = [
 
     <!-- Main content -->
     <div class="main-content">
-        <div class="bg-white rounded shadow-sm p-4 mb-4">
-            <h2 class="mb-0" style="color:#5177b8;">
-                <i class="bi bi-person-gear"></i> Asignaciones - Nivel Inicial
-            </h2>
-            <small class="text-muted">Gestión de asignaciones por paralelo</small>
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="bg-white rounded shadow-sm p-4 mb-4">
+                <h2 class="mb-0" style="color:#5177b8;">
+                    <i class="bi bi-person-gear"></i> Asignaciones - Nivel Inicial
+                </h2>
+                <small class="text-muted">Gestión de asignaciones por paralelo</small>
+            </div>
+            
+            <!-- Botón de reporte (NUEVO) -->
+            <a href="reporte_inicial.php" class="btn btn-info btn-sm mb-4">
+                <i class="bi bi-printer"></i> Ver Reporte
+            </a>
         </div>
 
         <div class="table-responsive">
