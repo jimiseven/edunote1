@@ -15,8 +15,8 @@ $conn = $db->connect();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $stmt = $conn->prepare("
-            INSERT INTO personal (nombres, apellidos, celular, carnet_identidad, id_rol)
-            VALUES (:nombres, :apellidos, :celular, :carnet_identidad, :id_rol)
+            INSERT INTO personal (nombres, apellidos, celular, carnet_identidad, id_rol, estado)
+            VALUES (:nombres, :apellidos, :celular, :carnet_identidad, :id_rol, 1)
         ");
         
         $stmt->execute([

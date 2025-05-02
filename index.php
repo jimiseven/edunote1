@@ -28,17 +28,39 @@
                                 <!-- Formulario -->
                                 <div class="col-md-6 bg-light p-4 rounded-end d-flex flex-column justify-content-center">
                                     <h2 class="text-center mb-4">Bienvenido</h2>
-                                    <?php if(isset($_GET['error'])): ?>
-                                        <div class="alert alert-danger" role="alert">
-                                            <?php echo $_GET['error'] == 'invalid' ? 'Credenciales inválidas. Intente nuevamente.' : 'Error de autenticación'; ?>
-                                        </div>
-                                    <?php endif; ?>
+                                    <?php
+                                    if(isset($_GET['error'])) {
+                                        $errorMessages = [
+                                            'wrong_password' => 'Contraseña incorrecta',
+                                            'user_not_found' => 'Usuario no encontrado',
+                                            'inhabilitado' => 'Su usuario está inhabilitado. Contacte al administrador.',
+                                            'empty' => 'Complete todos los campos'
+                                        ];
+                                        $errorType = $_GET['error'];
+                                        $alertClass = $errorType == 'empty' ? 'alert-warning' : 'alert-danger';
+                                        
+                                        if(array_key_exists($errorType, $errorMessages)) {
+                                            echo '<div class="alert '.$alertClass.'" role="alert">'.$errorMessages[$errorType].'</div>';
+                                        } else {
+                                            echo '<div class="alert alert-danger" role="alert">Error de autenticación</div>';
+                                        }
+                                    }
+                                    ?>
                                     <form action="login.php" method="POST">
                                         <div class="mb-3">
                                             <input type="text" class="form-control" name="usuario" placeholder="Usuario" required>
                                         </div>
                                         <div class="mb-3">
-                                            <input type="password" class="form-control" name="contrasena" placeholder="Contraseña" required>
+                                            <div class="input-group">
+                                                <input type="password" class="form-control" id="contrasena" name="contrasena" placeholder="Contraseña" required>
+                                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                                    Ver
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3 form-check">
+                                            <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                                            <label class="form-check-label" for="remember">Recordar mi usuario</label>
                                         </div>
                                         <div class="d-grid gap-2">
                                             <button type="submit" class="btn btn-primary">Ingresar</button>
@@ -54,5 +76,37 @@
     </div>
 
     <script src="js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Mostrar/ocultar contraseña
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const passwordInput = document.getElementById('contrasena');
+            const icon = this.querySelector('i');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                this.textContent = 'Ocultar';
+            } else {
+                passwordInput.type = 'password';
+                this.textContent = 'Ver';
+            }
+        });
+
+        // Recordar usuario
+        document.addEventListener('DOMContentLoaded', function() {
+            const rememberedUser = localStorage.getItem('rememberedUser');
+            if (rememberedUser) {
+                document.querySelector('input[name="usuario"]').value = rememberedUser;
+                document.getElementById('remember').checked = true;
+            }
+        });
+
+        document.querySelector('form').addEventListener('submit', function() {
+            if (document.getElementById('remember').checked) {
+                localStorage.setItem('rememberedUser', document.querySelector('input[name="usuario"]').value);
+            } else {
+                localStorage.removeItem('rememberedUser');
+            }
+        });
+    </script>
 </body>
 </html>

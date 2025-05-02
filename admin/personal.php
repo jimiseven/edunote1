@@ -13,12 +13,13 @@ $conn = $db->connect();
 
 // Obtener todo el personal
 $stmt = $conn->query("
-    SELECT 
+    SELECT
         p.id_personal,
         p.nombres,
         p.apellidos,
         p.celular,
         p.carnet_identidad,
+        p.estado,
         r.nombre_rol
     FROM personal p
     JOIN roles r ON p.id_rol = r.id_rol
@@ -239,6 +240,7 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <th>Celular</th>
                                     <th>Carnet</th>
                                     <th>Rol</th>
+                                    <th>Estado</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -250,6 +252,11 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td><?php echo htmlspecialchars($miembro['carnet_identidad']); ?></td>
                                     <td><?php echo htmlspecialchars($miembro['nombre_rol']); ?></td>
                                     <td>
+                                        <span class="badge bg-<?php echo $miembro['estado'] ? 'success' : 'danger'; ?>">
+                                            <?php echo $miembro['estado'] ? 'Habilitado' : 'Inhabilitado'; ?>
+                                        </span>
+                                    </td>
+                                    <td>
                                         <div class="acciones-cell">
                                             <a href="editar_personal.php?id=<?php echo $miembro['id_personal']; ?>"
                                                class="btn btn-accion btn-editar">
@@ -259,6 +266,12 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                class="btn btn-accion btn-eliminar"
                                                onclick="return confirm('¿Está seguro de eliminar este registro?')">
                                                <i class="bi bi-trash"></i> Eliminar
+                                            </a>
+                                            <a href="cambiar_estado.php?id=<?php echo $miembro['id_personal']; ?>&estado=<?php echo $miembro['estado'] ? 0 : 1; ?>"
+                                               class="btn btn-accion btn-<?php echo $miembro['estado'] ? 'warning' : 'success'; ?>"
+                                               onclick="return confirm('¿<?php echo $miembro['estado'] ? 'Inhabilitar' : 'Habilitar'; ?> este personal?')">
+                                               <i class="bi bi-<?php echo $miembro['estado'] ? 'x-circle' : 'check-circle'; ?>"></i>
+                                               <?php echo $miembro['estado'] ? 'Inhabilitar' : 'Habilitar'; ?>
                                             </a>
                                         </div>
                                     </td>
