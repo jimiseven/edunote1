@@ -357,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     ><?php echo htmlspecialchars($notas[$est['id_estudiante']][$i] ?? '') ?></textarea>
                                                 <?php else: ?>
                                                     <!-- Otros niveles: notas numéricas -->
-                                                    <input 
+                                                    <input
                                                         type="number"
                                                         name="notas[<?php echo $est['id_estudiante']; ?>][<?php echo $i; ?>]"
                                                         class="form-control nota-input <?php echo !in_array($i, $bimestres_activos) ? 'nota-disabled' : ''; ?>"
@@ -366,6 +366,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                         min="0"
                                                         max="100"
                                                         <?php echo !in_array($i, $bimestres_activos) ? 'readonly disabled' : ''; ?>
+                                                        oninput="highlightLowGrades(this)"
+                                                        <?php
+                                                        $nota_style = '';
+                                                        if (isset($notas[$est['id_estudiante']][$i])) {
+                                                            $nota_style = $notas[$est['id_estudiante']][$i] < 51 ? 'color: #dc3545' : '';
+                                                        }
+                                                        ?>
+                                                        style="<?php echo $nota_style; ?>"
                                                     >
                                                 <?php endif; ?>
                                             </td>
@@ -393,5 +401,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <script>
+        function highlightLowGrades(input) {
+            input.style.color = input.value && parseFloat(input.value) < 51 ? '#dc3545' : '';
+        }
+        
+        // Aplicar resaltado inicial al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.nota-input').forEach(input => {
+                if (input.value && parseFloat(input.value) < 51) {
+                    input.style.color = '#dc3545';
+                }
+            });
+        });
+    </script>
 </body>
 </html>

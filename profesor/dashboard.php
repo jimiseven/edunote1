@@ -14,13 +14,31 @@ $conn = $database->connect();
 // Obtener datos del profesor y sus materias/cursos asignados
 $profesor_id = $_SESSION['user_id'];
 
+// Obtener cantidad de bimestres configurados
+$stmt = $conn->query("SELECT cantidad_bimestres FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$cantidad_bimestres = $stmt->fetchColumn() ?: 3;
+
 $query = "
-    SELECT pmc.id_curso_materia, c.nivel, c.curso, c.paralelo, m.nombre_materia, pmc.estado
+    SELECT
+        pmc.id_curso_materia,
+        c.nivel,
+        c.curso,
+        c.paralelo,
+        m.nombre_materia,
+        pmc.estado,
+        GROUP_CONCAT(DISTINCT cal.bimestre) AS bimestres_cargados
     FROM profesores_materias_cursos pmc
     INNER JOIN cursos_materias cm ON pmc.id_curso_materia = cm.id_curso_materia
     INNER JOIN cursos c ON cm.id_curso = c.id_curso
     INNER JOIN materias m ON cm.id_materia = m.id_materia
+    LEFT JOIN calificaciones cal ON cal.id_materia = m.id_materia
+        AND EXISTS (
+            SELECT 1 FROM estudiantes e
+            WHERE e.id_curso = c.id_curso
+            AND e.id_estudiante = cal.id_estudiante
+        )
     WHERE pmc.id_personal = :profesor_id
+    GROUP BY pmc.id_curso_materia
 ";
 $stmt = $conn->prepare($query);
 $stmt->bindParam(':profesor_id', $profesor_id, PDO::PARAM_INT);
@@ -325,11 +343,15 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         </a>
                                                     </td>
                                                     <td class="text-center">
-                                                        <?php if ($curso['estado'] == 'CARGADO'): ?>
-                                                            <span class="badge bg-success status-badge">CARGADO</span>
-                                                        <?php else: ?>
-                                                            <span class="badge bg-danger status-badge">FALTA</span>
-                                                        <?php endif; ?>
+                                                        <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                                            <?php
+                                                            $bimestres_cargados = $curso['bimestres_cargados'] ? explode(',', $curso['bimestres_cargados']) : [];
+                                                            for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
+                                                                <span class="badge <?= in_array($i, $bimestres_cargados) ? 'bg-success' : 'bg-secondary' ?> status-badge">
+                                                                    B<?= $i ?>
+                                                                </span>
+                                                            <?php endfor; ?>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
