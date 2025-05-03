@@ -11,8 +11,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
 $db = new Database();
 $conn = $db->connect();
 
-// Obtener todo el personal
-$stmt = $conn->query("
+// Manejar solicitud AJAX
+if (isset($_GET['ajax'])) {
+    ob_start(); // Iniciar buffer de salida
+}
+
+// Obtener personal con filtro de búsqueda si existe
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$sql = "
     SELECT
         p.id_personal,
         p.nombres,
@@ -23,8 +29,24 @@ $stmt = $conn->query("
         r.nombre_rol
     FROM personal p
     JOIN roles r ON p.id_rol = r.id_rol
-    ORDER BY p.apellidos ASC
-");
+";
+
+if (!empty($search)) {
+    $sql .= " WHERE p.carnet_identidad LIKE :search
+              OR p.nombres LIKE :search
+              OR p.apellidos LIKE :search";
+}
+
+$sql .= " ORDER BY p.apellidos ASC";
+
+$stmt = $conn->prepare($sql);
+
+if (!empty($search)) {
+    $searchTerm = '%' . $search . '%';
+    $stmt->bindParam(':search', $searchTerm);
+}
+
+$stmt->execute();
 $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
@@ -179,9 +201,29 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
                 <div class="header-section">
                     <h1 class="main-title">Listado de Personal</h1>
-                    <button type="button" class="btn-nuevo" data-bs-toggle="modal" data-bs-target="#modalNuevoPersonal">
-                        <i class="bi bi-plus-lg"></i> Nuevo Personal
-                    </button>
+                    <div class="d-flex gap-3 align-items-center">
+                        <div class="position-relative flex-grow-1" style="max-width: 400px;">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0">
+                                    <i class="bi bi-search"></i>
+                                </span>
+                                <input type="text"
+                                       name="search"
+                                       id="searchInput"
+                                       class="form-control border-start-0 ps-0"
+                                       placeholder="Buscar por carnet, nombre o apellido"
+                                       value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>">
+                                <button id="clearSearch"
+                                        class="btn btn-outline-secondary border-start-0 d-none"
+                                        type="button">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-nuevo" data-bs-toggle="modal" data-bs-target="#modalNuevoPersonal">
+                            <i class="bi bi-plus-lg"></i> Nuevo Personal
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Modal para nuevo personal -->
@@ -233,7 +275,7 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 <div class="tabla-box">
                     <div class="table-responsive">
-                        <table class="table table-hover table-personal">
+                        <table class="table table-hover table-personal" id="personalTable">
                             <thead>
                                 <tr>
                                     <th>Nombre Completo</th>
@@ -290,6 +332,79 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+
+        // Mostrar/ocultar botón de limpiar
+        const searchInput = document.getElementById('searchInput');
+        const clearButton = document.getElementById('clearSearch');
+        
+        searchInput.addEventListener('input', function() {
+            if (this.value.trim() !== '') {
+                clearButton.classList.remove('d-none');
+            } else {
+                clearButton.classList.add('d-none');
+            }
+        });
+
+        // Limpiar búsqueda
+        clearButton.addEventListener('click', function() {
+            searchInput.value = '';
+            this.classList.add('d-none');
+            // Disparar evento de búsqueda
+            searchInput.dispatchEvent(new Event('input'));
+        });
+
+        // Búsqueda AJAX con actualización dinámica
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const searchValue = e.target.value.trim();
+            const tableBody = document.querySelector('.table-personal tbody');
+            const loadingIndicator = document.createElement('div');
+            
+            clearTimeout(this.timer);
+            
+            // Mostrar indicador de carga
+            loadingIndicator.className = 'text-center py-3';
+            loadingIndicator.innerHTML = `
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Buscando...</span>
+                </div>
+            `;
+            tableBody.innerHTML = '';
+            tableBody.appendChild(loadingIndicator);
+            
+            this.timer = setTimeout(() => {
+                fetch(`?ajax=1&search=${encodeURIComponent(searchValue)}`)
+                    .then(response => response.text())
+                    .then(html => {
+                        // Extraer solo el tbody de la respuesta
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const newTableBody = doc.querySelector('.table-personal tbody');
+                        
+                        // Animación de transición
+                        tableBody.style.opacity = 0;
+                        setTimeout(() => {
+                            tableBody.innerHTML = newTableBody.innerHTML;
+                            tableBody.style.opacity = 1;
+                            
+                            // Actualizar URL sin recargar
+                            const url = new URL(window.location.href);
+                            if (searchValue) {
+                                url.searchParams.set('search', searchValue);
+                            } else {
+                                url.searchParams.delete('search');
+                            }
+                            window.history.replaceState({}, '', url.toString());
+                        }, 200);
+                    })
+                    .catch(error => {
+                        tableBody.innerHTML = `
+                            <tr class="text-danger">
+                                <td colspan="6">Error al cargar los datos</td>
+                            </tr>
+                        `;
+                    });
+            }, 300); // Debounce reducido a 300ms
         });
     </script>
 </body>
