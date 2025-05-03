@@ -243,10 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
     <div class="container-fluid py-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="mb-0">Asignación de Profesores</h2>
-            <a href="<?=
-                ($nivel === 'Inicial') ? 'asig_ini.php' :
-                ($nivel === 'Primaria' ? 'asig_pri.php' : 'asig_sec.php')
-            ?>" class="btn btn-outline-secondary btn-sm">
+            <a href="#" id="btnVolver" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left"></i> Volver
             </a>
         </div>
@@ -498,6 +495,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['asignar'])) {
         </div>
     </div>
     <script>
+        // Manejar botón volver basado en el nivel actual
+        document.getElementById('btnVolver').addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Determinar página de retorno según el nivel
+            let paginaRetorno;
+            switch('<?= $nivel ?>') {
+                case 'inicial':
+                    paginaRetorno = 'asig_ini.php';
+                    break;
+                case 'primaria':
+                    paginaRetorno = 'asig_pri.php';
+                    break;
+                case 'secundaria':
+                default:
+                    paginaRetorno = 'asig_sec.php';
+            }
+            
+            // Redirigir a la página correspondiente
+            window.location.href = paginaRetorno;
+        });
         // Manejar eliminación de materia del curso
         document.querySelectorAll('.btn-eliminar-materia').forEach(btn => {
             btn.addEventListener('click', function() {
