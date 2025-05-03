@@ -42,10 +42,10 @@ if (!$curso) header('Location: dashboard.php?error=notfound');
 $es_inicial = ($curso['nivel'] == 'Inicial');
 
 $stmt = $conn->prepare("SELECT id_estudiante, 
-                        CONCAT_WS(' ', nombres, apellido_paterno, apellido_materno) AS nombre 
+                        CONCAT(apellido_paterno, ' ', apellido_materno, ' ', nombres) AS nombre
                         FROM estudiantes 
                         WHERE id_curso = ? 
-                        ORDER BY apellido_paterno, apellido_materno, nombres");
+                        ORDER BY COALESCE(apellido_paterno, apellido_materno), apellido_materno, nombres");
 $stmt->execute([$curso['id_curso']]);
 $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -317,6 +317,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <!-- Formulario regular -->
                     <form method="post">
+                        <div class="alert alert-warning mb-3">
+                            <strong>Importante:</strong> Siempre revisar el orden de los estudiantes en la lista para que coincida con su lista propia
+                        </div>
                         <div class="table-container"> <!-- Contenedor con scroll -->
                             <table class="table table-bordered">
                                 <thead class="table-light">
