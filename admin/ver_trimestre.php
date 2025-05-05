@@ -134,7 +134,7 @@ foreach ($estudiantes as $estudiante) {
         .padre-th { background: #e9ecef !important; color: #2c3e50 !important; font-weight: 600; }
         .hija-th { background: #f8f9fa !important; color: #6c757d !important; font-style: italic; }
         .extra-th { background: #e6f4ff !important; color: #0d6efd !important; }
-        .nota-baja { color: #dc3545; font-weight: 600; }
+        .table td.nota-baja { color: #dc3545 !important; font-weight: 600 !important; }
         @media print {
             .sidebar, .no-print { display: none !important; }
             body { margin-left: 0 !important; }
@@ -227,7 +227,7 @@ foreach ($estudiantes as $estudiante) {
                                 $clase = '';
                                 if ($mat['es_extra'] == 1) $clase = 'extra-td';
                                 elseif (isset($mat['materia_padre_id'])) $clase = 'hija-td';
-                                $clase .= (is_numeric($nota) && $nota < 50) ? ' nota-baja' : '';
+                                $clase .= (is_numeric($nota) && floatval($nota) < 51) ? ' nota-baja' : '';
                                 ?>
                                 <td class="<?= $clase ?>"><?= $nota ?></td>
                             <?php endforeach; ?>
