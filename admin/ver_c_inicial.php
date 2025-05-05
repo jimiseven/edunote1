@@ -206,9 +206,9 @@ foreach ($estudiantes as $est) {
                                         <th></th>
                                         <th></th>
                                         <?php foreach ($materias as $materia): ?>
-                                            <th>Bim 1</th>
-                                            <th>Bim 2</th>
-                                            <th>Bim 3</th>
+                                            <th>Trim 1</th>
+                                            <th>Trim 2</th>
+                                            <th>Trim 3</th>
                                         <?php endforeach; ?>
                                     </tr>
                                 <?php endif; ?>

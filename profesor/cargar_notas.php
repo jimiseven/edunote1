@@ -307,11 +307,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <form method="post">
                                         <div class="modal-body">
                                             <div class="mb-3">
-                                                <label>Seleccione el bimestre:</label>
+                                                <label>Seleccione el Trimestre:</label>
                                                 <select name="bimestre_excel" class="form-select mb-3">
                                                     <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
                                                         <option value="<?php echo $i; ?>" <?php echo in_array($i, $bimestres_activos) ? "" : "disabled"; ?>>
-                                                            Bimestre <?php echo $i; ?><?php echo in_array($i, $bimestres_activos) ? "" : " (no habilitado)"; ?>
+                                                            Trimestre <?php echo $i; ?><?php echo in_array($i, $bimestres_activos) ? "" : " (no habilitado)"; ?>
                                                         </option>
                                                     <?php endfor; ?>
                                                 </select>
@@ -342,7 +342,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <th>Estudiante</th>
                                         <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
                                             <th class="text-center <?php echo in_array($i, $bimestres_activos) ? 'bim-activo-th' : 'bim-inactivo-th'; ?>">
-                                                Bimestre <?php echo $i; ?>
+                                                Trimestre <?php echo $i; ?>
                                                 <?php if (!in_array($i, $bimestres_activos)): ?>
                                                     <span class="badge bg-secondary ms-1">No habilitado</span>
                                                 <?php else: ?>
