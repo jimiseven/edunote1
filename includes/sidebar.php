@@ -261,7 +261,16 @@ function active($str, $current)
                     </li>
                 </ul>
 
-                
+                <!-- Informacion de estudiantes -->
+                <div class="sidebar-section-title">INFORMACION DE ESTUDIANTES</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('estudiantes', $current); ?>" href="estudiantes.php">
+                            <span data-feather="info"></span>
+                            Estudiantes
+                        </a>
+                    </li>
+                </ul>
 
             <?php elseif ($role == 2): // Profesor ?>
                 <div class="sidebar-section-title">MIS CURSOS</div>

@@ -42,10 +42,24 @@ if (!$curso) header('Location: dashboard.php?error=notfound');
 $es_inicial = ($curso['nivel'] == 'Inicial');
 
 $stmt = $conn->prepare("SELECT id_estudiante, 
-                        CONCAT(apellido_paterno, ' ', apellido_materno, ' ', nombres) AS nombre
-                        FROM estudiantes 
-                        WHERE id_curso = ? 
-                        ORDER BY COALESCE(apellido_paterno, apellido_materno), apellido_materno, nombres");
+                        CASE
+                            WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '')
+                            THEN CONCAT(apellido_materno, ' ', nombres)
+                            ELSE CONCAT(apellido_paterno, ' ', apellido_materno, ' ', nombres)
+                        END AS nombre
+                        FROM estudiantes
+                        WHERE id_curso = ?
+                        ORDER BY
+                        CASE
+                            WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN 0
+                            ELSE 1
+                        END,
+                        CASE
+                            WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN apellido_materno
+                            ELSE apellido_paterno
+                        END,
+                        apellido_materno,
+                        nombres");
 $stmt->execute([$curso['id_curso']]);
 $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
