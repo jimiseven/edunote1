@@ -16,7 +16,31 @@ if ($id_curso <= 0) {
 $db = new Database();
 $conn = $db->connect();
 
-// Obtener información del curso
+// Obtener todos los cursos ordenados por nivel, curso y paralelo
+$stmt_cursos = $conn->query("
+    SELECT id_curso, nivel, curso, paralelo
+    FROM cursos
+    ORDER BY 
+        CASE nivel 
+            WHEN 'Inicial' THEN 1
+            WHEN 'Primaria' THEN 2
+            WHEN 'Secundaria' THEN 3
+        END,
+        curso, paralelo
+");
+$cursos = $stmt_cursos->fetchAll(PDO::FETCH_ASSOC);
+
+// Encontrar posición actual
+$curso_ids = array_column($cursos, 'id_curso');
+$index_actual = array_search($id_curso, $curso_ids);
+
+$id_anterior = $id_siguiente = null;
+if ($index_actual !== false) {
+    if ($index_actual > 0) $id_anterior = $cursos[$index_actual - 1]['id_curso'];
+    if ($index_actual < count($cursos) - 1) $id_siguiente = $cursos[$index_actual + 1]['id_curso'];
+}
+
+// Obtener información del curso actual
 $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
 $stmt_curso->execute([$id_curso]);
 $curso = $stmt_curso->fetch(PDO::FETCH_ASSOC);
@@ -168,10 +192,11 @@ foreach ($materias_padres as $id_padre => $padre) {
         .materia-padre { background-color: #e9f5ff; font-weight: 600; }
         .materia-hija { background-color: #f8f9fa; font-style: italic; }
         .nota-baja { color: #dc3545 !important; font-weight: 700 !important; }
-        .btn-volver { min-width: 110px; }
+        .btn-volver, .btn-navegacion { min-width: 110px; margin: 0 5px;}
         @media (max-width: 900px) {
             .main-content { margin-left: 0; padding: 8px 2px; }
             .sidebar { position: static; width: 100%; height: auto; }
+            .d-flex.justify-content-between { flex-direction: column; gap: 1rem; }
         }
     </style>
 </head>
@@ -180,11 +205,29 @@ foreach ($materias_padres as $id_padre => $padre) {
         <?php include '../includes/sidebar.php'; ?>
     </div>
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h2 class="mb-0">Centralizador: <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?></h2>
-            <a href="<?= $curso['nivel'] == 'Primaria' ? 'priv.php' : 'secv.php' ?>" class="btn btn-outline-secondary btn-volver">
-                <i class="bi bi-arrow-left"></i> Volver
-            </a>
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+            <div>
+                <a href="<?= match($curso['nivel']) {
+                    'Inicial' => 'iniv.php',
+                    'Primaria' => 'priv.php',
+                    'Secundaria' => 'secv.php'
+                } ?>" class="btn btn-outline-secondary btn-volver">
+                    <i class="bi bi-arrow-left-circle"></i> Volver
+                </a>
+            </div>
+            <h2 class="mb-0 text-center flex-grow-1"><?= 'Centralizador: ' . htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?></h2>
+            <div>
+                <?php if ($id_anterior): ?>
+                    <a href="ver_cursov.php?id=<?= $id_anterior ?>" class="btn btn-outline-primary btn-navegacion">
+                        <i class="bi bi-arrow-left"></i> Anterior
+                    </a>
+                <?php endif; ?>
+                <?php if ($id_siguiente): ?>
+                    <a href="ver_cursov.php?id=<?= $id_siguiente ?>" class="btn btn-outline-primary btn-navegacion">
+                        Siguiente <i class="bi bi-arrow-right"></i>
+                    </a>
+                <?php endif; ?>
+            </div>
         </div>
         <div class="table-responsive" style="max-height: 80vh;">
             <table class="table table-bordered table-centralizador">
@@ -231,7 +274,7 @@ foreach ($materias_padres as $id_padre => $padre) {
                                 $notas = $fila['materias'][$materia_id]['notas'] ?? [null, null, null, null];
                                 for ($trim = 1; $trim <= 3; $trim++):
                                     $nota = $notas[$trim] ?? null;
-                                    $clase = (is_numeric($nota) && $nota !== '' && $nota < 51) ? 'nota-baja' : '';
+                                    $clase = (is_numeric($nota) && $nota < 51) ? 'nota-baja' : '';
                                 ?>
                                     <td class="<?= $clase ?>"><?= ($nota !== null && $nota !== '') ? $nota : '' ?></td>
                                 <?php endfor; ?>
