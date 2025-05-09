@@ -1,4 +1,3 @@
-
 <?php
 $role = $_SESSION['user_role'] ?? null;
 $current = basename($_SERVER['PHP_SELF']);
@@ -48,12 +47,14 @@ function active($str, $current)
 
         .sidebar-user {
             font-size: 0.85rem;
-            color: #ffffff !important; /* Texto blanco */
+            color: #ffffff !important;
+            /* Texto blanco */
             padding: 0.5rem 1rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            margin-top: auto; /* Lo coloca al final */
+            margin-top: auto;
+            /* Lo coloca al final */
             border-top: 1px solid #2a3547;
         }
 
@@ -147,7 +148,8 @@ function active($str, $current)
 
         .sidebar-bottom {
             padding: 1rem 0 0.4rem;
-            margin-top: auto; /* Empuja todo hacia arriba */
+            margin-top: auto;
+            /* Empuja todo hacia arriba */
         }
 
         .sidebar-logout .nav-link {
@@ -194,7 +196,8 @@ function active($str, $current)
 
         <!-- Contenido principal del sidebar -->
         <div style="flex: 1; overflow-y: auto;">
-            <?php if ($role == 1): // Admin ?>
+            <?php if ($role == 1): // Admin 
+            ?>
                 <div class="sidebar-section-title">CLASES Y CURSOS</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
@@ -272,7 +275,8 @@ function active($str, $current)
                     </li>
                 </ul>
 
-            <?php elseif ($role == 2): // Profesor ?>
+            <?php elseif ($role == 2): // Profesor 
+            ?>
                 <div class="sidebar-section-title">MIS CURSOS</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
@@ -282,7 +286,31 @@ function active($str, $current)
                         </a>
                     </li>
                 </ul>
+            <?php elseif ($role == 3): // Directora 
+            ?>
+                <div class="sidebar-section-title">Centralizadores</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('iniv.php', $current); ?>" href="iniv.php">
+                            <i class="bi bi-person-circle me-2"></i>
+                            Inicial
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('priv.php', $current); ?>" href="priv.php">
+                            <i class="bi bi-book me-2"></i>
+                            Primaria
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('secv.php', $current); ?>" href="secv.php">
+                            <i class="bi bi-layers me-2"></i>
+                            Secundaria
+                        </a>
+                    </li>
+                </ul>
             <?php endif; ?>
+
         </div>
 
         <!-- Pie de sidebar -->

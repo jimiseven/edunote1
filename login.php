@@ -61,6 +61,10 @@ if ($stmt->rowCount() > 0) {
         } elseif ($_SESSION['user_role'] == 2) {
             header('Location: profesor/dashboard.php');
         }
+        elseif ($user['id_rol'] == 3) {
+            header('Location: direc/iniv.php'); // Directora_SV (solo centralizadores)
+            exit();
+        }
         exit();
     }
 }
