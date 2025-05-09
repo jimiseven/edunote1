@@ -89,7 +89,8 @@ $stmt_estudiantes->execute([$id_curso]);
 $estudiantes = $stmt_estudiantes->fetchAll(PDO::FETCH_ASSOC);
 
 // Función para obtener notas
-function obtenerNotas($conn, $id_estudiante, $id_materia) {
+function obtenerNotas($conn, $id_estudiante, $id_materia)
+{
     $notas = [];
     for ($trim = 1; $trim <= 3; $trim++) {
         $stmt = $conn->prepare("
@@ -118,8 +119,10 @@ foreach ($estudiantes as $est) {
         foreach ($hijas as $hija) {
             $notas_hijas[$hija['id_materia']] = obtenerNotas($conn, $est['id_estudiante'], $hija['id_materia']);
         }
-        // Promedio padre por trimestre
+        // Promedio padre por trimestre y anual
         $promedios_padre = [];
+        $anual_sum = 0;
+        $anual_count = 0;
         for ($trim = 1; $trim <= 3; $trim++) {
             $notas_trim = [];
             foreach ($hijas as $hija) {
@@ -127,7 +130,12 @@ foreach ($estudiantes as $est) {
                 if ($nota !== null && $nota !== '') $notas_trim[] = $nota;
             }
             $promedios_padre[$trim] = count($notas_trim) ? round(array_sum($notas_trim) / count($notas_trim), 2) : null;
+            if ($promedios_padre[$trim] !== null) {
+                $anual_sum += $promedios_padre[$trim];
+                $anual_count++;
+            }
         }
+        $promedios_padre['anual'] = $anual_count ? round($anual_sum / $anual_count, 2) : null;
         $fila['materias'][$id_padre] = [
             'tipo' => 'padre',
             'datos' => $padre,
@@ -135,10 +143,24 @@ foreach ($estudiantes as $est) {
         ];
         // Agregar hijas
         foreach ($hijas as $hija) {
+            $notas = $notas_hijas[$hija['id_materia']];
+            $anual = 0;
+            $count = 0;
+            for ($trim = 1; $trim <= 3; $trim++) {
+                if ($notas[$trim] !== null && $notas[$trim] !== '') {
+                    $anual += $notas[$trim];
+                    $count++;
+                }
+            }
             $fila['materias'][$hija['id_materia']] = [
                 'tipo' => 'hija',
                 'datos' => $hija,
-                'notas' => $notas_hijas[$hija['id_materia']]
+                'notas' => [
+                    1 => $notas[1],
+                    2 => $notas[2],
+                    3 => $notas[3],
+                    'anual' => $count ? round($anual / $count, 2) : null
+                ]
             ];
         }
     }
@@ -146,10 +168,23 @@ foreach ($estudiantes as $est) {
     foreach ($materias_padres as $id_padre => $padre) {
         if (empty($materias_hijas[$id_padre])) {
             $notas = obtenerNotas($conn, $est['id_estudiante'], $id_padre);
+            $anual = 0;
+            $count = 0;
+            for ($trim = 1; $trim <= 3; $trim++) {
+                if ($notas[$trim] !== null && $notas[$trim] !== '') {
+                    $anual += $notas[$trim];
+                    $count++;
+                }
+            }
             $fila['materias'][$id_padre] = [
                 'tipo' => 'padre',
                 'datos' => $padre,
-                'notas' => $notas
+                'notas' => [
+                    1 => $notas[1],
+                    2 => $notas[2],
+                    3 => $notas[3],
+                    'anual' => $count ? round($anual / $count, 2) : null
+                ]
             ];
         }
     }
@@ -173,33 +208,116 @@ foreach ($materias_padres as $id_padre => $padre) {
 ?>
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>Centralizador: <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?></title>
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        body { background: #f8f9fa; }
-        .main-content { margin-left: 250px; padding: 24px 10px; }
-        .sidebar { position: fixed; left: 0; top: 0; width: 250px; height: 100vh; background: #212c3a; color: #fff; z-index: 1000; }
-        .table-centralizador th, .table-centralizador td { 
-            text-align: center; 
-            vertical-align: middle; 
-            font-size: 0.9rem; 
-            padding: 3px 5px;
-            min-width: 60px;
+        body {
+            background: #f8f9fa;
         }
-        .materia-padre { background-color: #e9f5ff; font-weight: 600; }
-        .materia-hija { background-color: #f8f9fa; font-style: italic; }
-        .nota-baja { color: #dc3545 !important; font-weight: 700 !important; }
-        .btn-volver, .btn-navegacion { min-width: 110px; margin: 0 5px;}
+
+        .main-content {
+            margin-left: 250px;
+            padding: 24px 10px;
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 250px;
+            height: 100vh;
+            background: #212c3a;
+            color: #fff;
+            z-index: 1000;
+        }
+
+        .table-centralizador th,
+        .table-centralizador td {
+            text-align: center;
+            vertical-align: middle;
+            font-size: 0.93rem;
+            padding: 6px 5px;
+            min-width: 70px;
+        }
+
+        .materia-padre {
+            background-color: #e9f5ff;
+            font-weight: 600;
+            border-right: 2px solid #b8e0ff;
+        }
+
+        .materia-hija {
+            background-color: #f8f9fa;
+            font-style: italic;
+        }
+
+        .nota-baja {
+            color: #dc3545 !important;
+            font-weight: 700 !important;
+        }
+
+        .btn-volver,
+        .btn-navegacion {
+            min-width: 110px;
+            margin: 0 5px;
+        }
+
+        .bg-anual {
+            background: #f4f4e9;
+            font-weight: bold;
+        }
+
+        .td-nombre {
+            min-width: 520px;
+            white-space: nowrap;
+            font-size: 0.92rem;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .table-centralizador tr:not(:last-child) {
+            border-bottom: 2px solid #e3e3e3;
+        }
+
+        .table-centralizador th,
+        .table-centralizador td {
+            border-right: 1px solid #e3e3e3;
+        }
+
+        .table-centralizador th:last-child,
+        .table-centralizador td:last-child {
+            border-right: none;
+        }
+
         @media (max-width: 900px) {
-            .main-content { margin-left: 0; padding: 8px 2px; }
-            .sidebar { position: static; width: 100%; height: auto; }
-            .d-flex.justify-content-between { flex-direction: column; gap: 1rem; }
+            .main-content {
+                margin-left: 0;
+                padding: 8px 2px;
+            }
+
+            .sidebar {
+                position: static;
+                width: 100%;
+                height: auto;
+            }
+
+            .d-flex.justify-content-between {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .td-nombre {
+                min-width: 200px;
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="sidebar d-flex flex-column">
         <?php include '../includes/sidebar.php'; ?>
@@ -207,11 +325,11 @@ foreach ($materias_padres as $id_padre => $padre) {
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
             <div>
-                <a href="<?= match($curso['nivel']) {
-                    'Inicial' => 'iniv.php',
-                    'Primaria' => 'priv.php',
-                    'Secundaria' => 'secv.php'
-                } ?>" class="btn btn-outline-secondary btn-volver">
+                <a href="<?= match ($curso['nivel']) {
+                                'Inicial' => 'iniv.php',
+                                'Primaria' => 'priv.php',
+                                'Secundaria' => 'secv.php'
+                            } ?>" class="btn btn-outline-secondary btn-volver">
                     <i class="bi bi-arrow-left-circle"></i> Volver
                 </a>
             </div>
@@ -227,16 +345,20 @@ foreach ($materias_padres as $id_padre => $padre) {
                         Siguiente <i class="bi bi-arrow-right"></i>
                     </a>
                 <?php endif; ?>
+                <a href="vista_tri.php?id=<?= $id_curso ?>" class="btn btn-warning btn-navegacion">
+                    <i class="bi bi-table"></i> Vista por Trimestre
+                </a>
             </div>
         </div>
+
         <div class="table-responsive" style="max-height: 80vh;">
             <table class="table table-bordered table-centralizador">
                 <thead>
                     <tr>
-                        <th rowspan="2" style="width: 30px;">#</th>
-                        <th rowspan="2" style="min-width: 180px;">Estudiante</th>
+                        <th>#</th>
+                        <th>Estudiante</th>
                         <?php foreach ($columnas as $col): ?>
-                            <th colspan="3" class="<?= $col['tipo'] == 'padre' ? 'materia-padre' : 'materia-hija' ?>">
+                            <th class="<?= $col['tipo'] == 'padre' ? 'materia-padre' : 'materia-hija' ?>" colspan="4">
                                 <?= htmlspecialchars($col['datos']['nombre_materia']) ?>
                                 <?php if ($col['tipo'] == 'padre' && !empty($materias_hijas[$col['datos']['id_materia']])): ?>
                                     <div class="small text-muted">(Promedio)</div>
@@ -248,10 +370,13 @@ foreach ($materias_padres as $id_padre => $padre) {
                         <?php endforeach; ?>
                     </tr>
                     <tr>
+                        <th></th>
+                        <th></th>
                         <?php foreach ($columnas as $col): ?>
                             <th>T1</th>
                             <th>T2</th>
                             <th>T3</th>
+                            <th class="bg-anual">Prom.</th>
                         <?php endforeach; ?>
                     </tr>
                 </thead>
@@ -260,24 +385,30 @@ foreach ($materias_padres as $id_padre => $padre) {
                     <?php foreach ($datos as $fila): ?>
                         <tr>
                             <td><?= $contador++ ?></td>
-                            <td class="text-start">
+                            <td class="text-start td-nombre">
                                 <?= htmlspecialchars(strtoupper(
-                                    $fila['estudiante']['apellido_paterno'] . ' ' . 
-                                    $fila['estudiante']['apellido_materno'] . ', ' . 
-                                    $fila['estudiante']['nombres']
+                                    $fila['estudiante']['apellido_paterno'] . ' ' .
+                                        $fila['estudiante']['apellido_materno'] . ', ' .
+                                        $fila['estudiante']['nombres']
                                 )) ?>
                             </td>
                             <?php foreach ($columnas as $col): ?>
-                                <?php 
+                                <?php
                                 $materia_id = $col['datos']['id_materia'];
-                                $tipo = $col['tipo'];
                                 $notas = $fila['materias'][$materia_id]['notas'] ?? [null, null, null, null];
-                                for ($trim = 1; $trim <= 3; $trim++):
-                                    $nota = $notas[$trim] ?? null;
-                                    $clase = (is_numeric($nota) && $nota < 51) ? 'nota-baja' : '';
                                 ?>
-                                    <td class="<?= $clase ?>"><?= ($nota !== null && $nota !== '') ? $nota : '' ?></td>
-                                <?php endfor; ?>
+                                <td class="<?= (is_numeric($notas[1]) && $notas[1] < 51) ? 'nota-baja' : '' ?>">
+                                    <?= $notas[1] !== null ? $notas[1] : '' ?>
+                                </td>
+                                <td class="<?= (is_numeric($notas[2]) && $notas[2] < 51) ? 'nota-baja' : '' ?>">
+                                    <?= $notas[2] !== null ? $notas[2] : '' ?>
+                                </td>
+                                <td class="<?= (is_numeric($notas[3]) && $notas[3] < 51) ? 'nota-baja' : '' ?>">
+                                    <?= $notas[3] !== null ? $notas[3] : '' ?>
+                                </td>
+                                <td class="bg-anual <?= (is_numeric($notas['anual']) && $notas['anual'] < 51) ? 'nota-baja' : '' ?>">
+                                    <?= $notas['anual'] !== null ? $notas['anual'] : '' ?>
+                                </td>
                             <?php endforeach; ?>
                         </tr>
                     <?php endforeach; ?>
@@ -287,4 +418,5 @@ foreach ($materias_padres as $id_padre => $padre) {
     </div>
     <script src="../js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>
