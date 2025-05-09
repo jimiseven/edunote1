@@ -63,7 +63,7 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?= $contador++ ?></td>
                                 <td><?= htmlspecialchars($curso['curso']) ?> "<?= htmlspecialchars($curso['paralelo']) ?>"</td>
                                 <td>
-                                    <a href="ver_curso.php?id=<?= $curso['id_curso'] ?>" class="btn btn-success btn-sm btn-centralizador">
+                                    <a href="ver_cursov.php?id=<?= $curso['id_curso'] ?>" class="btn btn-success btn-sm btn-centralizador">
                                         <i class="bi bi-eye"></i> Ver Centralizador
                                     </a>
                                 </td>
