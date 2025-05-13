@@ -66,7 +66,7 @@ foreach ($materias_padre as $padre) {
 $materias = array_merge(
     $materias_padre_simples,
     $materias_extra,
-    array_reduce($materias_padre_con_hijas, function($carry, $padre) {
+    array_reduce($materias_padre_con_hijas, function ($carry, $padre) {
         return array_merge($carry, [$padre], $padre['hijas']);
     }, [])
 );
@@ -90,9 +90,12 @@ foreach ($estudiantes as $estudiante) {
         $suma = $cont = 0;
         foreach ($padre['hijas'] as $hija) {
             $nota = $calificaciones[$estudiante['id_estudiante']][$hija['id_materia']] ?? '';
-            if ($nota !== '') { $suma += floatval($nota); $cont++; }
+            if ($nota !== '') {
+                $suma += floatval($nota);
+                $cont++;
+            }
         }
-        $calificaciones[$estudiante['id_estudiante']][$padre['id_materia']] = $cont > 0 ? number_format($suma/$cont,2) : '';
+        $calificaciones[$estudiante['id_estudiante']][$padre['id_materia']] = $cont > 0 ? number_format($suma / $cont, 2) : '';
     }
 }
 
@@ -100,15 +103,20 @@ $promedios_trimestre = [];
 foreach ($estudiantes as $estudiante) {
     $suma = $contador = 0;
     foreach ($materias as $mat) {
-        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id'])) continue;
+        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id']))
+            continue;
         $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
-        if ($nota !== '') { $suma += floatval($nota); $contador++; }
+        if ($nota !== '') {
+            $suma += floatval($nota);
+            $contador++;
+        }
     }
-    $promedios_trimestre[$estudiante['id_estudiante']] = $contador > 0 ? number_format($suma/$contador,2) : '-';
+    $promedios_trimestre[$estudiante['id_estudiante']] = $contador > 0 ? number_format($suma / $contador, 2) : '-';
 }
 ?>
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -116,9 +124,16 @@ foreach ($estudiantes as $estudiante) {
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
-        :root { --sidebar-width: 250px; }
-        body { background: #f8f9fa; margin-left: var(--sidebar-width); }
-        .sidebar { 
+        :root {
+            --sidebar-width: 250px;
+        }
+
+        body {
+            background: #f8f9fa;
+            margin-left: var(--sidebar-width);
+        }
+
+        .sidebar {
             width: var(--sidebar-width);
             height: 100vh;
             position: fixed;
@@ -128,21 +143,63 @@ foreach ($estudiantes as $estudiante) {
             padding: 20px;
             z-index: 1000;
         }
-        .main-content { padding: 20px; }
-        .student-name { min-width: 220px; background: #fff; position: sticky; left: 0; z-index: 2; }
-        .table-responsive { background: #fff; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.05); }
-        .padre-th { background: #e9ecef !important; color: #2c3e50 !important; font-weight: 600; }
-        .hija-th { background: #f8f9fa !important; color: #6c757d !important; font-style: italic; }
-        .extra-th { background: #e6f4ff !important; color: #0d6efd !important; }
-        .table td.nota-baja { color: #dc3545 !important; font-weight: 600 !important; }
+
+        .main-content {
+            padding: 20px;
+        }
+
+        .student-name {
+            min-width: 220px;
+            background: #fff;
+            position: sticky;
+            left: 0;
+            z-index: 2;
+        }
+
+        .table-responsive {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .padre-th {
+            background: #e9ecef !important;
+            color: #2c3e50 !important;
+            font-weight: 600;
+        }
+
+        .hija-th {
+            background: #f8f9fa !important;
+            color: #6c757d !important;
+            font-style: italic;
+        }
+
+        .extra-th {
+            background: #e6f4ff !important;
+            color: #0d6efd !important;
+        }
+
+        .table td.nota-baja {
+            color: #dc3545 !important;
+            font-weight: 600 !important;
+        }
+
         @media print {
-            .sidebar, .no-print { display: none !important; }
-            body { margin-left: 0 !important; }
+
+            .sidebar,
+            .no-print {
+                display: none !important;
+            }
+
+            body {
+                margin-left: 0 !important;
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
+
 <body>
     <!-- Sidebar -->
     <div class="sidebar text-white no-print">
@@ -166,6 +223,9 @@ foreach ($estudiantes as $estudiante) {
                 <button onclick="generatePDF()" class="btn btn-primary btn-sm">
                     <i class="bi bi-file-earmark-pdf"></i> PDF
                 </button>
+                <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
+                    <i class="bi bi-file-excel"></i> Excel
+                </a>
             </div>
         </div>
 
@@ -176,8 +236,8 @@ foreach ($estudiantes as $estudiante) {
                     <span class="fw-bold">Trimestre:</span>
                     <div class="btn-group">
                         <?php for ($t = 1; $t <= 3; $t++): ?>
-                            <a href="?id_curso=<?= $id_curso ?>&trimestre=<?= $t ?>" 
-                               class="btn <?= $t == $trimestre ? 'btn-primary' : 'btn-outline-primary' ?> btn-sm">
+                            <a href="?id_curso=<?= $id_curso ?>&trimestre=<?= $t ?>"
+                                class="btn <?= $t == $trimestre ? 'btn-primary' : 'btn-outline-primary' ?> btn-sm">
                                 <?= $t ?>
                             </a>
                         <?php endfor; ?>
@@ -197,9 +257,12 @@ foreach ($estudiantes as $estudiante) {
                         <?php foreach ($materias as $mat): ?>
                             <?php
                             $clase = '';
-                            if ($mat['es_extra'] == 1) $clase = 'extra-th';
-                            elseif (isset($mat['materia_padre_id'])) $clase = 'hija-th';
-                            elseif (!empty($mat['hijas'])) $clase = 'padre-th';
+                            if ($mat['es_extra'] == 1)
+                                $clase = 'extra-th';
+                            elseif (isset($mat['materia_padre_id']))
+                                $clase = 'hija-th';
+                            elseif (!empty($mat['hijas']))
+                                $clase = 'padre-th';
                             ?>
                             <th class="<?= $clase ?>">
                                 <?= htmlspecialchars($mat['nombre_materia']) ?>
@@ -216,8 +279,8 @@ foreach ($estudiantes as $estudiante) {
                             <td><?= $contador++ ?></td>
                             <td class="student-name">
                                 <?= htmlspecialchars(strtoupper(
-                                    $estudiante['apellido_paterno'] . ' ' . 
-                                    $estudiante['apellido_materno'] . ', ' . 
+                                    $estudiante['apellido_paterno'] . ' ' .
+                                    $estudiante['apellido_materno'] . ', ' .
                                     $estudiante['nombres']
                                 )) ?>
                             </td>
@@ -225,8 +288,10 @@ foreach ($estudiantes as $estudiante) {
                                 <?php
                                 $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
                                 $clase = '';
-                                if ($mat['es_extra'] == 1) $clase = 'extra-td';
-                                elseif (isset($mat['materia_padre_id'])) $clase = 'hija-td';
+                                if ($mat['es_extra'] == 1)
+                                    $clase = 'extra-td';
+                                elseif (isset($mat['materia_padre_id']))
+                                    $clase = 'hija-td';
                                 $clase .= (is_numeric($nota) && floatval($nota) < 51) ? ' nota-baja' : '';
                                 ?>
                                 <td class="<?= $clase ?>"><?= $nota ?></td>
@@ -240,18 +305,18 @@ foreach ($estudiantes as $estudiante) {
     </div>
 
     <script>
-    async function generatePDF() {
-        const pdf = new jspdf.jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: 'a4'
-        });
+        async function generatePDF() {
+            const pdf = new jspdf.jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: 'a4'
+            });
 
-        const content = document.createElement('div');
-        content.style.padding = "20px";
-        
-        // Header PDF
-        content.innerHTML = `
+            const content = document.createElement('div');
+            content.style.padding = "20px";
+
+            // Header PDF
+            content.innerHTML = `
             <div style="text-align: center; margin-bottom: 15px;">
                 <h3 style="color: #2c3e50;">U.E. SIMÓN BOLÍVAR</h3>
                 <h4 style="color: #1e3d73;"><?= htmlspecialchars($nombre_curso) ?></h4>
@@ -260,28 +325,29 @@ foreach ($estudiantes as $estudiante) {
             </div>
         `;
 
-        // Clonar tabla
-        const tabla = document.querySelector('.table').cloneNode(true);
-        tabla.style.fontSize = "9pt";
-        tabla.querySelectorAll('th, td').forEach(c => {
-            c.style.padding = "3px";
-            c.style.border = "1px solid #dee2e6";
-        });
-        content.appendChild(tabla);
+            // Clonar tabla
+            const tabla = document.querySelector('.table').cloneNode(true);
+            tabla.style.fontSize = "9pt";
+            tabla.querySelectorAll('th, td').forEach(c => {
+                c.style.padding = "3px";
+                c.style.border = "1px solid #dee2e6";
+            });
+            content.appendChild(tabla);
 
-        document.body.appendChild(content);
-        const canvas = await html2canvas(content, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
-        
-        const pageWidth = 297;
-        const imgHeight = (canvas.height * pageWidth) / canvas.width;
-        
-        pdf.addImage(imgData, 'PNG', 10, 10, pageWidth - 20, imgHeight);
-        pdf.save(`Centralizador-Trimestre-<?= $trimestre ?>.pdf`);
-        
-        document.body.removeChild(content);
-    }
+            document.body.appendChild(content);
+            const canvas = await html2canvas(content, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+
+            const pageWidth = 297;
+            const imgHeight = (canvas.height * pageWidth) / canvas.width;
+
+            pdf.addImage(imgData, 'PNG', 10, 10, pageWidth - 20, imgHeight);
+            pdf.save(`Centralizador-Trimestre-<?= $trimestre ?>.pdf`);
+
+            document.body.removeChild(content);
+        }
     </script>
     <script src="../js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>
