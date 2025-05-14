@@ -133,6 +133,7 @@ foreach ($estudiantes as $est) {
 ?>
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>Centralizador: <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?></title>
@@ -175,7 +176,7 @@ foreach ($estudiantes as $est) {
         .table-container {
             background-color: #fff;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             padding: 15px;
             overflow-x: auto;
         }
@@ -333,18 +334,19 @@ foreach ($estudiantes as $est) {
                 margin-left: 0;
                 padding: 15px;
             }
-            
+
             .sidebar {
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
             }
-            
+
             .sidebar.active {
                 transform: translateX(0);
             }
         }
     </style>
 </head>
+
 <body>
     <div class="sidebar d-flex flex-column">
         <?php include '../includes/sidebar.php'; ?>
@@ -360,10 +362,10 @@ foreach ($estudiantes as $est) {
             <a href="ver_cursov.php?id=<?= $id_curso ?>" class="btn btn-outline-secondary d-flex align-items-center gap-2">
                 <i class="bi bi-arrow-left"></i> Volver al curso
             </a>
-            
+
             <div class="d-flex align-items-center gap-3">
                 <span class="badge badge-trimestre rounded-pill bg-secondary">Trimestre <?= $trimestre ?></span>
-                
+
                 <form method="get" class="trimestre-selector">
                     <input type="hidden" name="id" value="<?= $id_curso ?>">
                     <select name="trimestre" class="form-select" onchange="this.form.submit()">
@@ -371,7 +373,11 @@ foreach ($estudiantes as $est) {
                         <option value="2" <?= $trimestre == 2 ? 'selected' : '' ?>>Trimestre 2</option>
                         <option value="3" <?= $trimestre == 3 ? 'selected' : '' ?>>Trimestre 3</option>
                     </select>
+                    <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
+                        <i class="bi bi-file-excel"></i> Exportar a Excel
+                    </a>
                 </form>
+
             </div>
         </div>
 
@@ -408,12 +414,12 @@ foreach ($estudiantes as $est) {
                                 </td>
                                 <?php foreach ($columnas as $col): ?>
                                     <?php
-                                        $materia_id = $col['datos']['id_materia'];
-                                        $nota = $notas[$est['id_estudiante']][$materia_id] ?? '';
-                                        $clase = '';
-                                        if (is_numeric($nota)) {
-                                            $clase = ($nota < 51) ? 'nota-baja' : (($nota > 89) ? 'nota-alta' : '');
-                                        }
+                                    $materia_id = $col['datos']['id_materia'];
+                                    $nota = $notas[$est['id_estudiante']][$materia_id] ?? '';
+                                    $clase = '';
+                                    if (is_numeric($nota)) {
+                                        $clase = ($nota < 51) ? 'nota-baja' : (($nota > 89) ? 'nota-alta' : '');
+                                    }
                                     ?>
                                     <td class="<?= $clase ?>">
                                         <?= ($nota !== '' && is_numeric($nota)) ? intval($nota) : '-' ?>
@@ -443,14 +449,14 @@ foreach ($estudiantes as $est) {
             const adjustHeaderHeights = () => {
                 const headers = document.querySelectorAll('.encabezado-materia');
                 let maxHeight = 0;
-                
+
                 headers.forEach(header => {
                     const textElement = header.querySelector('.texto-vertical');
                     if (textElement) {
                         const rotatedHeight = textElement.getBoundingClientRect().width;
                         const currentHeight = header.style.height || '120px';
                         const numericHeight = parseInt(currentHeight);
-                        
+
                         if (rotatedHeight > numericHeight) {
                             maxHeight = Math.max(maxHeight, rotatedHeight + 20);
                         }
@@ -469,4 +475,5 @@ foreach ($estudiantes as $est) {
         });
     </script>
 </body>
+
 </html>
