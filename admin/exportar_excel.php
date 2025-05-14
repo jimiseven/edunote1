@@ -9,6 +9,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill, Color};
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
     http_response_code(403);
@@ -54,8 +55,10 @@ try {
     // Clasificación de materias
     $materias = [];
     $hijas_por_padre = [];
+    $todas_materias = [];
 
     foreach ($materias_raw as $mat) {
+        $todas_materias[$mat['id_materia']] = $mat;
         if ($mat['materia_padre_id']) {
             $hijas_por_padre[$mat['materia_padre_id']][] = $mat;
         } else {
@@ -68,9 +71,11 @@ try {
         if (isset($materias[$id_padre])) {
             $materias[$id_padre]['hijas'] = $hijas;
         } else {
-            // El padre no está en materias, añadir hijas directamente
+            // Si el padre no está en materias principales, añadimos las hijas como materias normales
             foreach ($hijas as $hija) {
-                $materias[$hija['id_materia']] = $hija;
+                if (!isset($materias[$hija['id_materia']])) {
+                    $materias[$hija['id_materia']] = $hija;
+                }
             }
         }
     }
@@ -93,6 +98,15 @@ try {
     $lowGradeStyle = [
         'font' => ['color' => ['rgb' => 'FF0000']],
     ];
+    $extraSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+    ];
+    $parentSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '92D050']],
+    ];
+    $childSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'B7DEE8']],
+    ];
 
     // Título centrado
     $sheet->mergeCells('A1:Z1');
@@ -109,30 +123,59 @@ try {
     $colIndex = 3;
     $columnasMaterias = []; // clave: columna => info materia
 
+    // Primero procesamos materias padres y sus hijas
     foreach ($materias as $mat) {
         if (!empty($mat['hijas'])) {
-            // Calcular promedio de hijas
-            $sheet->setCellValueByColumnAndRow($colIndex, 2, $mat['nombre_materia']);
-            $sheet->getStyleByColumnAndRow($colIndex, 2)->applyFromArray($headerStyle);
-            $sheet->getStyleByColumnAndRow($colIndex, 2)->getAlignment()->setTextRotation(90);
-            $sheet->getColumnDimensionByColumn($colIndex)->setWidth(6);
-            $columnasMaterias[$colIndex] = ['tipo' => 'promedio_hijas', 'padre' => $mat, 'hijas' => $mat['hijas']];
+            // Materia padre
+            $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+            $cell = $colLetter . '2';
+            $sheet->setCellValue($cell, $mat['nombre_materia']);
+            $sheet->getStyle($cell)->applyFromArray(array_merge($headerStyle, $parentSubjectStyle));
+            $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+            $sheet->getColumnDimension($colLetter)->setWidth(6);
+            $columnasMaterias[$colIndex] = ['tipo' => 'padre', 'materia' => $mat];
             $colIndex++;
-        } else {
-            // Materia sola o hija sin padre listado
-            $sheet->setCellValueByColumnAndRow($colIndex, 2, $mat['nombre_materia']);
-            $sheet->getStyleByColumnAndRow($colIndex, 2)->applyFromArray($headerStyle);
-            $sheet->getStyleByColumnAndRow($colIndex, 2)->getAlignment()->setTextRotation(90);
-            $sheet->getColumnDimensionByColumn($colIndex)->setWidth(6);
+
+            // Materias hijas
+            foreach ($mat['hijas'] as $hija) {
+                $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+                $cell = $colLetter . '2';
+                $sheet->setCellValue($cell, $hija['nombre_materia']);
+                $style = $headerStyle;
+                if ($hija['es_extra']) {
+                    $style = array_merge($headerStyle, $extraSubjectStyle);
+                } else {
+                    $style = array_merge($headerStyle, $childSubjectStyle);
+                }
+                $sheet->getStyle($cell)->applyFromArray($style);
+                $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+                $sheet->getColumnDimension($colLetter)->setWidth(6);
+                $columnasMaterias[$colIndex] = ['tipo' => 'hija', 'materia' => $hija];
+                $colIndex++;
+            }
+        } elseif (!isset($hijas_por_padre[$mat['id_materia']])) {
+            // Materias normales (sin hijas y que no son hijas de otra)
+            $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+            $cell = $colLetter . '2';
+            $sheet->setCellValue($cell, $mat['nombre_materia']);
+            $style = $headerStyle;
+            if ($mat['es_extra']) {
+                $style = array_merge($headerStyle, $extraSubjectStyle);
+            }
+            $sheet->getStyle($cell)->applyFromArray($style);
+            $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+            $sheet->getColumnDimension($colLetter)->setWidth(6);
             $columnasMaterias[$colIndex] = ['tipo' => 'normal', 'materia' => $mat];
             $colIndex++;
         }
     }
 
     // Agregar columna de promedio final
-    $sheet->setCellValueByColumnAndRow($colIndex, 2, 'Promedio');
-    $sheet->getStyleByColumnAndRow($colIndex, 2)->applyFromArray($headerStyle);
-    $sheet->getColumnDimensionByColumn($colIndex)->setWidth(10);
+    $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+    $cell = $colLetter . '2';
+    $sheet->setCellValue($cell, 'Promedio');
+    $sheet->getStyle($cell)->applyFromArray($headerStyle);
+    $sheet->getColumnDimension($colLetter)->setWidth(10);
     $colPromedioFinal = $colIndex;
 
     // Llenar datos
@@ -147,58 +190,50 @@ try {
         $count = 0;
 
         foreach ($columnasMaterias as $col => $info) {
-            if ($info['tipo'] === 'normal') {
-                $id_materia = $info['materia']['id_materia'];
-                $stmt = $conn->prepare("
-                    SELECT calificacion FROM calificaciones 
-                    WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-                ");
-                $stmt->execute([$est['id_estudiante'], $id_materia, $trimestre]);
-                $nota = $stmt->fetchColumn();
+            $id_materia = $info['materia']['id_materia'];
+            $stmt = $conn->prepare("
+                SELECT calificacion FROM calificaciones 
+                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
+            ");
+            $stmt->execute([$est['id_estudiante'], $id_materia, $trimestre]);
+            $nota = $stmt->fetchColumn();
 
-                if (is_numeric($nota)) {
-                    $sum += (!$info['materia']['es_extra']) ? $nota : 0;
-                    $count += (!$info['materia']['es_extra']) ? 1 : 0;
+            $colLetter = Coordinate::stringFromColumnIndex($col);
+            $cell = $colLetter . $row;
+            $sheet->setCellValue($cell, $nota);
+            
+            // Aplicar estilos según el tipo de materia
+            if ($info['tipo'] === 'padre') {
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('92D050');
+            } elseif ($info['tipo'] === 'hija') {
+                if ($info['materia']['es_extra']) {
+                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+                } else {
+                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('B7DEE8');
                 }
-
-                $sheet->setCellValueByColumnAndRow($col, $row, $nota);
-                if (is_numeric($nota) && $nota < 51) {
-                    $sheet->getStyleByColumnAndRow($col, $row)->applyFromArray($lowGradeStyle);
-                }
-            } elseif ($info['tipo'] === 'promedio_hijas') {
-                $total = 0;
-                $subCount = 0;
-                foreach ($info['hijas'] as $hija) {
-                    $stmt = $conn->prepare("
-                        SELECT calificacion FROM calificaciones 
-                        WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-                    ");
-                    $stmt->execute([$est['id_estudiante'], $hija['id_materia'], $trimestre]);
-                    $nota = $stmt->fetchColumn();
-                    if (is_numeric($nota)) {
-                        $total += $nota;
-                        $subCount++;
-                    }
-                }
-
-                $prom = $subCount > 0 ? round($total / $subCount, 2) : '';
-                if (is_numeric($prom)) {
-                    $sum += (!$info['padre']['es_extra']) ? $prom : 0;
-                    $count += (!$info['padre']['es_extra']) ? 1 : 0;
-                }
-
-                $sheet->setCellValueByColumnAndRow($col, $row, $prom);
-                if (is_numeric($prom) && $prom < 51) {
-                    $sheet->getStyleByColumnAndRow($col, $row)->applyFromArray($lowGradeStyle);
-                }
+            } elseif ($info['materia']['es_extra']) {
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
             }
 
-            $sheet->getStyleByColumnAndRow($col, $row)->applyFromArray($cellStyle);
+            if (is_numeric($nota) && $nota < 51) {
+                $sheet->getStyle($cell)->applyFromArray($lowGradeStyle);
+            }
+
+            // Solo sumar al promedio si no es extra y no es padre (solo hijas y materias normales)
+            if (is_numeric($nota) && !$info['materia']['es_extra'] && $info['tipo'] !== 'padre') {
+                $sum += $nota;
+                $count++;
+            }
+
+            $sheet->getStyle($cell)->applyFromArray($cellStyle);
         }
 
+        // Calcular promedio final (excluyendo materias extras y padres)
         $promedioFinal = $count > 0 ? round($sum / $count, 2) : '';
-        $sheet->setCellValueByColumnAndRow($colPromedioFinal, $row, $promedioFinal);
-        $sheet->getStyleByColumnAndRow($colPromedioFinal, $row)->applyFromArray($cellStyle);
+        $colLetter = Coordinate::stringFromColumnIndex($colPromedioFinal);
+        $cell = $colLetter . $row;
+        $sheet->setCellValue($cell, $promedioFinal);
+        $sheet->getStyle($cell)->applyFromArray($cellStyle);
         $row++;
     }
 
