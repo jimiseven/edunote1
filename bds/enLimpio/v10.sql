@@ -1,4 +1,5 @@
 -- phpMyAdmin SQL Dump
+<<<<<<< HEAD
 -- version 5.2.2
 -- https://www.phpmyadmin.net/
 --
@@ -6,6 +7,15 @@
 -- Tiempo de generación: 13-05-2025 a las 21:45:17
 -- Versión del servidor: 8.0.41-cll-lve
 -- Versión de PHP: 8.3.20
+=======
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Servidor: 127.0.0.1
+-- Tiempo de generación: 13-05-2025 a las 06:10:46
+-- Versión del servidor: 10.4.32-MariaDB
+-- Versión de PHP: 8.2.12
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -28,12 +38,21 @@ SET time_zone = "+00:00";
 --
 
 CREATE TABLE `anuncios` (
+<<<<<<< HEAD
   `id` int NOT NULL,
   `mensaje` text COLLATE utf8mb4_general_ci NOT NULL,
   `fecha_inicio` date NOT NULL,
   `fecha_fin` date NOT NULL,
   `creado_por` int DEFAULT NULL,
   `creado_en` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+=======
+  `id` int(11) NOT NULL,
+  `mensaje` text NOT NULL,
+  `fecha_inicio` date NOT NULL,
+  `fecha_fin` date NOT NULL,
+  `creado_por` int(11) DEFAULT NULL,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp()
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -50,12 +69,21 @@ INSERT INTO `anuncios` (`id`, `mensaje`, `fecha_inicio`, `fecha_fin`, `creado_po
 --
 
 CREATE TABLE `bimestres_activos` (
+<<<<<<< HEAD
   `id` int NOT NULL,
   `numero_bimestre` int NOT NULL,
   `esta_activo` tinyint(1) DEFAULT '0',
   `fecha_inicio` date DEFAULT NULL,
   `fecha_fin` date DEFAULT NULL,
   `fecha_modificacion` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+=======
+  `id` int(11) NOT NULL,
+  `numero_bimestre` int(11) NOT NULL,
+  `esta_activo` tinyint(1) DEFAULT 0,
+  `fecha_inicio` date DEFAULT NULL,
+  `fecha_fin` date DEFAULT NULL,
+  `fecha_modificacion` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -63,7 +91,11 @@ CREATE TABLE `bimestres_activos` (
 --
 
 INSERT INTO `bimestres_activos` (`id`, `numero_bimestre`, `esta_activo`, `fecha_inicio`, `fecha_fin`, `fecha_modificacion`) VALUES
+<<<<<<< HEAD
 (1, 1, 1, '2025-04-15', '2025-04-17', '2025-05-13 15:20:17'),
+=======
+(1, 1, 1, '2025-04-15', '2025-04-17', '2025-05-02 17:39:41'),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (2, 2, 0, NULL, NULL, '2025-05-02 17:38:34'),
 (3, 3, 0, NULL, NULL, '2025-05-02 17:38:34');
 
@@ -74,12 +106,21 @@ INSERT INTO `bimestres_activos` (`id`, `numero_bimestre`, `esta_activo`, `fecha_
 --
 
 CREATE TABLE `calificaciones` (
+<<<<<<< HEAD
   `id_calificacion` int NOT NULL,
   `id_estudiante` int NOT NULL COMMENT 'FK a estudiantes',
   `id_materia` int NOT NULL COMMENT 'FK a materias',
   `bimestre` int NOT NULL COMMENT 'Número del bimestre: 1, 2, 3, 4',
   `calificacion` float NOT NULL DEFAULT '0',
   `comentario` text COLLATE utf8mb4_general_ci
+=======
+  `id_calificacion` int(11) NOT NULL,
+  `id_estudiante` int(11) NOT NULL COMMENT 'FK a estudiantes',
+  `id_materia` int(11) NOT NULL COMMENT 'FK a materias',
+  `bimestre` int(11) NOT NULL COMMENT 'Número del bimestre: 1, 2, 3, 4',
+  `calificacion` float NOT NULL DEFAULT 0,
+  `comentario` text DEFAULT NULL
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -4353,7 +4394,11 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (9609, 1617, 962, 1, 59, NULL),
 (9610, 1618, 962, 1, 51, NULL),
 (9611, 1619, 962, 1, 52, NULL),
+<<<<<<< HEAD
 (9612, 1620, 962, 1, 51, NULL),
+=======
+(9612, 1620, 962, 1, 47, NULL),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (9613, 1621, 962, 1, 68, NULL),
 (9614, 1622, 962, 1, 59, NULL),
 (9615, 1623, 962, 1, 84, NULL),
@@ -4564,7 +4609,11 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (9847, 1583, 943, 1, 85, NULL),
 (9848, 1584, 943, 1, 55, NULL),
 (9849, 1585, 943, 1, 79, NULL),
+<<<<<<< HEAD
 (9850, 1586, 943, 1, 44, NULL),
+=======
+(9850, 1586, 943, 1, 36, NULL),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (9851, 1587, 943, 1, 69, NULL),
 (9852, 1588, 943, 1, 59, NULL),
 (9853, 1589, 943, 1, 65, NULL),
@@ -5768,7 +5817,11 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (11957, 1198, 839, 1, 30, NULL),
 (11958, 1199, 839, 1, 60, NULL),
 (11959, 1200, 839, 1, 80, NULL),
+<<<<<<< HEAD
 (11960, 1201, 839, 1, 65, NULL),
+=======
+(11960, 1201, 839, 1, 45, NULL),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (11961, 1202, 839, 1, 53, NULL),
 (11962, 1203, 839, 1, 58, NULL),
 (11963, 1204, 839, 1, 51, NULL),
@@ -6815,12 +6868,20 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (14400, 1555, 923, 1, 56, NULL),
 (14401, 1556, 923, 1, 51, NULL),
 (14402, 1557, 923, 1, 35, NULL),
+<<<<<<< HEAD
 (14403, 1558, 923, 1, 62, NULL),
+=======
+(14403, 1558, 923, 1, 44, NULL),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (14404, 1559, 923, 1, 85, NULL),
 (14405, 1560, 923, 1, 35, NULL),
 (14406, 1562, 923, 1, 84, NULL),
 (14407, 1563, 923, 1, 51, NULL),
+<<<<<<< HEAD
 (14408, 1564, 923, 1, 78, NULL),
+=======
+(14408, 1564, 923, 1, 67, NULL),
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 (14409, 1565, 923, 1, 56, NULL),
 (14410, 1566, 923, 1, 35, NULL),
 (14411, 1567, 923, 1, 51, NULL),
@@ -8112,6 +8173,7 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (18274, 1264, 833, 1, 54, NULL),
 (18275, 1265, 833, 1, 53, NULL),
 (18276, 1266, 833, 1, 52, NULL),
+<<<<<<< HEAD
 (18277, 1267, 833, 1, 55, NULL),
 (18522, 1476, 898, 1, 80, NULL),
 (18523, 1477, 898, 1, 90, NULL),
@@ -8141,6 +8203,9 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 (18619, 840, 819, 1, 56, NULL),
 (18620, 841, 819, 1, 89, NULL),
 (18621, 842, 819, 1, 70, NULL);
+=======
+(18277, 1267, 833, 1, 55, NULL);
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 -- --------------------------------------------------------
 
@@ -8149,11 +8214,19 @@ INSERT INTO `calificaciones` (`id_calificacion`, `id_estudiante`, `id_materia`, 
 --
 
 CREATE TABLE `configuracion_sistema` (
+<<<<<<< HEAD
   `id` int NOT NULL,
   `cantidad_bimestres` int NOT NULL DEFAULT '3',
   `bimestre_actual` int NOT NULL DEFAULT '1',
   `anio_escolar` varchar(9) COLLATE utf8mb4_general_ci NOT NULL,
   `fecha_modificacion` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+=======
+  `id` int(11) NOT NULL,
+  `cantidad_bimestres` int(11) NOT NULL DEFAULT 3,
+  `bimestre_actual` int(11) NOT NULL DEFAULT 1,
+  `anio_escolar` varchar(9) NOT NULL,
+  `fecha_modificacion` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -8170,10 +8243,17 @@ INSERT INTO `configuracion_sistema` (`id`, `cantidad_bimestres`, `bimestre_actua
 --
 
 CREATE TABLE `cursos` (
+<<<<<<< HEAD
   `id_curso` int NOT NULL,
   `nivel` varchar(20) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Ej: Kinder, Primaria, Secundaria',
   `curso` int NOT NULL COMMENT 'Número del curso, ej: 1, 2, 3',
   `paralelo` varchar(5) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Ej: A, B, C'
+=======
+  `id_curso` int(11) NOT NULL,
+  `nivel` varchar(20) NOT NULL COMMENT 'Ej: Kinder, Primaria, Secundaria',
+  `curso` int(11) NOT NULL COMMENT 'Número del curso, ej: 1, 2, 3',
+  `paralelo` varchar(5) NOT NULL COMMENT 'Ej: A, B, C'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -8217,9 +8297,15 @@ INSERT INTO `cursos` (`id_curso`, `nivel`, `curso`, `paralelo`) VALUES
 --
 
 CREATE TABLE `cursos_materias` (
+<<<<<<< HEAD
   `id_curso_materia` int NOT NULL,
   `id_curso` int NOT NULL COMMENT 'FK a cursos',
   `id_materia` int NOT NULL COMMENT 'FK a materias'
+=======
+  `id_curso_materia` int(11) NOT NULL,
+  `id_curso` int(11) NOT NULL COMMENT 'FK a cursos',
+  `id_materia` int(11) NOT NULL COMMENT 'FK a materias'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -8553,6 +8639,7 @@ INSERT INTO `cursos_materias` (`id_curso_materia`, `id_curso`, `id_materia`) VAL
 --
 
 CREATE TABLE `estudiantes` (
+<<<<<<< HEAD
   `id_estudiante` int NOT NULL,
   `nombres` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `apellido_paterno` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
@@ -8562,6 +8649,17 @@ CREATE TABLE `estudiantes` (
   `carnet_identidad` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `fecha_nacimiento` date DEFAULT NULL,
   `id_curso` int DEFAULT NULL COMMENT 'FK al curso en el que está matriculado'
+=======
+  `id_estudiante` int(11) NOT NULL,
+  `nombres` varchar(255) NOT NULL,
+  `apellido_paterno` varchar(255) DEFAULT NULL,
+  `apellido_materno` varchar(255) DEFAULT NULL,
+  `genero` enum('Masculino','Femenino') DEFAULT NULL,
+  `rude` varchar(20) NOT NULL COMMENT 'Registro Único de Estudiante',
+  `carnet_identidad` varchar(20) DEFAULT NULL,
+  `fecha_nacimiento` date DEFAULT NULL,
+  `id_curso` int(11) DEFAULT NULL COMMENT 'FK al curso en el que está matriculado'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -9334,11 +9432,19 @@ INSERT INTO `estudiantes` (`id_estudiante`, `nombres`, `apellido_paterno`, `apel
 --
 
 CREATE TABLE `materias` (
+<<<<<<< HEAD
   `id_materia` int NOT NULL,
   `nombre_materia` varchar(255) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Nombre de la materia, ej: Matemáticas, Física',
   `es_submateria` tinyint(1) DEFAULT '0',
   `materia_padre_id` int DEFAULT NULL,
   `es_extra` tinyint(1) NOT NULL DEFAULT '0'
+=======
+  `id_materia` int(11) NOT NULL,
+  `nombre_materia` varchar(255) NOT NULL COMMENT 'Nombre de la materia, ej: Matemáticas, Física',
+  `es_submateria` tinyint(1) DEFAULT 0,
+  `materia_padre_id` int(11) DEFAULT NULL,
+  `es_extra` tinyint(1) NOT NULL DEFAULT 0
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -9514,6 +9620,7 @@ INSERT INTO `materias` (`id_materia`, `nombre_materia`, `es_submateria`, `materi
 --
 
 CREATE TABLE `personal` (
+<<<<<<< HEAD
   `id_personal` int NOT NULL,
   `nombres` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `apellidos` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
@@ -9522,6 +9629,16 @@ CREATE TABLE `personal` (
   `id_rol` int NOT NULL COMMENT 'FK a roles',
   `password` varchar(255) COLLATE utf8mb4_general_ci NOT NULL,
   `estado` tinyint(1) NOT NULL DEFAULT '1' COMMENT '1=habilitado, 0=inhabilitado'
+=======
+  `id_personal` int(11) NOT NULL,
+  `nombres` varchar(255) NOT NULL,
+  `apellidos` varchar(255) NOT NULL,
+  `celular` varchar(20) DEFAULT NULL COMMENT 'Ej: Número de contacto del usuario',
+  `carnet_identidad` varchar(20) NOT NULL,
+  `id_rol` int(11) NOT NULL COMMENT 'FK a roles',
+  `password` varchar(255) NOT NULL,
+  `estado` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1=habilitado, 0=inhabilitado'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -9590,10 +9707,17 @@ INSERT INTO `personal` (`id_personal`, `nombres`, `apellidos`, `celular`, `carne
 --
 
 CREATE TABLE `profesores_materias_cursos` (
+<<<<<<< HEAD
   `id_profesor_materia_curso` int NOT NULL,
   `id_personal` int NOT NULL COMMENT 'FK a personal (profesor)',
   `id_curso_materia` int NOT NULL COMMENT 'FK a cursos_materias',
   `estado` enum('FALTA','CARGADO') COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'FALTA'
+=======
+  `id_profesor_materia_curso` int(11) NOT NULL,
+  `id_personal` int(11) NOT NULL COMMENT 'FK a personal (profesor)',
+  `id_curso_materia` int(11) NOT NULL COMMENT 'FK a cursos_materias',
+  `estado` enum('FALTA','CARGADO') NOT NULL DEFAULT 'FALTA'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -9900,8 +10024,13 @@ INSERT INTO `profesores_materias_cursos` (`id_profesor_materia_curso`, `id_perso
 --
 
 CREATE TABLE `roles` (
+<<<<<<< HEAD
   `id_rol` int NOT NULL,
   `nombre_rol` varchar(50) COLLATE utf8mb4_general_ci NOT NULL COMMENT 'Ej: Administrador, Profesor, Secretario'
+=======
+  `id_rol` int(11) NOT NULL,
+  `nombre_rol` varchar(50) NOT NULL COMMENT 'Ej: Administrador, Profesor, Secretario'
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -10000,67 +10129,111 @@ ALTER TABLE `roles`
 -- AUTO_INCREMENT de la tabla `anuncios`
 --
 ALTER TABLE `anuncios`
+<<<<<<< HEAD
   MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+=======
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `bimestres_activos`
 --
 ALTER TABLE `bimestres_activos`
+<<<<<<< HEAD
   MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+=======
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `calificaciones`
 --
 ALTER TABLE `calificaciones`
+<<<<<<< HEAD
   MODIFY `id_calificacion` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18622;
+=======
+  MODIFY `id_calificacion` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18382;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `configuracion_sistema`
 --
 ALTER TABLE `configuracion_sistema`
+<<<<<<< HEAD
   MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+=======
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `cursos`
 --
 ALTER TABLE `cursos`
+<<<<<<< HEAD
   MODIFY `id_curso` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=130;
+=======
+  MODIFY `id_curso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=130;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `cursos_materias`
 --
 ALTER TABLE `cursos_materias`
+<<<<<<< HEAD
   MODIFY `id_curso_materia` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1348;
+=======
+  MODIFY `id_curso_materia` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1348;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `estudiantes`
 --
 ALTER TABLE `estudiantes`
+<<<<<<< HEAD
   MODIFY `id_estudiante` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1643;
+=======
+  MODIFY `id_estudiante` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1643;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `materias`
 --
 ALTER TABLE `materias`
+<<<<<<< HEAD
   MODIFY `id_materia` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=969;
+=======
+  MODIFY `id_materia` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=969;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `personal`
 --
 ALTER TABLE `personal`
+<<<<<<< HEAD
   MODIFY `id_personal` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=756;
+=======
+  MODIFY `id_personal` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=756;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `profesores_materias_cursos`
 --
 ALTER TABLE `profesores_materias_cursos`
+<<<<<<< HEAD
   MODIFY `id_profesor_materia_curso` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1317;
+=======
+  MODIFY `id_profesor_materia_curso` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1317;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- AUTO_INCREMENT de la tabla `roles`
 --
 ALTER TABLE `roles`
+<<<<<<< HEAD
   MODIFY `id_rol` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+=======
+  MODIFY `id_rol` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
 
 --
 -- Restricciones para tablas volcadas

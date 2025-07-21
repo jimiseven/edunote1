@@ -1,0 +1,17 @@
+{
+    "name": "tarks/edunote1",
+    "autoload": {
+        "psr-4": {
+            "Tarks\\Edunote1\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "jimi tarks",
+            "email": "tano777864@gmail.com"
+        }
+    ],
+    "require": {
+        "phpoffice/phpspreadsheet": "^4.2"
+    }
+}

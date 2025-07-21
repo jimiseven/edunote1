@@ -1,147 +1,252 @@
 <?php
-/**
- * Centralizador de notas → descarga automática de XLSX con encabezados verticales.
- * No depende de Composer; usa SheetJS en el navegador.
- */
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 session_start();
+
 require_once '../config/database.php';
+require __DIR__ . '/../vendor/autoload.php';
 
-// -----------------------------------------------------------------------------
-// 1. CONTROL DE ACCESO ----------------------------------------------------------
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill, Color};
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
-    header('Location: ../index.php');
-    exit();
+    http_response_code(403);
+    exit("Acceso no autorizado.");
 }
 
-// -----------------------------------------------------------------------------
-// 2. PARÁMETROS -----------------------------------------------------------------
-$id_curso  = isset($_GET['id'])        ? (int)$_GET['id']        : 0;
-$trimestre = isset($_GET['trimestre']) ? (int)$_GET['trimestre'] : 1;
+$id_curso = (int)($_GET['id'] ?? 0);
+$trimestre = (int)($_GET['trimestre'] ?? 1);
+if ($id_curso <= 0) exit("ID de curso inválido.");
 
-if ($id_curso <= 0) {
-    header('Location: priv.php');
-    exit();
-}
+try {
+    $db = new Database();
+    $conn = $db->connect();
 
-// -----------------------------------------------------------------------------
-// 3. CONSULTAS A BD -------------------------------------------------------------
-$db   = new Database();
-$conn = $db->connect();
+    // Datos del curso
+    $stmt = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
+    $stmt->execute([$id_curso]);
+    $curso = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$curso) exit("Curso no encontrado.");
+    $nombre_curso = "{$curso['nivel']} {$curso['curso']} \"{$curso['paralelo']}\"";
 
-// 3.1 Curso
-$stmt = $conn->prepare("SELECT curso, paralelo, nivel FROM cursos WHERE id_curso = ?");
-$stmt->execute([$id_curso]);
-$curso = $stmt->fetch(PDO::FETCH_ASSOC);
-$nombre_curso = $curso['nivel'] . ' ' . $curso['curso'] . ' \"' . $curso['paralelo'] . '\"';
+    // Estudiantes
+    $stmt = $conn->prepare("
+        SELECT id_estudiante, CONCAT(apellido_paterno, ' ', apellido_materno, ', ', nombres) AS nombre_completo
+        FROM estudiantes 
+        WHERE id_curso = ? 
+        ORDER BY apellido_paterno, apellido_materno, nombres
+    ");
+    $stmt->execute([$id_curso]);
+    $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 3.2 Estudiantes
-$stmt = $conn->prepare("SELECT id_estudiante, nombres, apellido_paterno, apellido_materno
-                         FROM estudiantes
-                         WHERE id_curso = ?
-                         ORDER BY apellido_paterno, apellido_materno, nombres");
-$stmt->execute([$id_curso]);
-$estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Materias
+    $stmt = $conn->prepare("
+        SELECT m.id_materia, m.nombre_materia, m.es_extra, m.materia_padre_id 
+        FROM cursos_materias cm 
+        JOIN materias m ON cm.id_materia = m.id_materia 
+        WHERE cm.id_curso = ? 
+        ORDER BY m.materia_padre_id, m.nombre_materia
+    ");
+    $stmt->execute([$id_curso]);
+    $materias_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 3.3 Materias
-$stmt = $conn->prepare("SELECT m.id_materia, m.nombre_materia, m.es_extra
-                         FROM cursos_materias cm
-                         JOIN materias m ON cm.id_materia = m.id_materia
-                         WHERE cm.id_curso = ?
-                         ORDER BY m.es_extra, m.nombre_materia");
-$stmt->execute([$id_curso]);
-$materias = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Clasificación de materias
+    $materias = [];
+    $hijas_por_padre = [];
+    $todas_materias = [];
 
-// 3.4 Calificaciones y promedios
-$calificaciones = [];
-$promedios      = [];
-foreach ($estudiantes as $e) {
-    $suma = 0; $cont = 0;
-    foreach ($materias as $m) {
-        $sel = $conn->prepare("SELECT calificacion
-                                FROM calificaciones
-                                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?");
-        $sel->execute([$e['id_estudiante'], $m['id_materia'], $trimestre]);
-        $nota = $sel->fetchColumn();
-        $calificaciones[$e['id_estudiante']][$m['id_materia']] = $nota !== false ? (float)$nota : '';
-        if ($nota !== false && !$m['es_extra']) { $suma += $nota; $cont++; }
+    foreach ($materias_raw as $mat) {
+        $todas_materias[$mat['id_materia']] = $mat;
+        if ($mat['materia_padre_id']) {
+            $hijas_por_padre[$mat['materia_padre_id']][] = $mat;
+        } else {
+            $materias[$mat['id_materia']] = $mat;
+        }
     }
-    $promedios[$e['id_estudiante']] = $cont ? round($suma / $cont, 2) : '';
-}
 
-// -----------------------------------------------------------------------------
-// 4. SALIDA: HTML MINIMAL + DESCARGA AUTOMÁTICA ---------------------------------
-?>
-<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Descargando…</title></head><body style="margin:0;">
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<script>
-// Datos PHP → JS
-const estudiantes   = <?=json_encode($estudiantes,   JSON_UNESCAPED_UNICODE)?>;
-const materias      = <?=json_encode($materias,      JSON_UNESCAPED_UNICODE)?>;
-const calificaciones= <?=json_encode($calificaciones,JSON_UNESCAPED_UNICODE)?>;
-const promedios     = <?=json_encode($promedios,     JSON_UNESCAPED_UNICODE)?>;
-const nombreCurso   = <?=json_encode($nombre_curso,  JSON_UNESCAPED_UNICODE)?>;
-const trimestre     = <?=$trimestre?>;
+    // Agregar hijas como submaterias
+    foreach ($hijas_por_padre as $id_padre => $hijas) {
+        if (isset($materias[$id_padre])) {
+            $materias[$id_padre]['hijas'] = $hijas;
+        } else {
+            // Si el padre no está en materias principales, añadimos las hijas como materias normales
+            foreach ($hijas as $hija) {
+                if (!isset($materias[$hija['id_materia']])) {
+                    $materias[$hija['id_materia']] = $hija;
+                }
+            }
+        }
+    }
 
-function generarXLSX(){
-    const wb = XLSX.utils.book_new();
-    const data = [];
+    // Crear Excel
+    $spreadsheet = new Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
 
-    // Título + fila vacía
-    data.push([`Centralizador: ${nombreCurso} - Trimestre ${trimestre}`]);
-    data.push([]);
+    // Estilos
+    $headerStyle = [
+        'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4F81BD']],
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_BOTTOM],
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+    ];
+    $cellStyle = [
+        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+    ];
+    $lowGradeStyle = [
+        'font' => ['color' => ['rgb' => 'FF0000']],
+    ];
+    $extraSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
+    ];
+    $parentSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '92D050']],
+    ];
+    $childSubjectStyle = [
+        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'B7DEE8']],
+    ];
+
+    // Título centrado
+    $sheet->mergeCells('A1:Z1');
+    $sheet->setCellValue('A1', "CENTRALIZADOR - $nombre_curso - Trimestre $trimestre");
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+    $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
     // Encabezados
-    const headers = ['Nº', 'Estudiante', ...materias.map(m => m.nombre_materia + (m.es_extra ? ' (Extra)' : '')), 'Promedio'];
-    data.push(headers);
+    $sheet->setCellValue('A2', 'N°')->getStyle('A2')->applyFromArray($headerStyle);
+    $sheet->setCellValue('B2', 'Estudiante')->getStyle('B2')->applyFromArray($headerStyle);
+    $sheet->getColumnDimension('A')->setWidth(5);
+    $sheet->getColumnDimension('B')->setWidth(40);
 
-    // Filas
-    let n = 1;
-    estudiantes.forEach(e => {
-        const row = [n++, `${e.apellido_paterno.toUpperCase()} ${e.apellido_materno.toUpperCase()}, ${e.nombres.toUpperCase()}`];
-        materias.forEach(m => {
-            const nota = (calificaciones[e.id_estudiante] || {})[m.id_materia] ?? '';
-            row.push(nota);
-        });
-        row.push(promedios[e.id_estudiante] ?? '');
-        data.push(row);
-    });
+    $colIndex = 3;
+    $columnasMaterias = []; // clave: columna => info materia
 
-    const ws = XLSX.utils.aoa_to_sheet(data);
+    // Primero procesamos materias padres y sus hijas
+    foreach ($materias as $mat) {
+        if (!empty($mat['hijas'])) {
+            // Materia padre
+            $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+            $cell = $colLetter . '2';
+            $sheet->setCellValue($cell, $mat['nombre_materia']);
+            $sheet->getStyle($cell)->applyFromArray(array_merge($headerStyle, $parentSubjectStyle));
+            $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+            $sheet->getColumnDimension($colLetter)->setWidth(6);
+            $columnasMaterias[$colIndex] = ['tipo' => 'padre', 'materia' => $mat];
+            $colIndex++;
 
-    // Fusionar título
-    ws['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:headers.length-1}}];
-
-    // Estilo título
-    ws['A1'].s = {font:{bold:true,sz:14},alignment:{horizontal:'center'}};
-
-    // Encabezados verticales
-    headers.forEach((_, i) => {
-        const cellAddr = XLSX.utils.encode_cell({r:2, c:i});
-        const cell = ws[cellAddr];
-        if(cell){
-            cell.s = {
-                font:{bold:true},
-                alignment:{horizontal:'center', vertical:'center', textRotation:90},
-                fill:{patternType:'solid', fgColor:{rgb:'D9D9D9'}},
-                border:{top:{style:'thin'}, bottom:{style:'thin'}, left:{style:'thin'}, right:{style:'thin'}}
-            };
+            // Materias hijas
+            foreach ($mat['hijas'] as $hija) {
+                $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+                $cell = $colLetter . '2';
+                $sheet->setCellValue($cell, $hija['nombre_materia']);
+                $style = $headerStyle;
+                if ($hija['es_extra']) {
+                    $style = array_merge($headerStyle, $extraSubjectStyle);
+                } else {
+                    $style = array_merge($headerStyle, $childSubjectStyle);
+                }
+                $sheet->getStyle($cell)->applyFromArray($style);
+                $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+                $sheet->getColumnDimension($colLetter)->setWidth(6);
+                $columnasMaterias[$colIndex] = ['tipo' => 'hija', 'materia' => $hija];
+                $colIndex++;
+            }
+        } elseif (!isset($hijas_por_padre[$mat['id_materia']])) {
+            // Materias normales (sin hijas y que no son hijas de otra)
+            $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+            $cell = $colLetter . '2';
+            $sheet->setCellValue($cell, $mat['nombre_materia']);
+            $style = $headerStyle;
+            if ($mat['es_extra']) {
+                $style = array_merge($headerStyle, $extraSubjectStyle);
+            }
+            $sheet->getStyle($cell)->applyFromArray($style);
+            $sheet->getStyle($cell)->getAlignment()->setTextRotation(90);
+            $sheet->getColumnDimension($colLetter)->setWidth(6);
+            $columnasMaterias[$colIndex] = ['tipo' => 'normal', 'materia' => $mat];
+            $colIndex++;
         }
-    });
+    }
 
-    // Auto ancho (un poco mayor para primer par de columnas, estrecho para verticales)
-    const cols = headers.map((h, idx) => idx < 2 ? {wch:h.length+4} : {wch:6});
-    ws['!cols'] = cols;
+    // Agregar columna de promedio final
+    $colLetter = Coordinate::stringFromColumnIndex($colIndex);
+    $cell = $colLetter . '2';
+    $sheet->setCellValue($cell, 'Promedio');
+    $sheet->getStyle($cell)->applyFromArray($headerStyle);
+    $sheet->getColumnDimension($colLetter)->setWidth(10);
+    $colPromedioFinal = $colIndex;
 
-    // Congelar encabezados
-    ws['!freeze'] = {xSplit:0, ySplit:3};
+    // Llenar datos
+    $row = 3;
+    foreach ($estudiantes as $i => $est) {
+        $sheet->setCellValue("A$row", $i + 1);
+        $sheet->setCellValue("B$row", strtoupper($est['nombre_completo']));
+        $sheet->getStyle("A$row:B$row")->applyFromArray($cellStyle);
+        $sheet->getStyle("B$row")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
-    XLSX.utils.book_append_sheet(wb, ws, `Trimestre ${trimestre}`);
-    const nombreArchivo = `Centralizador_${nombreCurso.replace(/\s+/g,'_')}_T${trimestre}.xlsx`;
-    XLSX.writeFile(wb, nombreArchivo);
+        $sum = 0;
+        $count = 0;
 
-    // Cerrar ventana si está en popup (opcional)
-    // window.close();
+        foreach ($columnasMaterias as $col => $info) {
+            $id_materia = $info['materia']['id_materia'];
+            $stmt = $conn->prepare("
+                SELECT calificacion FROM calificaciones 
+                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
+            ");
+            $stmt->execute([$est['id_estudiante'], $id_materia, $trimestre]);
+            $nota = $stmt->fetchColumn();
+
+            $colLetter = Coordinate::stringFromColumnIndex($col);
+            $cell = $colLetter . $row;
+            $sheet->setCellValue($cell, $nota);
+            
+            // Aplicar estilos según el tipo de materia
+            if ($info['tipo'] === 'padre') {
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('92D050');
+            } elseif ($info['tipo'] === 'hija') {
+                if ($info['materia']['es_extra']) {
+                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+                } else {
+                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('B7DEE8');
+                }
+            } elseif ($info['materia']['es_extra']) {
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+            }
+
+            if (is_numeric($nota) && $nota < 51) {
+                $sheet->getStyle($cell)->applyFromArray($lowGradeStyle);
+            }
+
+            // Solo sumar al promedio si no es extra y no es padre (solo hijas y materias normales)
+            if (is_numeric($nota) && !$info['materia']['es_extra'] && $info['tipo'] !== 'padre') {
+                $sum += $nota;
+                $count++;
+            }
+
+            $sheet->getStyle($cell)->applyFromArray($cellStyle);
+        }
+
+        // Calcular promedio final (excluyendo materias extras y padres)
+        $promedioFinal = $count > 0 ? round($sum / $count, 2) : '';
+        $colLetter = Coordinate::stringFromColumnIndex($colPromedioFinal);
+        $cell = $colLetter . $row;
+        $sheet->setCellValue($cell, $promedioFinal);
+        $sheet->getStyle($cell)->applyFromArray($cellStyle);
+        $row++;
+    }
+
+    // Descargar
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header("Content-Disposition: attachment;filename=\"Centralizador_{$nombre_curso}_T{$trimestre}.xlsx\"");
+    header('Cache-Control: max-age=0');
+
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+
+} catch (Exception $e) {
+    http_response_code(500);
+    exit("Error al generar Excel: " . $e->getMessage());
 }
-
-window.addEventListener('load', generarXLSX);
-</script></body></html>

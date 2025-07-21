@@ -103,7 +103,8 @@ $promedios_trimestre = [];
 foreach ($estudiantes as $estudiante) {
     $suma = $contador = 0;
     foreach ($materias as $mat) {
-        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id'])) continue;
+        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id']))
+            continue;
         $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
         if ($nota !== '') {
             $suma += floatval($nota);
@@ -223,9 +224,14 @@ foreach ($estudiantes as $estudiante) {
                     <i class="bi bi-file-earmark-pdf"></i> PDF
                 </button>
                 <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
+<<<<<<< HEAD
                     <i class="bi bi-file-excel"></i> Exportar a Excel
                 </a>
 
+=======
+                    <i class="bi bi-file-excel"></i> Excel
+                </a>
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
             </div>
         </div>
 
@@ -257,9 +263,12 @@ foreach ($estudiantes as $estudiante) {
                         <?php foreach ($materias as $mat): ?>
                             <?php
                             $clase = '';
-                            if ($mat['es_extra'] == 1) $clase = 'extra-th';
-                            elseif (isset($mat['materia_padre_id'])) $clase = 'hija-th';
-                            elseif (!empty($mat['hijas'])) $clase = 'padre-th';
+                            if ($mat['es_extra'] == 1)
+                                $clase = 'extra-th';
+                            elseif (isset($mat['materia_padre_id']))
+                                $clase = 'hija-th';
+                            elseif (!empty($mat['hijas']))
+                                $clase = 'padre-th';
                             ?>
                             <th class="<?= $clase ?>">
                                 <?= htmlspecialchars($mat['nombre_materia']) ?>
@@ -277,16 +286,18 @@ foreach ($estudiantes as $estudiante) {
                             <td class="student-name">
                                 <?= htmlspecialchars(strtoupper(
                                     $estudiante['apellido_paterno'] . ' ' .
-                                        $estudiante['apellido_materno'] . ', ' .
-                                        $estudiante['nombres']
+                                    $estudiante['apellido_materno'] . ', ' .
+                                    $estudiante['nombres']
                                 )) ?>
                             </td>
                             <?php foreach ($materias as $mat): ?>
                                 <?php
                                 $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
                                 $clase = '';
-                                if ($mat['es_extra'] == 1) $clase = 'extra-td';
-                                elseif (isset($mat['materia_padre_id'])) $clase = 'hija-td';
+                                if ($mat['es_extra'] == 1)
+                                    $clase = 'extra-td';
+                                elseif (isset($mat['materia_padre_id']))
+                                    $clase = 'hija-td';
                                 $clase .= (is_numeric($nota) && floatval($nota) < 51) ? ' nota-baja' : '';
                                 ?>
                                 <td class="<?= $clase ?>"><?= $nota ?></td>
@@ -330,9 +341,13 @@ foreach ($estudiantes as $estudiante) {
             content.appendChild(tabla);
 
             document.body.appendChild(content);
+<<<<<<< HEAD
             const canvas = await html2canvas(content, {
                 scale: 2
             });
+=======
+            const canvas = await html2canvas(content, { scale: 2 });
+>>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
             const imgData = canvas.toDataURL('image/png');
 
             const pageWidth = 297;
