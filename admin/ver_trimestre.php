@@ -196,8 +196,107 @@ foreach ($estudiantes as $estudiante) {
             }
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('pdfBtn').addEventListener('click', function() {
+                // Verificar que jspdf esté cargado
+                if (typeof jspdf === 'undefined') {
+                    console.error('jsPDF no está cargado');
+                    return;
+                }
+
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'mm',
+                    format: 'letter'
+                });
+
+                // Encabezado
+                pdf.setFontSize(14);
+                pdf.setTextColor(44, 62, 80);
+                pdf.text('U.E. SIMÓN BOLÍVAR', pdf.internal.pageSize.getWidth()/2, 15, {align: 'center'});
+                
+                pdf.setFontSize(12);
+                pdf.setTextColor(30, 61, 115);
+                pdf.text('<?= htmlspecialchars($nombre_curso) ?>', pdf.internal.pageSize.getWidth()/2, 20, {align: 'center'});
+                
+                pdf.setFontSize(10);
+                pdf.setTextColor(102, 102, 102);
+                pdf.text(`Trimestre <?= $trimestre ?> - ${new Date().getFullYear()}`, pdf.internal.pageSize.getWidth()/2, 25, {align: 'center'});
+
+                // Preparar datos para la tabla
+                const headers = [
+                    {title: '#', dataKey: 'index'},
+                    {title: 'Estudiante', dataKey: 'estudiante'}
+                ];
+
+                // Agregar encabezados de materias
+                <?php foreach($materias as $mat): ?>
+                    headers.push({
+                        title: '<?= addslashes($mat['nombre_materia']) ?>',
+                        dataKey: 'materia_<?= $mat['id_materia'] ?>'
+                    });
+                <?php endforeach; ?>
+                
+                headers.push({title: 'Promedio', dataKey: 'promedio'});
+
+                // Preparar datos de estudiantes
+                const body = [];
+                <?php foreach($estudiantes as $i => $est): ?>
+                    const rowData = {
+                        index: <?= $i + 1 ?>,
+                        estudiante: '<?= addslashes(strtoupper($est['apellido_paterno'] . ' ' . $est['apellido_materno'] . ', ' . $est['nombres'])) ?>'
+                    };
+                    
+                    <?php foreach($materias as $mat): ?>
+                        rowData['materia_<?= $mat['id_materia'] ?>'] = '<?= $calificaciones[$est['id_estudiante']][$mat['id_materia']] ?? '' ?>';
+                    <?php endforeach; ?>
+                    
+                    rowData['promedio'] = '<?= $promedios_trimestre[$est['id_estudiante']] ?>';
+                    body.push(rowData);
+                <?php endforeach; ?>
+
+                // Configuración de la tabla
+                pdf.autoTable({
+                    head: [headers.map(h => h.title)],
+                    body: body.map(row => headers.map(h => row[h.dataKey])),
+                    startY: 30,
+                    styles: {
+                        fontSize: 8,
+                        cellPadding: 1,
+                        overflow: 'linebreak'
+                    },
+                    columnStyles: {
+                        0: {cellWidth: 8}, // Columna #
+                        1: {cellWidth: 40}, // Columna Estudiante
+                        [headers.length - 1]: {cellWidth: 15} // Columna Promedio
+                    },
+                    didParseCell: (data) => {
+                        // Rotar encabezados de materias
+                        if (data.section === 'head' && data.column.index > 1 && data.column.index < headers.length - 1) {
+                            data.cell.styles.fontStyle = 'bold';
+                            data.cell.styles.textColor = [44, 62, 80];
+                            data.cell.styles.halign = 'center';
+                            data.cell.styles.valign = 'middle';
+                            data.cell.text = [data.cell.text[0].split('').join('\n')];
+                            data.cell.styles.cellWidth = 8;
+                        }
+                        
+                        // Resaltar notas bajas
+                        if (data.section === 'body' && parseFloat(data.cell.text[0]) < 51) {
+                            data.cell.styles.textColor = [220, 53, 69];
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
+                });
+
+                pdf.save(`Centralizador-<?= htmlspecialchars($nombre_curso) ?>-T<?= $trimestre ?>.pdf`);
+            });
+        });
+    </script>
 </head>
 
 <body>
@@ -220,7 +319,7 @@ foreach ($estudiantes as $estudiante) {
                 <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-printer"></i> Imprimir
                 </button>
-                <button onclick="generatePDF()" class="btn btn-primary btn-sm">
+                <button id="pdfBtn" class="btn btn-primary btn-sm">
                     <i class="bi bi-file-earmark-pdf"></i> PDF
                 </button>
                 <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
@@ -304,50 +403,6 @@ foreach ($estudiantes as $estudiante) {
         </div>
     </div>
 
-    <script>
-        async function generatePDF() {
-            const pdf = new jspdf.jsPDF({
-                orientation: 'landscape',
-                unit: 'mm',
-                format: 'a4'
-            });
-
-            const content = document.createElement('div');
-            content.style.padding = "20px";
-
-            // Header PDF
-            content.innerHTML = `
-            <div style="text-align: center; margin-bottom: 15px;">
-                <h3 style="color: #2c3e50;">U.E. SIMÓN BOLÍVAR</h3>
-                <h4 style="color: #1e3d73;"><?= htmlspecialchars($nombre_curso) ?></h4>
-                <div style="color: #666;">Trimestre <?= $trimestre ?> - <?= date('Y') ?></div>
-                <hr style="border-color: #1e3d73; margin: 10px 0;">
-            </div>
-        `;
-
-            // Clonar tabla
-            const tabla = document.querySelector('.table').cloneNode(true);
-            tabla.style.fontSize = "9pt";
-            tabla.querySelectorAll('th, td').forEach(c => {
-                c.style.padding = "3px";
-                c.style.border = "1px solid #dee2e6";
-            });
-            content.appendChild(tabla);
-
-            document.body.appendChild(content);
-            const canvas = await html2canvas(content, { scale: 2 });
-            const imgData = canvas.toDataURL('image/png');
-
-            const pageWidth = 297;
-            const imgHeight = (canvas.height * pageWidth) / canvas.width;
-
-            pdf.addImage(imgData, 'PNG', 10, 10, pageWidth - 20, imgHeight);
-            pdf.save(`Centralizador-Trimestre-<?= $trimestre ?>.pdf`);
-
-            document.body.removeChild(content);
-        }
-    </script>
     <script src="../js/bootstrap.bundle.min.js"></script>
 </body>
-
 </html>
