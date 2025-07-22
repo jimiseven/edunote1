@@ -6,6 +6,7 @@
 -- Tiempo de generación: 21-07-2025 a las 16:19:48
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
+-- version de colegio de mama, datos actualizados, 22 julio 2025
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
