@@ -190,42 +190,61 @@ try {
         $count = 0;
 
         foreach ($columnasMaterias as $col => $info) {
-            $id_materia = $info['materia']['id_materia'];
-            $stmt = $conn->prepare("
-                SELECT calificacion FROM calificaciones 
-                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-            ");
-            $stmt->execute([$est['id_estudiante'], $id_materia, $trimestre]);
-            $nota = $stmt->fetchColumn();
-
             $colLetter = Coordinate::stringFromColumnIndex($col);
             $cell = $colLetter . $row;
-            $sheet->setCellValue($cell, $nota);
             
-            // Aplicar estilos según el tipo de materia
             if ($info['tipo'] === 'padre') {
-                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('92D050');
-            } elseif ($info['tipo'] === 'hija') {
-                if ($info['materia']['es_extra']) {
-                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
-                } else {
-                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('B7DEE8');
+                // Calcular promedio de materias hijas
+                $sumHijas = 0;
+                $countHijas = 0;
+                foreach ($info['materia']['hijas'] as $hija) {
+                    $stmt = $conn->prepare("
+                        SELECT calificacion FROM calificaciones 
+                        WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
+                    ");
+                    $stmt->execute([$est['id_estudiante'], $hija['id_materia'], $trimestre]);
+                    $notaHija = $stmt->fetchColumn();
+                    if (is_numeric($notaHija)) {
+                        $sumHijas += $notaHija;
+                        $countHijas++;
+                    }
                 }
-            } elseif ($info['materia']['es_extra']) {
-                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
-            }
+                $nota = $countHijas > 0 ? round($sumHijas / $countHijas, 2) : '';
+                $sheet->setCellValue($cell, $nota);
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('92D050');
+            } else {
+                // Materias normales o hijas
+                $id_materia = $info['materia']['id_materia'];
+                $stmt = $conn->prepare("
+                    SELECT calificacion FROM calificaciones 
+                    WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
+                ");
+                $stmt->execute([$est['id_estudiante'], $id_materia, $trimestre]);
+                $nota = $stmt->fetchColumn();
+                $sheet->setCellValue($cell, $nota);
+                
+                if ($info['tipo'] === 'hija') {
+                    if ($info['materia']['es_extra']) {
+                        $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+                    } else {
+                        $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('B7DEE8');
+                    }
+                } elseif ($info['materia']['es_extra']) {
+                    $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+                }
 
             if (is_numeric($nota) && $nota < 51) {
                 $sheet->getStyle($cell)->applyFromArray($lowGradeStyle);
             }
 
-            // Solo sumar al promedio si no es extra y no es padre (solo hijas y materias normales)
+            // Solo sumar al promedio si no es extra (incluye hijas y materias normales, excluye padres)
             if (is_numeric($nota) && !$info['materia']['es_extra'] && $info['tipo'] !== 'padre') {
                 $sum += $nota;
                 $count++;
             }
 
             $sheet->getStyle($cell)->applyFromArray($cellStyle);
+            }
         }
 
         // Calcular promedio final (excluyendo materias extras y padres)

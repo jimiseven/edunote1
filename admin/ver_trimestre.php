@@ -224,14 +224,8 @@ foreach ($estudiantes as $estudiante) {
                     <i class="bi bi-file-earmark-pdf"></i> PDF
                 </button>
                 <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
-<<<<<<< HEAD
-                    <i class="bi bi-file-excel"></i> Exportar a Excel
-                </a>
-
-=======
                     <i class="bi bi-file-excel"></i> Excel
                 </a>
->>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
             </div>
         </div>
 
@@ -341,13 +335,7 @@ foreach ($estudiantes as $estudiante) {
             content.appendChild(tabla);
 
             document.body.appendChild(content);
-<<<<<<< HEAD
-            const canvas = await html2canvas(content, {
-                scale: 2
-            });
-=======
             const canvas = await html2canvas(content, { scale: 2 });
->>>>>>> 51006364cc75c9206a49da63c6e256fd25aa4bfe
             const imgData = canvas.toDataURL('image/png');
 
             const pageWidth = 297;
