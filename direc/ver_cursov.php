@@ -348,6 +348,9 @@ foreach ($materias_padres as $id_padre => $padre) {
                 <a href="vista_tri.php?id=<?= $id_curso ?>" class="btn btn-warning btn-navegacion">
                     <i class="bi bi-table"></i> Vista por Trimestre
                 </a>
+                <a href="exportar_curso_excel.php?id=<?= $id_curso ?>" class="btn btn-success btn-navegacion">
+                    <i class="bi bi-file-excel"></i> Exportar Excel
+                </a>
             </div>
         </div>
 
