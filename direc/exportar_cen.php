@@ -81,13 +81,21 @@ try {
     $parentHeaderStyle = [
         'font' => ['bold' => true],
         'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E9ECEF']],
-        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        'alignment' => [
+            'horizontal' => Alignment::HORIZONTAL_CENTER,
+            'vertical' => Alignment::VERTICAL_CENTER,
+            'textRotation' => 90
+        ],
         'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
     ];
 
     $childHeaderStyle = [
         'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8F9FA']],
-        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        'alignment' => [
+            'horizontal' => Alignment::HORIZONTAL_CENTER,
+            'vertical' => Alignment::VERTICAL_CENTER,
+            'textRotation' => 90
+        ],
         'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
     ];
 
@@ -116,6 +124,9 @@ try {
     $colIndex = 3;
     $columnasMaterias = [];
 
+    // Ajustar altura de fila para encabezados
+    $sheet->getRowDimension(2)->setRowHeight(100);
+
     // Procesar materias para encabezados
     foreach ($materias as $mat) {
         $colLetter = Coordinate::stringFromColumnIndex($colIndex);
@@ -139,7 +150,7 @@ try {
             // Materias sin hijas
             $colLetter = Coordinate::stringFromColumnIndex($colIndex);
             $sheet->setCellValue($colLetter.'2', $mat['nombre_materia'])
-                ->getStyle($colLetter.'2')->applyFromArray($headerStyle);
+                ->getStyle($colLetter.'2')->applyFromArray($parentHeaderStyle);
             $columnasMaterias[$colIndex] = ['tipo' => 'normal', 'materia' => $mat];
             $colIndex++;
         }
