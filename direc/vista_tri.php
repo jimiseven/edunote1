@@ -373,7 +373,7 @@ foreach ($estudiantes as $est) {
                         <option value="2" <?= $trimestre == 2 ? 'selected' : '' ?>>Trimestre 2</option>
                         <option value="3" <?= $trimestre == 3 ? 'selected' : '' ?>>Trimestre 3</option>
                     </select>
-                    <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
+                    <a href="exportar_cen.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
                         <i class="bi bi-file-excel"></i> Exportar a Excel
                     </a>
                 </form>
