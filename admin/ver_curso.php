@@ -7,6 +7,12 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
     exit();
 }
 
+// Mostrar mensajes de éxito/error
+if (isset($_SESSION['success_message'])) {
+    $success_message = $_SESSION['success_message'];
+    unset($_SESSION['success_message']);
+}
+
 // Obtener ID del curso
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     header('Location: dashboard.php?error=curso_no_especificado');
@@ -343,9 +349,15 @@ $estudiantes_ordenados = $estudiantes;
                             <i class="bi bi-arrow-left"></i> Volver
                         </a>
 
-                        <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
+                    <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
+                </div>
+                <?php if (isset($success_message)): ?>
+                    <div class="alert alert-success alert-dismissible fade show mb-0 ms-3">
+                        <?= $success_message ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
-                    <div class="d-flex gap-2">
+                <?php endif; ?>
+                <div class="d-flex gap-2">
                         <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
                             <i class="bi bi-pencil"></i> Editar
                         </a>
