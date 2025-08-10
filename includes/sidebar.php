@@ -231,7 +231,7 @@ function active($str, $current)
                     <li>
                         <a class="nav-link <?php echo active('control_bimestres', $current); ?>" href="control_bimestres.php">
                             <span data-feather="calendar"></span>
-                            Bimestres
+                            Trimestres
                         </a>
                     </li>
                     <li>

@@ -49,7 +49,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Control de Bimestres</title>
+    <title>Control de Trimestres</title>
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <style>
         body, html {
@@ -213,7 +213,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="cards-container">
                         <div class="card card-config">
                             <div class="card-header">
-                                Configuración de Bimestres Activos
+                                Configuración de Trimestres Activos
                             </div>
                             <form method="post" action="" class="d-flex flex-column flex-grow-1">
                                 <div class="card-body-scroll">
@@ -227,7 +227,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                         value="<?php echo $bimestre['numero_bimestre']; ?>"
                                                         <?php echo $bimestre['esta_activo'] ? 'checked' : ''; ?>>
                                                     <label class="form-check-label" for="bimestre<?php echo $bimestre['numero_bimestre']; ?>">
-                                                        Bimestre <?php echo $bimestre['numero_bimestre']; ?>
+                                                        Trimestre <?php echo $bimestre['numero_bimestre']; ?>
                                                         <span class="badge <?php echo $bimestre['esta_activo'] ? 'bg-success' : 'bg-danger'; ?>">
                                                             <?php echo $bimestre['esta_activo'] ? 'Activo' : 'Inactivo'; ?>
                                                         </span>
@@ -265,7 +265,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 Estado Actual del Sistema
                             </div>
                             <div class="card-body">
-                                <h6 class="mb-3">Bimestres habilitados:</h6>
+                                <h6 class="mb-3">Trimestres habilitados:</h6>
                                 <ul class="list-group">
                                     <?php
                                     $hay_activos = false;
@@ -274,7 +274,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             $hay_activos = true;
                                     ?>
                                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                                            Bimestre <?php echo $bimestre['numero_bimestre']; ?>
+                                            Trimestre <?php echo $bimestre['numero_bimestre']; ?>
                                             <span class="badge bg-success rounded-pill">Activo</span>
                                         </li>
                                     <?php
@@ -284,7 +284,7 @@ $bimestres = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     if (!$hay_activos):
                                     ?>
                                         <li class="list-group-item text-danger">
-                                            No hay bimestres activos. Los profesores no podrán cargar notas.
+                                            No hay trimestres activos. Los profesores no podrán cargar notas.
                                         </li>
                                     <?php endif; ?>
                                 </ul>
