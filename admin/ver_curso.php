@@ -211,6 +211,18 @@ $estudiantes_ordenados = $estudiantes;
     <style>
         body {
             background: #f5f6fa;
+            height: 100vh;
+            overflow: auto;
+        }
+
+        .container-fluid {
+            min-height: 100vh;
+        }
+
+        main {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
 
         .content-section {
@@ -219,15 +231,15 @@ $estudiantes_ordenados = $estudiantes;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
             padding: 16px 8px;
             margin: 24px 0 12px 0;
+            flex: 1;
         }
 
-        /* Contenedor con altura fija y scroll vertical independiente */
+        /* Contenedor de tabla con scroll unificado */
         .table-responsive {
-            max-height: 70vh;
-            overflow-y: auto;
-            overflow-x: auto;
+            overflow: auto;
             border: 1px solid #dee2e6;
             border-radius: 8px;
+            max-height: calc(100vh - 180px);
         }
 
         .centralizador-table {
@@ -247,7 +259,8 @@ $estudiantes_ordenados = $estudiantes;
             font-weight: 600;
             position: sticky;
             top: 0;
-            z-index: 10;
+            z-index: 20;
+            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
         }
 
         .centralizador-table th.extra-materia,
@@ -302,15 +315,18 @@ $estudiantes_ordenados = $estudiantes;
             position: sticky;
             top: 0;
             z-index: 101;
+            flex-shrink: 0;
         }
 
         /* Estilos para las columnas fijas iniciales */
         .centralizador-table th:nth-child(1),
         .centralizador-table th:nth-child(2),
+        .centralizador-table th:nth-child(3),
         .centralizador-table td:nth-child(1),
-        .centralizador-table td:nth-child(2) {
+        .centralizador-table td:nth-child(2),
+        .centralizador-table td:nth-child(3) {
             position: sticky;
-            z-index: 8;
+            z-index: 15;
             background: #fff;
         }
 
@@ -334,21 +350,71 @@ $estudiantes_ordenados = $estudiantes;
         .centralizador-table thead th:nth-child(2),
         .centralizador-table thead th:nth-child(3) {
             background: #e9ecef !important;
+            z-index: 25;
         }
 
-        @media (max-width: 768px) {
+        /* Responsive para diferentes tamaños de pantalla */
+        @media (min-width: 1920px) {
+            .table-responsive {
+                max-height: calc(100vh - 160px);
+            }
+        }
+
+        @media (min-width: 1440px) and (max-width: 1919px) {
+            .table-responsive {
+                max-height: calc(100vh - 170px);
+            }
+        }
+
+        @media (min-width: 1200px) and (max-width: 1439px) {
+            .table-responsive {
+                max-height: calc(100vh - 180px);
+            }
+        }
+
+        @media (min-width: 992px) and (max-width: 1199px) {
+            .table-responsive {
+                max-height: calc(100vh - 200px);
+            }
+        }
+
+        @media (min-width: 768px) and (max-width: 991px) {
             .centralizador-table th,
             .centralizador-table td {
-                font-size: .83rem !important;
-                padding: .2rem !important;
+                font-size: .85rem !important;
+                padding: .25rem !important;
             }
 
             .content-section {
-                padding: 10px 4px;
+                padding: 12px 6px;
+                margin: 16px 0 8px 0;
             }
 
             .table-responsive {
-                max-height: 60vh;
+                max-height: calc(100vh - 220px);
+            }
+        }
+
+        @media (max-width: 767px) {
+            .centralizador-table th,
+            .centralizador-table td {
+                font-size: .75rem !important;
+                padding: .15rem !important;
+            }
+
+            .content-section {
+                padding: 8px 4px;
+                margin: 10px 0 5px 0;
+            }
+
+            .table-responsive {
+                max-height: calc(100vh - 260px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .table-responsive {
+                max-height: calc(100vh - 300px);
             }
         }
 
@@ -361,11 +427,24 @@ $estudiantes_ordenados = $estudiantes;
 
             body {
                 background: #fff !important;
+                height: auto !important;
+                overflow: visible !important;
             }
 
             .table-responsive {
                 max-height: none !important;
+                height: auto !important;
                 overflow: visible !important;
+            }
+
+            main {
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            .container-fluid,
+            .row {
+                height: auto !important;
             }
         }
 
@@ -385,6 +464,27 @@ $estudiantes_ordenados = $estudiantes;
                 top: 0;
                 width: 100% !important;
                 max-width: 100% !important;
+            }
+        }
+
+        /* Mejoras para pantallas ultrawide */
+        @media (min-width: 2560px) {
+            .table-responsive {
+                height: calc(100vh - 160px);
+            }
+        }
+
+        /* Mejoras para laptops pequeños */
+        @media (min-height: 600px) and (max-height: 800px) {
+            .table-responsive {
+                height: calc(100vh - 220px);
+            }
+        }
+
+        /* Pantallas muy altas */
+        @media (min-height: 1080px) {
+            .table-responsive {
+                height: calc(100vh - 170px);
             }
         }
     </style>
