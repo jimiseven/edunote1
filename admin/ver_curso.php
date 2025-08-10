@@ -221,6 +221,19 @@ $estudiantes_ordenados = $estudiantes;
             margin: 24px 0 12px 0;
         }
 
+        /* Contenedor con altura fija y scroll vertical independiente */
+        .table-responsive {
+            max-height: 70vh;
+            overflow-y: auto;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+
+        .centralizador-table {
+            margin-bottom: 0;
+        }
+
         .centralizador-table th,
         .centralizador-table td {
             vertical-align: middle;
@@ -232,6 +245,9 @@ $estudiantes_ordenados = $estudiantes;
             background: #e9ecef;
             color: #222;
             font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .centralizador-table th.extra-materia,
@@ -274,6 +290,10 @@ $estudiantes_ordenados = $estudiantes;
         .student-name {
             min-width: 150px;
             white-space: nowrap;
+            position: sticky;
+            left: 0;
+            background: #fff;
+            z-index: 5;
         }
 
         .header-controls {
@@ -284,8 +304,39 @@ $estudiantes_ordenados = $estudiantes;
             z-index: 101;
         }
 
-        @media (max-width: 768px) {
+        /* Estilos para las columnas fijas iniciales */
+        .centralizador-table th:nth-child(1),
+        .centralizador-table th:nth-child(2),
+        .centralizador-table td:nth-child(1),
+        .centralizador-table td:nth-child(2) {
+            position: sticky;
+            z-index: 8;
+            background: #fff;
+        }
 
+        .centralizador-table th:nth-child(1),
+        .centralizador-table td:nth-child(1) {
+            left: 0;
+        }
+
+        .centralizador-table th:nth-child(2),
+        .centralizador-table td:nth-child(2) {
+            left: 40px;
+        }
+
+        .centralizador-table th:nth-child(3),
+        .centralizador-table td:nth-child(3) {
+            left: 80px;
+        }
+
+        /* Asegurar que los headers sticky mantengan su fondo */
+        .centralizador-table thead th:nth-child(1),
+        .centralizador-table thead th:nth-child(2),
+        .centralizador-table thead th:nth-child(3) {
+            background: #e9ecef !important;
+        }
+
+        @media (max-width: 768px) {
             .centralizador-table th,
             .centralizador-table td {
                 font-size: .83rem !important;
@@ -295,10 +346,13 @@ $estudiantes_ordenados = $estudiantes;
             .content-section {
                 padding: 10px 4px;
             }
+
+            .table-responsive {
+                max-height: 60vh;
+            }
         }
 
         @media print {
-
             .header-controls,
             .btn,
             .no-print {
@@ -307,6 +361,11 @@ $estudiantes_ordenados = $estudiantes;
 
             body {
                 background: #fff !important;
+            }
+
+            .table-responsive {
+                max-height: none !important;
+                overflow: visible !important;
             }
         }
 
@@ -331,7 +390,6 @@ $estudiantes_ordenados = $estudiantes;
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 </head>
 
 <body>
@@ -369,8 +427,6 @@ $estudiantes_ordenados = $estudiantes;
                         </button>
                     </div>
                 </div>
-
-
 
                 <section class="content-section">
                     <div class="table-responsive">
@@ -865,8 +921,6 @@ $estudiantes_ordenados = $estudiantes;
         }
 
     </script>
-
-
 
 </body>
 
