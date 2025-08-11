@@ -525,6 +525,9 @@ $estudiantes_ordenados = $estudiantes;
                         <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
                             <i class="bi bi-file-earmark-excel"></i> Reporte Excel
                         </a>
+                        <a href="repoPdf.php?id_curso=<?= $id_curso ?>" class="btn btn-danger btn-sm">
+                            <i class="bi bi-file-earmark-pdf"></i> Reporte PDF
+                        </a>
                         <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
                             <i class="bi bi-arrow-down-up"></i> Ordenar Materias
                         </button>

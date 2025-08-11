@@ -278,7 +278,14 @@ class Cell implements Stringable
             case DataType::TYPE_INLINE:
                 // Rich text
                 $value2 = StringHelper::convertToString($value, true);
-                $this->value = DataType::checkString(($value instanceof RichText) ? $value : $value2);
+                // Cells?->Worksheet?->Spreadsheet
+                $binder = $this->parent?->getParent()?->getParent()?->getValueBinder();
+                $preserveCr = false;
+                if ($binder !== null && method_exists($binder, 'getPreserveCr')) {
+                    /** @var bool */
+                    $preserveCr = $binder->getPreserveCr();
+                }
+                $this->value = DataType::checkString(($value instanceof RichText) ? $value : $value2, $preserveCr);
 
                 break;
             case DataType::TYPE_NUMERIC:
@@ -464,6 +471,7 @@ class Cell implements Stringable
                                         }
                                     }
                                 }
+                                /** @var string $newColumn */
                                 ++$newColumn;
                             }
                             ++$newRow;
@@ -497,12 +505,12 @@ class Cell implements Stringable
                                 if (isset($matches[3])) {
                                     $minCol = $matches[1];
                                     $minRow = (int) $matches[2];
-                                    // https://github.com/phpstan/phpstan/issues/11602
-                                    $maxCol = $matches[4]; // @phpstan-ignore-line
+                                    $maxCol = $matches[4];
                                     ++$maxCol;
-                                    $maxRow = (int) $matches[5]; // @phpstan-ignore-line
+                                    $maxRow = (int) $matches[5];
                                     for ($row = $minRow; $row <= $maxRow; ++$row) {
                                         for ($col = $minCol; $col !== $maxCol; ++$col) {
+                                            /** @var string $col */
                                             if ("$col$row" !== $coordinate) {
                                                 $thisworksheet->getCell("$col$row")->setValue(null);
                                             }
@@ -525,8 +533,11 @@ class Cell implements Stringable
                             $newColumn = $column;
                             foreach ($resultRow as $resultValue) {
                                 if ($row !== $newRow || $column !== $newColumn) {
-                                    $thisworksheet->getCell($newColumn . $newRow)->setValue($resultValue);
+                                    $thisworksheet
+                                        ->getCell($newColumn . $newRow)
+                                        ->setValue($resultValue);
                                 }
+                                /** @var string $newColumn */
                                 ++$newColumn;
                             }
                             ++$newRow;
@@ -935,9 +946,7 @@ class Cell implements Stringable
     /**
      * Set the formula attributes.
      *
-     * @param $attributes null|array<string, string>
-     *
-     * @return $this
+     * @param null|array<string, string> $attributes
      */
     public function setFormulaAttributes(?array $attributes): self
     {
