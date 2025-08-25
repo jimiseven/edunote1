@@ -127,6 +127,60 @@ foreach ($niveles_stats as $nivel) {
 }
 
 $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_materias) * 100, 1) : 0;
+
+// Obtener materias pendientes detalladas para Primaria
+$stmt = $conn->prepare("
+    SELECT 
+        c.curso,
+        c.paralelo,
+        m.nombre_materia,
+        p.nombres,
+        p.apellidos
+    FROM cursos_materias cm
+    JOIN cursos c ON cm.id_curso = c.id_curso
+    JOIN materias m ON cm.id_materia = m.id_materia
+    LEFT JOIN profesores_materias_cursos pmc ON cm.id_curso_materia = pmc.id_curso_materia
+    LEFT JOIN personal p ON pmc.id_personal = p.id_personal
+    WHERE c.nivel = 'Primaria'
+    AND NOT EXISTS (
+        SELECT 1 FROM calificaciones cal 
+        WHERE cal.id_materia = cm.id_materia 
+        AND cal.bimestre = ? 
+        AND cal.id_estudiante IN (
+            SELECT e.id_estudiante FROM estudiantes e WHERE e.id_curso = c.id_curso
+        )
+    )
+    ORDER BY c.curso, c.paralelo, m.nombre_materia
+");
+$stmt->execute([$bimestre_seleccionado]);
+$primaria_materias_pendientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Obtener materias pendientes detalladas para Secundaria
+$stmt = $conn->prepare("
+    SELECT 
+        c.curso,
+        c.paralelo,
+        m.nombre_materia,
+        p.nombres,
+        p.apellidos
+    FROM cursos_materias cm
+    JOIN cursos c ON cm.id_curso = c.id_curso
+    JOIN materias m ON cm.id_materia = m.id_materia
+    LEFT JOIN profesores_materias_cursos pmc ON cm.id_curso_materia = pmc.id_curso_materia
+    LEFT JOIN personal p ON pmc.id_personal = p.id_personal
+    WHERE c.nivel = 'Secundaria'
+    AND NOT EXISTS (
+        SELECT 1 FROM calificaciones cal 
+        WHERE cal.id_materia = cm.id_materia 
+        AND cal.bimestre = ? 
+        AND cal.id_estudiante IN (
+            SELECT e.id_estudiante FROM estudiantes e WHERE e.id_curso = c.id_curso
+        )
+    )
+    ORDER BY c.curso, c.paralelo, m.nombre_materia
+");
+$stmt->execute([$bimestre_seleccionado]);
+$secundaria_materias_pendientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -226,6 +280,32 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
             color: #dc3545;
             font-weight: 600;
         }
+        .btn-info-materias {
+            background: #17a2b8;
+            border: none;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+        }
+        .btn-info-materias:hover {
+            background: #138496;
+            color: white;
+            transform: scale(1.05);
+        }
+        .materia-pendiente-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid #ffc107;
+        }
+        .profesor-info {
+            color: #6c757d;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -249,9 +329,6 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
                             <a href="?bimestre=<?php echo $i; ?>" 
                                class="btn btn-trimestre <?php echo $bimestre_seleccionado == $i ? 'active' : ''; ?>">
                                 Trimestre <?php echo $i; ?>
-                                <?php if ($i == $bimestre_activo): ?>
-                                    <span class="badge bg-warning text-dark ms-1">Activo</span>
-                                <?php endif; ?>
                             </a>
                         <?php endfor; ?>
                     </div>
@@ -319,6 +396,7 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
                                         <th>Materias Cargadas</th>
                                         <th>Materias Pendientes</th>
                                         <th>Progreso</th>
+                                        <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -345,6 +423,15 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
                                                         <?php echo $porcentaje_curso; ?>%
                                                     </div>
                                                 </div>
+                                            </td>
+                                            <td>
+                                                <?php if ($curso['materias_pendientes'] > 0): ?>
+                                                    <button type="button" class="btn btn-info-materias" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#modalPrimaria<?php echo $curso['curso'] . $curso['paralelo']; ?>">
+                                                        Info
+                                                    </button>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -375,6 +462,7 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
                                         <th>Materias Cargadas</th>
                                         <th>Materias Pendientes</th>
                                         <th>Progreso</th>
+                                        <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -402,6 +490,15 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
                                                     </div>
                                                 </div>
                                             </td>
+                                            <td>
+                                                <?php if ($curso['materias_pendientes'] > 0): ?>
+                                                    <button type="button" class="btn btn-info-materias" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#modalSecundaria<?php echo $curso['curso'] . $curso['paralelo']; ?>">
+                                                        Info
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -412,6 +509,100 @@ $porcentaje_completado = $total_materias > 0 ? round(($total_cargadas / $total_m
             </main>
         </div>
     </div>
+
+    <!-- Modales para Primaria -->
+    <?php foreach ($primaria_stats as $curso): ?>
+        <?php if ($curso['materias_pendientes'] > 0): ?>
+            <!-- Filtrar materias pendientes para este curso específico -->
+            <?php 
+            $materias_curso = array_filter($primaria_materias_pendientes, function($materia) use ($curso) {
+                return $materia['curso'] == $curso['curso'] && $materia['paralelo'] == $curso['paralelo'];
+            });
+            ?>
+            <div class="modal fade" id="modalPrimaria<?php echo $curso['curso'] . $curso['paralelo']; ?>" tabindex="-1" aria-labelledby="modalLabel<?php echo $curso['curso'] . $curso['paralelo']; ?>" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modalLabel<?php echo $curso['curso'] . $curso['paralelo']; ?>">
+                                Materias Pendientes - Primaria <?php echo $curso['curso'] . $curso['paralelo']; ?>
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <strong>Trimestre <?php echo $bimestre_seleccionado; ?>:</strong> 
+                                Faltan <?php echo $curso['materias_pendientes']; ?> materias por cargar notas.
+                            </div>
+                            <?php foreach ($materias_curso as $materia): ?>
+                                <div class="materia-pendiente-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong><?php echo htmlspecialchars($materia['nombre_materia']); ?></strong>
+                                        </div>
+                                        <?php if ($materia['nombres'] && $materia['apellidos']): ?>
+                                            <div class="profesor-info">
+                                                Prof: <?php echo htmlspecialchars($materia['nombres'] . ' ' . $materia['apellidos']); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+    <?php endforeach; ?>
+
+    <!-- Modales para Secundaria -->
+    <?php foreach ($secundaria_stats as $curso): ?>
+        <?php if ($curso['materias_pendientes'] > 0): ?>
+            <!-- Filtrar materias pendientes para este curso específico -->
+            <?php 
+            $materias_curso = array_filter($secundaria_materias_pendientes, function($materia) use ($curso) {
+                return $materia['curso'] == $curso['curso'] && $materia['paralelo'] == $curso['paralelo'];
+            });
+            ?>
+            <div class="modal fade" id="modalSecundaria<?php echo $curso['curso'] . $curso['paralelo']; ?>" tabindex="-1" aria-labelledby="modalLabel<?php echo $curso['curso'] . $curso['paralelo']; ?>" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modalLabel<?php echo $curso['curso'] . $curso['paralelo']; ?>">
+                                Materias Pendientes - Secundaria <?php echo $curso['curso'] . $curso['paralelo']; ?>
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <strong>Trimestre <?php echo $bimestre_seleccionado; ?>:</strong> 
+                                Faltan <?php echo $curso['materias_pendientes']; ?> materias por cargar notas.
+                            </div>
+                            <?php foreach ($materias_curso as $materia): ?>
+                                <div class="materia-pendiente-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong><?php echo htmlspecialchars($materia['nombre_materia']); ?></strong>
+                                        </div>
+                                        <?php if ($materia['nombres'] && $materia['apellidos']): ?>
+                                            <div class="profesor-info">
+                                                Prof: <?php echo htmlspecialchars($materia['nombres'] . ' ' . $materia['apellidos']); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+    <?php endforeach; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
