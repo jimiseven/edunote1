@@ -235,6 +235,12 @@ function active($str, $current)
                         </a>
                     </li>
                     <li>
+                        <a class="nav-link <?php echo active('monitor', $current); ?>" href="monitor.php">
+                            <span data-feather="monitor"></span>
+                            Monitor
+                        </a>
+                    </li>
+                    <li>
                         <a class="nav-link <?php echo active('tablon', $current); ?>" href="anuncios.php">
                             <span data-feather="calendar"></span>
                             Tablon
