@@ -36,6 +36,27 @@ if ($stmt_curso->rowCount() == 0) {
 $curso_info = $stmt_curso->fetch(PDO::FETCH_ASSOC);
 $nombre_curso = "{$curso_info['nivel']} {$curso_info['curso']} \"{$curso_info['paralelo']}\"";
 
+// Obtener lista ordenada de cursos para navegación Anterior/Siguiente
+$stmt_all_cursos = $conn->prepare("SELECT id_curso, nivel, curso, paralelo FROM cursos ORDER BY nivel, curso, paralelo");
+$stmt_all_cursos->execute();
+$lista_cursos = $stmt_all_cursos->fetchAll(PDO::FETCH_ASSOC);
+
+$prev_curso_id = null;
+$next_curso_id = null;
+if (!empty($lista_cursos)) {
+    foreach ($lista_cursos as $index => $curso_row) {
+        if (intval($curso_row['id_curso']) === $id_curso) {
+            if ($index > 0) {
+                $prev_curso_id = intval($lista_cursos[$index - 1]['id_curso']);
+            }
+            if ($index < count($lista_cursos) - 1) {
+                $next_curso_id = intval($lista_cursos[$index + 1]['id_curso']);
+            }
+            break;
+        }
+    }
+}
+
 $stmt_estudiantes = $conn->prepare("
     SELECT id_estudiante, apellido_paterno, apellido_materno, nombres 
     FROM estudiantes 
@@ -516,6 +537,27 @@ $estudiantes_ordenados = $estudiantes;
                     </div>
                 <?php endif; ?>
                 <div class="d-flex gap-2">
+                        <?php if ($prev_curso_id !== null): ?>
+                            <a href="ver_curso.php?id=<?= $prev_curso_id ?>&vista=<?= urlencode($vista) ?>&trimestre=<?= (int)$trimestre ?>"
+                               class="btn btn-outline-secondary btn-sm" title="Curso anterior">
+                                <i class="bi bi-chevron-left"></i> Anterior
+                            </a>
+                        <?php else: ?>
+                            <button class="btn btn-outline-secondary btn-sm" title="No hay curso anterior" disabled>
+                                <i class="bi bi-chevron-left"></i> Anterior
+                            </button>
+                        <?php endif; ?>
+
+                        <?php if ($next_curso_id !== null): ?>
+                            <a href="ver_curso.php?id=<?= $next_curso_id ?>&vista=<?= urlencode($vista) ?>&trimestre=<?= (int)$trimestre ?>"
+                               class="btn btn-outline-secondary btn-sm" title="Curso siguiente">
+                                Siguiente <i class="bi bi-chevron-right"></i>
+                            </a>
+                        <?php else: ?>
+                            <button class="btn btn-outline-secondary btn-sm" title="No hay curso siguiente" disabled>
+                                Siguiente <i class="bi bi-chevron-right"></i>
+                            </button>
+                        <?php endif; ?>
                         <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
                             <i class="bi bi-pencil"></i> Editar
                         </a>
