@@ -193,6 +193,38 @@ $secundaria_materias_pendientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.css" rel="stylesheet">
     <link href="../css/styles.css" rel="stylesheet">
     <style>
+        /* Estilos para fijar el sidebar */
+        .sidebar {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 1000;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        /* Ajustar el contenido principal para compensar el sidebar fijo */
+        main {
+            margin-left: 16.666667%; /* col-md-3 */
+        }
+        
+        @media (min-width: 992px) {
+            main {
+                margin-left: 16.666667%; /* col-lg-2 */
+            }
+        }
+        
+        @media (max-width: 767.98px) {
+            .sidebar {
+                position: static !important;
+                height: auto;
+            }
+            main {
+                margin-left: 0;
+            }
+        }
+        
         .stats-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -305,6 +337,46 @@ $secundaria_materias_pendientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             color: #6c757d;
             font-size: 0.9rem;
             font-style: italic;
+        }
+        
+        /* Estilos adicionales para el sidebar */
+        #sidebarMenu {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 1000;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: #4abff9 #181f2c;
+        }
+        
+        /* Personalizar scrollbar del sidebar */
+        #sidebarMenu::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        #sidebarMenu::-webkit-scrollbar-track {
+            background: #181f2c;
+        }
+        
+        #sidebarMenu::-webkit-scrollbar-thumb {
+            background: #4abff9;
+            border-radius: 3px;
+        }
+        
+        #sidebarMenu::-webkit-scrollbar-thumb:hover {
+            background: #3a9fd8;
+        }
+        
+        /* Asegurar que el contenido principal no interfiera con el sidebar */
+        .container-fluid {
+            padding-left: 0;
+        }
+        
+        .row {
+            margin-left: 0;
         }
     </style>
 </head>
@@ -611,6 +683,35 @@ $secundaria_materias_pendientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         if (typeof feather !== 'undefined') {
             feather.replace();
         }
+
+        // Función para fijar el sidebar
+        function fixSidebar() {
+            const sidebar = document.getElementById('sidebarMenu');
+            const main = document.querySelector('main');
+            
+            if (sidebar && main) {
+                // Asegurar que el sidebar esté fijo
+                sidebar.style.position = 'fixed';
+                sidebar.style.top = '0';
+                sidebar.style.left = '0';
+                sidebar.style.height = '100vh';
+                sidebar.style.zIndex = '1000';
+                sidebar.style.overflowY = 'auto';
+                sidebar.style.overflowX = 'hidden';
+                
+                // Ajustar el margen del contenido principal
+                const sidebarWidth = sidebar.offsetWidth;
+                main.style.marginLeft = sidebarWidth + 'px';
+            }
+        }
+
+        // Aplicar cuando se carga la página
+        document.addEventListener('DOMContentLoaded', function() {
+            fixSidebar();
+            
+            // Aplicar también cuando se redimensiona la ventana
+            window.addEventListener('resize', fixSidebar);
+        });
 
         // Actualizar la página cada 5 minutos para mantener la información actualizada
         setTimeout(function() {
