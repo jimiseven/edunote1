@@ -45,15 +45,55 @@ try {
     $curso_info = $stmt_curso->fetch(PDO::FETCH_ASSOC);
     $nombre_curso = "{$curso_info['nivel']} {$curso_info['curso']} \"{$curso_info['paralelo']}\"";
 
+    // Función auxiliar para normalizar strings en español
+    function normalizeSpanishString($str) {
+        // Convertir a minúsculas para comparación
+        $str = mb_strtolower($str, 'UTF-8');
+        
+        // Reemplazar caracteres especiales del español
+        $replacements = [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+            'à' => 'a', 'è' => 'e', 'ì' => 'i', 'ò' => 'o', 'ù' => 'u',
+            'ä' => 'a', 'ë' => 'e', 'ï' => 'i', 'ö' => 'o', 'ü' => 'u'
+        ];
+        
+        return strtr($str, $replacements);
+    }
+
     // Obtener lista de estudiantes
     $stmt_estudiantes = $conn->prepare("
         SELECT id_estudiante, apellido_paterno, apellido_materno, nombres 
         FROM estudiantes 
         WHERE id_curso = ?
-        ORDER BY apellido_paterno, apellido_materno, nombres
     ");
     $stmt_estudiantes->execute([$id_curso]);
     $estudiantes = $stmt_estudiantes->fetchAll(PDO::FETCH_ASSOC);
+
+    // Ordenar estudiantes alfabéticamente considerando caracteres españoles
+    usort($estudiantes, function($a, $b) {
+        // Normalizar caracteres para comparación correcta en español
+        $a_paterno = normalizeSpanishString($a['apellido_paterno']);
+        $b_paterno = normalizeSpanishString($b['apellido_paterno']);
+        $a_materno = normalizeSpanishString($a['apellido_materno']);
+        $b_materno = normalizeSpanishString($b['apellido_materno']);
+        $a_nombres = normalizeSpanishString($a['nombres']);
+        $b_nombres = normalizeSpanishString($b['nombres']);
+        
+        // Comparar primero por apellido paterno
+        $cmp_apellido = strcoll($a_paterno, $b_paterno);
+        if ($cmp_apellido !== 0) {
+            return $cmp_apellido;
+        }
+        
+        // Si apellido paterno es igual, comparar por apellido materno
+        $cmp_materno = strcoll($a_materno, $b_materno);
+        if ($cmp_materno !== 0) {
+            return $cmp_materno;
+        }
+        
+        // Si ambos apellidos son iguales, comparar por nombres
+        return strcoll($a_nombres, $b_nombres);
+    });
 
     // Obtener materias
     $stmt_materias = $conn->prepare("
@@ -100,6 +140,28 @@ try {
         }
     }
 
+    // NOTA AUTOMÁTICA para materias padre (promedio de hijas por trimestre)
+    foreach ($estudiantes as $estudiante) {
+        foreach ($materias_padre as $padre) {
+            if (!empty($padre['hijas'])) {
+                for ($t = 1; $t <= 3; $t++) {
+                    $suma = 0;
+                    $contador = 0;
+                    foreach ($padre['hijas'] as $hija) {
+                        $nota_hija = $calificaciones[$estudiante['id_estudiante']][$hija['id_materia']][$t] ?? '';
+                        if ($nota_hija !== '') {
+                            $suma += floatval($nota_hija);
+                            $contador++;
+                        }
+                    }
+                    if ($contador > 0) {
+                        $calificaciones[$estudiante['id_estudiante']][$padre['id_materia']][$t] = number_format($suma / $contador, 2);
+                    }
+                }
+            }
+        }
+    }
+
     // Promedios
     $promedios_materias = [];
     foreach ($estudiantes as $estudiante) {
@@ -109,6 +171,64 @@ try {
             $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] =
                 count($notas_validas) > 0 ? number_format(array_sum($notas_validas) / count($notas_validas), 2) : '';
         }
+    }
+
+    // PRIMERO: Calcular promedios para materias padre con hijas ANTES de calcular promedios generales
+    foreach ($estudiantes as $estudiante) {
+        foreach ($materias_padre as $padre) {
+            if (!empty($padre['hijas'])) {
+                $suma_hijas = 0;
+                $contador_hijas = 0;
+                
+                foreach ($padre['hijas'] as $hija) {
+                    $promedio_hija = $promedios_materias[$estudiante['id_estudiante']][$hija['id_materia']] ?? '';
+                    if ($promedio_hija !== '') {
+                        $suma_hijas += floatval($promedio_hija);
+                        $contador_hijas++;
+                    }
+                }
+                
+                if ($contador_hijas > 0) {
+                    $promedio_padre = $suma_hijas / $contador_hijas;
+                    $promedios_materias[$estudiante['id_estudiante']][$padre['id_materia']] = number_format($promedio_padre, 2);
+                }
+            }
+        }
+    }
+
+    // SEGUNDO: Calcular promedios generales para todos los estudiantes
+    $promedios_generales = [];
+    foreach ($estudiantes as $estudiante) {
+        $suma = 0;
+        $contador = 0;
+        
+        // Solo contar materias padre (no hijas) para el promedio general
+        foreach ($todas_materias as $materia) {
+            if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1) continue;
+            
+            $promedio = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
+            if ($promedio !== '') {
+                $suma += floatval($promedio);
+                $contador++;
+            }
+        }
+        
+        $promedios_generales[$estudiante['id_estudiante']] = ($contador > 0) ? number_format($suma / $contador, 2) : '-';
+    }
+
+    // TERCERO: Calcular posiciones según promedio general
+    $promedios_ordenados = $promedios_generales;
+    arsort($promedios_ordenados);
+    $posiciones = [];
+    $pos_actual = 1;
+    $prom_anterior = null;
+
+    foreach ($promedios_ordenados as $id_est => $prom) {
+        if ($prom_anterior !== null && $prom < $prom_anterior) {
+            $pos_actual++;
+        }
+        $posiciones[$id_est] = $pos_actual;
+        $prom_anterior = $prom;
     }
 
     // Crear clase personalizada para header/footer
@@ -130,23 +250,23 @@ try {
 
     // Crear PDF
     $pdf = new CustomPDF('L', 'mm', 'A4', true, 'UTF-8', false);
-    $pdf->SetMargins(10, 30, 10);
+    $pdf->SetMargins(8, 25, 8);
     $pdf->AddPage();
-    $pdf->SetFont('helvetica', 'B', 12);
-    $pdf->Cell(0, 10, strtoupper($nombre_curso), 0, 1, 'C');
-    $pdf->Ln(5);
+    $pdf->SetFont('helvetica', 'B', 11);
+    $pdf->Cell(0, 8, strtoupper($nombre_curso), 0, 1, 'C');
+    $pdf->Ln(3);
 
     // Encabezados de tabla
-    $pdf->SetFont('helvetica', 'B', 8);
-    $pdf->SetFillColor(41, 128, 185);
+    $pdf->SetFont('helvetica', 'B', 7);
+    $pdf->SetFillColor(0, 0, 0); // Negro para B&N
     $pdf->SetTextColor(255, 255, 255);
 
-    $widths = [10, 50];
-    $header = ['#', 'Estudiante'];
+    $widths = [8, 8, 45]; // Columnas más compactas
+    $header = ['#', 'Pos.', 'Estudiante'];
 
     foreach ($todas_materias as $materia) {
         if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1) continue;
-        $widths = array_merge($widths, [12, 12, 12, 15]);
+        $widths = array_merge($widths, [10, 10, 10, 12]); // Columnas más compactas
         $header = array_merge($header, [
             $materia['nombre_materia'] . ' T1',
             $materia['nombre_materia'] . ' T2',
@@ -154,43 +274,46 @@ try {
             $materia['nombre_materia'] . ' P'
         ]);
     }
-    $widths[] = 15;
+    $widths[] = 12; // Promedio general más compacto
     $header[] = 'P. General';
 
     foreach ($header as $i => $col) {
-        $pdf->Cell($widths[$i], 7, $col, 1, 0, 'C', true);
+        $pdf->Cell($widths[$i], 6, $col, 1, 0, 'C', true); // Altura reducida
     }
     $pdf->Ln();
 
     // Filas con alternancia de color
-    $pdf->SetFont('helvetica', '', 8);
+    $pdf->SetFont('helvetica', '', 7); // Fuente más pequeña
     $pdf->SetTextColor(0, 0, 0);
     $fill = false;
     $contador = 1;
 
     foreach ($estudiantes as $estudiante) {
         $pdf->SetFillColor($fill ? 245 : 255, $fill ? 245 : 255, $fill ? 245 : 255);
-        $pdf->Cell($widths[0], 6, $contador, 1, 0, 'C', $fill);
-        $pdf->Cell($widths[1], 6, strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}"), 1, 0, 'L', $fill);
+        $pdf->Cell($widths[0], 5, $contador, 1, 0, 'C', $fill); // Altura reducida
+        $pdf->Cell($widths[1], 5, $posiciones[$estudiante['id_estudiante']], 1, 0, 'C', $fill); // Altura reducida
+        $pdf->Cell($widths[2], 5, strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}"), 1, 0, 'L', $fill); // Altura reducida
 
-        $suma_total = 0;
-        $contador_materias = 0;
+        $col_index = 3; // Empezar desde la columna 3 (después de #, Pos., Estudiante)
         foreach ($todas_materias as $materia) {
             if ($materia['es_extra'] == 1 || $materia['es_submateria'] == 1) continue;
+            
+            // Mostrar notas de cada trimestre
             for ($i = 1; $i <= 3; $i++) {
                 $nota = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$i] ?? '';
-                $pdf->Cell(12, 6, $nota, 1, 0, 'C', $fill);
+                $pdf->Cell($widths[$col_index], 5, $nota, 1, 0, 'C', $fill); // Altura reducida
+                $col_index++;
             }
+            
+            // Mostrar promedio de la materia
             $promedio = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
-            $pdf->Cell(15, 6, $promedio, 1, 0, 'C', $fill);
-            if ($promedio !== '') {
-                $suma_total += $promedio;
-                $contador_materias++;
-            }
+            $pdf->Cell($widths[$col_index], 5, $promedio, 1, 0, 'C', $fill); // Altura reducida
+            $col_index++;
         }
 
-        $prom_general = $contador_materias > 0 ? number_format($suma_total / $contador_materias, 2) : '';
-        $pdf->Cell(15, 6, $prom_general, 1, 0, 'C', $fill);
+        // Mostrar promedio general ya calculado
+        $prom_general = $promedios_generales[$estudiante['id_estudiante']];
+        $pdf->Cell($widths[$col_index], 5, $prom_general, 1, 0, 'C', $fill); // Altura reducida
 
         $pdf->Ln();
         $fill = !$fill;
