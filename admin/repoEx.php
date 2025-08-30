@@ -180,12 +180,12 @@ $spreadsheet->getProperties()
 $headerStyle = [
     'font' => [
         'bold' => true, 
-        'color' => ['rgb' => 'FFFFFF'],
+        'color' => ['rgb' => '000000'],
         'size' => 10
     ],
     'fill' => [
         'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 
-        'startColor' => ['rgb' => '000000']
+        'startColor' => ['rgb' => 'FFFFFF']
     ],
     'borders' => [
         'allBorders' => [
@@ -202,7 +202,7 @@ $headerStyle = [
 $subHeaderStyle = [
     'font' => [
         'bold' => true,
-        'size' => 9,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'fill' => [
@@ -223,7 +223,7 @@ $subHeaderStyle = [
 
 $dataStyle = [
     'font' => [
-        'size' => 8,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'borders' => [
@@ -241,7 +241,7 @@ $dataStyle = [
 $positionStyle = [
     'font' => [
         'bold' => true,
-        'size' => 8,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'fill' => [
@@ -263,7 +263,7 @@ $positionStyle = [
 $numberStyle = [
     'font' => [
         'bold' => true,
-        'size' => 8,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'fill' => [
@@ -285,7 +285,7 @@ $numberStyle = [
 $studentNameStyle = [
     'font' => [
         'bold' => true,
-        'size' => 8,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'fill' => [
@@ -307,7 +307,7 @@ $studentNameStyle = [
 $averageStyle = [
     'font' => [
         'bold' => true,
-        'size' => 8,
+        'size' => 10,
         'color' => ['rgb' => '000000']
     ],
     'fill' => [
@@ -317,7 +317,7 @@ $averageStyle = [
     'borders' => [
         'allBorders' => [
             'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
-            'color' => ['rgb' => '000000']
+            'color' => ['rgb' => '666666']
         ]
     ],
     'alignment' => [
@@ -326,37 +326,88 @@ $averageStyle = [
     ]
 ];
 
+// Estilo para notas bajas (rojo)
+$lowGradeStyle = [
+    'font' => [
+        'size' => 10,
+        'color' => ['rgb' => 'FF0000'] // Color rojo para notas bajas
+    ],
+    'borders' => [
+        'allBorders' => [
+            'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+            'color' => ['rgb' => '666666']
+        ]
+    ],
+    'alignment' => [
+        'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+        'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+    ]
+];
+
+
+
+// Pre-calcular coordenadas de materias para optimización
+$coordenadas_materias = [];
+$col = 4;
+foreach ($materias as $materia) {
+    $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+    $endColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 3);
+    
+    $coordenadas_materias[] = [
+        'col' => $col,
+        'colLetter' => $colLetter,
+        'endColLetter' => $endColLetter,
+        'es_extra' => $materia['es_extra'],
+        'nombre_materia' => $materia['nombre_materia']
+    ];
+    
+    $col += 4;
+}
+
 // Escribir encabezados
 $sheet->setCellValue('A1', '#');
 $sheet->setCellValue('B1', 'Pos.');
 $sheet->setCellValue('C1', 'Estudiante');
 
-    $col = 4;
-    foreach ($materias as $materia) {
-        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
-        $endColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 3);
-        $sheet->setCellValue($colLetter.'1', $materia['nombre_materia']);
-        $sheet->mergeCells($colLetter.'1:'.$endColLetter.'1');
-        
-        // Aplicar estilo especial para materias extras en el encabezado (gris oscuro para B&N)
-        if ($materia['es_extra'] == 1) {
-            $sheet->getStyle($colLetter.'1:'.$endColLetter.'1')->getFill()
-                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                ->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('808080'));
+// Escribir nombres de materias y aplicar estilos por lotes
+foreach ($coordenadas_materias as $coord) {
+    // Abreviar nombre de materia si tiene más de una palabra
+    $nombre_materia_abreviado = $coord['nombre_materia'];
+    $palabras = explode(' ', trim($coord['nombre_materia']));
+    if (count($palabras) > 1) {
+        $primera_palabra = $palabras[0];
+        $abreviaturas = [];
+        for ($i = 1; $i < count($palabras); $i++) {
+            if (!empty($palabras[$i])) {
+                $abreviaturas[] = substr($palabras[$i], 0, 1);
+            }
         }
-        
-        $col += 4;
+        $nombre_materia_abreviado = $primera_palabra . '.' . implode('.', $abreviaturas) . '.';
     }
-    $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
-    $sheet->setCellValue($colLetter.'1', 'P. General');
-    $sheet->mergeCells($colLetter.'1:'.$colLetter.'2');
+    
+    $sheet->setCellValue($coord['colLetter'].'1', $nombre_materia_abreviado);
+    $sheet->mergeCells($coord['colLetter'].'1:'.$coord['endColLetter'].'1');
+    
+    // Aplicar estilo especial para materias extras en el encabezado (gris oscuro para B&N)
+    if ($coord['es_extra'] == 1) {
+        $sheet->getStyle($coord['colLetter'].'1:'.$coord['endColLetter'].'1')->getFill()
+            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('808080'));
+    }
+}
+
+// Definir la última columna del encabezado
+$lastColHeader = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+
+$colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+$sheet->setCellValue($colLetter.'1', 'PG');
+$sheet->mergeCells($colLetter.'1:'.$colLetter.'2');
 
 // Ajustar altura de filas para diseño compacto
 $sheet->getRowDimension(1)->setRowHeight(18); // Altura para nombres de materias
 $sheet->getRowDimension(2)->setRowHeight(14); // Altura para subencabezados
 
 // Aplicar estilo a encabezado principal
-$lastColHeader = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
 $sheet->getStyle('A1:'.$lastColHeader.'1')->applyFromArray($headerStyle);
 
 // Escribir subencabezados
@@ -364,18 +415,44 @@ $sheet->setCellValue('A2', '#');
 $sheet->setCellValue('B2', 'Pos.');
 $sheet->setCellValue('C2', 'Estudiante');
 
-    $col = 4;
-    foreach ($materias as $materia) {
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).'2', 'T1');
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1).'2', 'T2');
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 2).'2', 'T3');
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 3).'2', 'P');
-        $col += 4;
-    }
+// Escribir subencabezados de materias usando coordenadas pre-calculadas
+foreach ($coordenadas_materias as $coord) {
+    $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col']).'2', 'T1');
+    $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 1).'2', 'T2');
+    $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 2).'2', 'T3');
+    $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 3).'2', 'P');
+}
+
+// Agregar columna PG en subencabezados
+$colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+$sheet->setCellValue($colLetter.'2', 'PG');
 
 // Aplicar estilo a subencabezados
 $lastColSubheader = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
 $sheet->getStyle('A2:'.$lastColSubheader.'2')->applyFromArray($subHeaderStyle);
+
+// Aplicar bordes negros alrededor de cada materia en los encabezados usando coordenadas pre-calculadas
+foreach ($coordenadas_materias as $coord) {
+    // Borde superior de la materia
+    $sheet->getStyle($coord['colLetter'].'1:'.$coord['endColLetter'].'1')->getBorders()->getTop()
+        ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+        ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+    
+    // Borde inferior de la materia
+    $sheet->getStyle($coord['colLetter'].'2:'.$coord['endColLetter'].'2')->getBorders()->getBottom()
+        ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+        ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+    
+    // Borde izquierdo de la materia
+    $sheet->getStyle($coord['colLetter'].'1:'.$coord['colLetter'].'2')->getBorders()->getLeft()
+        ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+        ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+    
+    // Borde derecho de la materia
+    $sheet->getStyle($coord['endColLetter'].'1:'.$coord['endColLetter'].'2')->getBorders()->getRight()
+        ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+        ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+}
 
 // PRIMERO: Calcular promedios para materias padre con hijas ANTES de calcular promedios generales
 foreach ($estudiantes as $estudiante) {
@@ -472,6 +549,8 @@ usort($estudiantes_ordenados, function($a, $b) {
 // Escribir datos de estudiantes con estilos específicos
 $row = 3;
 $contador = 1;
+
+// Procesar estudiantes usando coordenadas pre-calculadas
 foreach ($estudiantes_ordenados as $estudiante) {
     // Columna # (número secuencial)
     $sheet->setCellValue('A'.$row, $contador);
@@ -485,39 +564,59 @@ foreach ($estudiantes_ordenados as $estudiante) {
     $sheet->setCellValue('C'.$row, strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}"));
     $sheet->getStyle('C'.$row)->applyFromArray($studentNameStyle);
     
-    $col = 4;
-    foreach ($materias as $materia) {
+    // Procesar materias usando coordenadas pre-calculadas
+    foreach ($coordenadas_materias as $coord) {
+        $materia = $materias[($coord['col'] - 4) / 4];
         $n1 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][1] ?? '';
         $n2 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][2] ?? '';
         $n3 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][3] ?? '';
         $pm = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
         
-        // Aplicar estilos específicos según el tipo de dato
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).$row, $n1);
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 1).$row, $n2);
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 2).$row, $n3);
+        // Escribir valores
+        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col']).$row, $n1);
+        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 1).$row, $n2);
+        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 2).$row, $n3);
+        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 3).$row, $pm);
         
-        // Columna de promedio (P) con estilo especial
-        $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 3).$row, $pm);
-        $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + 3).$row)->applyFromArray($averageStyle);
+        // Aplicar estilo rojo para notas bajas (≤50) - solo color de fuente
+        if ($n1 !== '' && floatval($n1) <= 50) {
+            $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col']).$row)->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0000'));
+        }
+        if ($n2 !== '' && floatval($n2) <= 50) {
+            $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 1).$row)->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0000'));
+        }
+        if ($n3 !== '' && floatval($n3) <= 50) {
+            $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 2).$row)->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0000'));
+        }
         
         // Aplicar estilo especial para materias extras (gris claro para B&N)
-        if ($materia['es_extra'] == 1) {
+        if ($coord['es_extra'] == 1) {
             for ($i = 0; $i < 4; $i++) {
-                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col + $i);
+                $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + $i);
                 $sheet->getStyle($colLetter.$row)->getFill()
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                     ->setStartColor(new \PhpOffice\PhpSpreadsheet\Style\Color('F0F0F0'));
             }
         }
         
-        $col += 4;
+        // Aplicar estilo de promedio (P)
+        $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 3).$row)->applyFromArray($averageStyle);
+        
+        // Aplicar estilo rojo para promedios bajos (≤50)
+        if ($pm !== '' && floatval($pm) <= 50) {
+            $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($coord['col'] + 3).$row)->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0000'));
+        }
     }
     
     // Promedio general con estilo destacado
     $promedio_general = $promedios_generales[$estudiante['id_estudiante']];
     $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).$row, $promedio_general);
     $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).$row)->applyFromArray($averageStyle);
+    
+    // Aplicar estilo rojo para promedio general bajo (≤50)
+    if ($promedio_general !== '-' && floatval($promedio_general) <= 50) {
+        $sheet->getStyle(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col).$row)->getFont()->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FF0000'));
+    }
     
     $contador++;
     $row++;
@@ -526,8 +625,11 @@ foreach ($estudiantes_ordenados as $estudiante) {
 // Aplicar estilos alternados para mejor legibilidad
 $lastColData = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
 for ($r = 3; $r < $row; $r++) {
-    // Aplicar estilo base a toda la fila
-    $sheet->getStyle('A'.$r.':'.$lastColData.$r)->applyFromArray($dataStyle);
+    // Aplicar estilo base a toda la fila (solo bordes, no color de fuente)
+    $sheet->getStyle('A'.$r.':'.$lastColData.$r)->getBorders()->applyFromArray($dataStyle['borders']);
+    
+    // Aplicar alineación centrada solo a las columnas de notas (no a la columna de nombres)
+    $sheet->getStyle('A'.$r.':'.$lastColData.$r)->getAlignment()->applyFromArray($dataStyle['alignment']);
     
     // Aplicar color de fondo alternado para mejor legibilidad (gris muy claro para B&N)
     if ($r % 2 == 0) {
@@ -537,9 +639,24 @@ for ($r = 3; $r < $row; $r++) {
     }
 }
 
+// Aplicar bordes negros alrededor de cada materia en las filas de datos usando coordenadas pre-calculadas
+foreach ($coordenadas_materias as $coord) {
+    for ($r = 3; $r < $row; $r++) {
+        // Borde izquierdo de la materia
+        $sheet->getStyle($coord['colLetter'].$r)->getBorders()->getLeft()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+            ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+        
+        // Borde derecho de la materia
+        $sheet->getStyle($coord['endColLetter'].$r)->getBorders()->getRight()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THICK)
+            ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+    }
+}
+
 // Ajustar ancho de columnas para diseño compacto
-$sheet->getColumnDimension('A')->setWidth(4);  // Columna #
-$sheet->getColumnDimension('B')->setWidth(4);  // Columna Pos.
+$sheet->getColumnDimension('A')->setWidth(3);  // Columna # (máximo 3 dígitos)
+$sheet->getColumnDimension('B')->setWidth(3);  // Columna Pos. (máximo 3 dígitos)
 $sheet->getColumnDimension('C')->setWidth(25); // Columna Estudiante
 
 // Columnas de notas (ancho compacto)
