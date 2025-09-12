@@ -550,7 +550,7 @@ foreach ($estudiantes as $est) {
                 doc.setFont('helvetica', 'bold');
                 doc.text("CURSO :", 40, 85);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`${nombreCurso} PRIMARIA`, 120, 85);
+                doc.text(`${nombreCurso}`, 120, 85);
 
                 doc.setFont('helvetica', 'bold');
                 doc.text("GESTIÓN :", 460, 85);
