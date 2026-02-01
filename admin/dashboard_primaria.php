@@ -212,13 +212,21 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             <td><?php echo $n++; ?></td>
                                             <td><?php echo htmlspecialchars("{$curso['curso']} {$curso['paralelo']}"); ?></td>
                                             <td>
-                                                <a href="ver_curso.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
-                                                    Ver Centralizador
-                                                </a>
-                                                <a href="boletin_primaria.php?id_curso=<?= $curso['id_curso'] ?>"
-                                                    class="btn btn-success btn-action">
-                                                    <i class="ri-printer-line"></i> Boletín
-                                                </a>
+                                                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                                                    <a href="ver_curso.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
+                                                        Ver Centralizador
+                                                    </a>
+                                                    <a href="boletin_primaria.php?id_curso=<?= $curso['id_curso'] ?>"
+                                                        class="btn btn-success btn-action">
+                                                        <i class="ri-printer-line"></i> Boletín
+                                                    </a>
+                                                    <a href="asistencia_excel.php?id_curso=<?= $curso['id_curso'] ?>" class="btn btn-info btn-action">
+                                                        Asistencia
+                                                    </a>
+                                                    <a href="nomina_excel.php?id_curso=<?= $curso['id_curso'] ?>" class="btn btn-warning btn-action">
+                                                        Nómina
+                                                    </a>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
