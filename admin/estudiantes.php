@@ -8,6 +8,37 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
     exit();
 }
 
+if (isset($_GET['action']) && $_GET['action'] === 'buscar_responsable') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $ci = isset($_GET['ci']) ? trim($_GET['ci']) : '';
+    if ($ci === '') {
+        echo json_encode(['found' => false]);
+        exit();
+    }
+
+    try {
+        $db = new Database();
+        $conn = $db->connect();
+
+        $stmt = $conn->prepare('SELECT id_responsable, nombre, apellido, carnet_identidad, telefono FROM responsables WHERE carnet_identidad = :ci LIMIT 1');
+        $stmt->bindParam(':ci', $ci);
+        $stmt->execute();
+        $responsable = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($responsable) {
+            echo json_encode(['found' => true, 'responsable' => $responsable]);
+            exit();
+        }
+
+        echo json_encode(['found' => false]);
+        exit();
+    } catch (PDOException $e) {
+        echo json_encode(['found' => false, 'error' => 'Error al buscar responsable']);
+        exit();
+    }
+}
+
 $db = new Database();
 $conn = $db->connect();
 
@@ -88,6 +119,22 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="row g-0">
             <?php include '../includes/sidebar.php'; ?>
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <?php if (isset($_SESSION['success'])): ?>
+                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                        <?php echo htmlspecialchars($_SESSION['success']); ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <?php unset($_SESSION['success']); ?>
+                <?php endif; ?>
+
+                <?php if (isset($_SESSION['error'])): ?>
+                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                        <?php echo htmlspecialchars($_SESSION['error']); ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    <?php unset($_SESSION['error']); ?>
+                <?php endif; ?>
+
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h1 class="main-title">Listado de Estudiantes</h1>
                     <div class="d-flex gap-3 align-items-center">
@@ -200,11 +247,11 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                             <div class="col-md-3">
                                 <label for="rude" class="form-label">RUDE*</label>
-                                <input type="text" class="form-control" id="rude" name="rude" required>
+                                <input type="text" class="form-control" id="rude" name="rude">
                             </div>
                             <div class="col-md-3">
                                 <label for="ci" class="form-label">CI*</label>
-                                <input type="text" class="form-control" id="ci" name="ci" required>
+                                <input type="text" class="form-control" id="ci" name="ci">
                             </div>
                             <div class="col-md-3">
                                 <label for="fecha_nacimiento" class="form-label">F. Nacimiento</label>
@@ -231,6 +278,32 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     ?>
                                 </select>
                             </div>
+
+                            <input type="hidden" id="id_responsable" name="id_responsable" value="">
+
+                            <div class="col-12 mt-2">
+                                <hr class="my-2">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="responsable_ci" class="form-label">CI Responsable*</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="responsable_ci" name="responsable_ci">
+                                    <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable">Buscar</button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_nombre" class="form-label">Nombre Responsable*</label>
+                                <input type="text" class="form-control" id="responsable_nombre" name="responsable_nombre">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_apellido" class="form-label">Apellido Responsable*</label>
+                                <input type="text" class="form-control" id="responsable_apellido" name="responsable_apellido">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_telefono" class="form-label">Teléfono Responsable</label>
+                                <input type="text" class="form-control" id="responsable_telefono" name="responsable_telefono">
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -243,5 +316,50 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <script>
+        const btnBuscarResponsable = document.getElementById('btnBuscarResponsable');
+        const responsableCi = document.getElementById('responsable_ci');
+        const idResponsable = document.getElementById('id_responsable');
+        const responsableNombre = document.getElementById('responsable_nombre');
+        const responsableApellido = document.getElementById('responsable_apellido');
+        const responsableTelefono = document.getElementById('responsable_telefono');
+
+        async function buscarResponsablePorCi() {
+            const ci = (responsableCi.value || '').trim();
+            if (ci === '') {
+                return;
+            }
+
+            btnBuscarResponsable.disabled = true;
+            try {
+                const res = await fetch(`estudiantes.php?action=buscar_responsable&ci=${encodeURIComponent(ci)}`);
+                const data = await res.json();
+
+                if (data && data.found && data.responsable) {
+                    idResponsable.value = data.responsable.id_responsable || '';
+                    responsableNombre.value = data.responsable.nombre || '';
+                    responsableApellido.value = data.responsable.apellido || '';
+                    responsableTelefono.value = data.responsable.telefono || '';
+                } else {
+                    idResponsable.value = '';
+                    responsableNombre.value = '';
+                    responsableApellido.value = '';
+                    responsableTelefono.value = '';
+                }
+            } catch (e) {
+                idResponsable.value = '';
+            } finally {
+                btnBuscarResponsable.disabled = false;
+            }
+        }
+
+        btnBuscarResponsable.addEventListener('click', buscarResponsablePorCi);
+        responsableCi.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                buscarResponsablePorCi();
+            }
+        });
+    </script>
 </body>
 </html>
