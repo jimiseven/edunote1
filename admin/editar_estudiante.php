@@ -19,7 +19,18 @@ if (!$id_estudiante) {
 }
 
 // Obtener datos del estudiante
-$sql = "SELECT * FROM estudiantes WHERE id_estudiante = ?";
+$sql = "
+    SELECT 
+        e.*, 
+        r.id_responsable AS resp_id_responsable,
+        r.nombre AS resp_nombre,
+        r.apellido AS resp_apellido,
+        r.carnet_identidad AS resp_carnet_identidad,
+        r.telefono AS resp_telefono
+    FROM estudiantes e
+    LEFT JOIN responsables r ON e.id_responsable = r.id_responsable
+    WHERE e.id_estudiante = ?
+";
 $stmt = $conn->prepare($sql);
 $stmt->execute([$id_estudiante]);
 $estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -38,7 +49,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ci = trim($_POST['ci']);
         $genero = $_POST['genero'];
         $rude = trim($_POST['rude']);
+        $fecha_nacimiento = isset($_POST['fecha_nacimiento']) ? trim($_POST['fecha_nacimiento']) : null;
         $id_curso = $_POST['curso'];
+        $id_responsable = isset($_POST['id_responsable']) ? trim($_POST['id_responsable']) : '';
+        $estado_1 = isset($_POST['estado_1']) ? trim($_POST['estado_1']) : '';
+        $estado_2 = isset($_POST['estado_2']) ? trim($_POST['estado_2']) : '';
+
+        $nombres = ($nombres === '') ? null : $nombres;
+        $apellido_paterno = ($apellido_paterno === '') ? null : $apellido_paterno;
+        $apellido_materno = ($apellido_materno === '') ? null : $apellido_materno;
+        $ci = ($ci === '') ? null : $ci;
+        $rude = ($rude === '') ? null : $rude;
+
+        $id_responsable = ($id_responsable === '') ? null : (int)$id_responsable;
+        $fecha_nacimiento = ($fecha_nacimiento === '') ? null : $fecha_nacimiento;
+        $estado_1 = ($estado_1 === '') ? null : $estado_1;
+        $estado_2 = ($estado_2 === '') ? null : $estado_2;
 
         $sql = "UPDATE estudiantes SET 
                 nombres = ?, 
@@ -47,7 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 carnet_identidad = ?, 
                 genero = ?, 
                 rude = ?, 
-                id_curso = ? 
+                fecha_nacimiento = ?,
+                id_curso = ?, 
+                id_responsable = ? 
+                , estado_1 = ?
+                , estado_2 = ?
                 WHERE id_estudiante = ?";
         
         $stmt = $conn->prepare($sql);
@@ -58,7 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ci,
             $genero,
             $rude,
+            $fecha_nacimiento,
             $id_curso,
+            $id_responsable,
+            $estado_1,
+            $estado_2,
             $id_estudiante
         ]);
 
@@ -146,27 +180,37 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
             <form method="POST">
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
-                        <label for="apellido_paterno" class="form-label">Apellido Paterno*</label>
-                        <input type="text" class="form-control" id="apellido_paterno" name="apellido_paterno"
-                               value="<?php echo htmlspecialchars($estudiante['apellido_paterno']); ?>" required>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="apellido_materno" class="form-label">Apellido Materno</label>
-                        <input type="text" class="form-control" id="apellido_materno" name="apellido_materno"
-                               value="<?php echo htmlspecialchars($estudiante['apellido_materno']); ?>">
-                    </div>
-                    <div class="col-md-4">
                         <label for="nombres" class="form-label">Nombres*</label>
                         <input type="text" class="form-control" id="nombres" name="nombres"
                                value="<?php echo htmlspecialchars($estudiante['nombres']); ?>" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="apellido_paterno" class="form-label">Ap. Paterno*</label>
+                        <input type="text" class="form-control" id="apellido_paterno" name="apellido_paterno"
+                               value="<?php echo htmlspecialchars($estudiante['apellido_paterno']); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="apellido_materno" class="form-label">Ap. Materno</label>
+                        <input type="text" class="form-control" id="apellido_materno" name="apellido_materno"
+                               value="<?php echo htmlspecialchars($estudiante['apellido_materno']); ?>">
                     </div>
                 </div>
                 
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
-                        <label for="ci" class="form-label">Carnet de Identidad*</label>
+                        <label for="rude" class="form-label">RUDE*</label>
+                        <input type="text" class="form-control" id="rude" name="rude"
+                               value="<?php echo htmlspecialchars($estudiante['rude']); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ci" class="form-label">CI*</label>
                         <input type="text" class="form-control" id="ci" name="ci"
-                               value="<?php echo htmlspecialchars($estudiante['carnet_identidad']); ?>" required>
+                               value="<?php echo htmlspecialchars($estudiante['carnet_identidad']); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="fecha_nacimiento" class="form-label">F. Nacimiento</label>
+                        <input type="date" class="form-control" id="fecha_nacimiento" name="fecha_nacimiento"
+                               value="<?php echo htmlspecialchars($estudiante['fecha_nacimiento'] ?? ''); ?>">
                     </div>
                     <div class="col-md-4">
                         <label for="genero" class="form-label">Género</label>
@@ -176,10 +220,24 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
                             <option value="Femenino" <?php echo $estudiante['genero'] === 'Femenino' ? 'selected' : ''; ?>>Femenino</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <label for="rude" class="form-label">RUDE</label>
-                        <input type="text" class="form-control" id="rude" name="rude"
-                               value="<?php echo htmlspecialchars($estudiante['rude']); ?>">
+                    <div class="col-md-3">
+                        <label for="estado_1" class="form-label">Estado 1</label>
+                        <select class="form-select" id="estado_1" name="estado_1">
+                            <option value="">-</option>
+                            <option value="EFECTIVO" <?php echo ($estudiante['estado_1'] ?? '') === 'EFECTIVO' ? 'selected' : ''; ?>>EFECTIVO</option>
+                            <option value="NO_EFECTIVO" <?php echo ($estudiante['estado_1'] ?? '') === 'NO_EFECTIVO' ? 'selected' : ''; ?>>NO_EFECTIVO</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="estado_2" class="form-label">Estado 2</label>
+                        <select class="form-select" id="estado_2" name="estado_2">
+                            <option value="">-</option>
+                            <option value="APROBADO" <?php echo ($estudiante['estado_2'] ?? '') === 'APROBADO' ? 'selected' : ''; ?>>APROBADO</option>
+                            <option value="REPROBADO" <?php echo ($estudiante['estado_2'] ?? '') === 'REPROBADO' ? 'selected' : ''; ?>>REPROBADO</option>
+                            <option value="NO_INCORPORADO" <?php echo ($estudiante['estado_2'] ?? '') === 'NO_INCORPORADO' ? 'selected' : ''; ?>>NO_INCORPORADO</option>
+                            <option value="RETIRO_ABANDONO" <?php echo ($estudiante['estado_2'] ?? '') === 'RETIRO_ABANDONO' ? 'selected' : ''; ?>>RETIRO_ABANDONO</option>
+                            <option value="RETIRO_TRASLADO" <?php echo ($estudiante['estado_2'] ?? '') === 'RETIRO_TRASLADO' ? 'selected' : ''; ?>>RETIRO_TRASLADO</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -197,6 +255,37 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
                         </select>
                     </div>
                 </div>
+
+                <input type="hidden" id="id_responsable" name="id_responsable" value="<?php echo htmlspecialchars($estudiante['resp_id_responsable'] ?? ''); ?>">
+
+                <div class="row g-3 mb-2">
+                    <div class="col-12">
+                        <hr>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_ci" class="form-label">CI Responsable*</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="responsable_ci" name="responsable_ci"
+                                   value="<?php echo htmlspecialchars($estudiante['resp_carnet_identidad'] ?? ''); ?>">
+                            <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable">Buscar</button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_nombre" class="form-label">Nombre Responsable*</label>
+                        <input type="text" class="form-control" id="responsable_nombre" name="responsable_nombre"
+                               value="<?php echo htmlspecialchars($estudiante['resp_nombre'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_apellido" class="form-label">Apellido Responsable*</label>
+                        <input type="text" class="form-control" id="responsable_apellido" name="responsable_apellido"
+                               value="<?php echo htmlspecialchars($estudiante['resp_apellido'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_telefono" class="form-label">Teléfono Responsable</label>
+                        <input type="text" class="form-control" id="responsable_telefono" name="responsable_telefono"
+                               value="<?php echo htmlspecialchars($estudiante['resp_telefono'] ?? ''); ?>">
+                    </div>
+                </div>
                 
                 <div class="d-grid">
                     <button type="submit" class="btn btn-primary">Guardar Cambios</button>
@@ -206,5 +295,50 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
     </div>
     
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <script>
+        const btnBuscarResponsable = document.getElementById('btnBuscarResponsable');
+        const responsableCi = document.getElementById('responsable_ci');
+        const idResponsable = document.getElementById('id_responsable');
+        const responsableNombre = document.getElementById('responsable_nombre');
+        const responsableApellido = document.getElementById('responsable_apellido');
+        const responsableTelefono = document.getElementById('responsable_telefono');
+
+        async function buscarResponsablePorCi() {
+            const ci = (responsableCi.value || '').trim();
+            if (ci === '') {
+                return;
+            }
+
+            btnBuscarResponsable.disabled = true;
+            try {
+                const res = await fetch(`estudiantes.php?action=buscar_responsable&ci=${encodeURIComponent(ci)}`);
+                const data = await res.json();
+
+                if (data && data.found && data.responsable) {
+                    idResponsable.value = data.responsable.id_responsable || '';
+                    responsableNombre.value = data.responsable.nombre || '';
+                    responsableApellido.value = data.responsable.apellido || '';
+                    responsableTelefono.value = data.responsable.telefono || '';
+                } else {
+                    idResponsable.value = '';
+                    responsableNombre.value = '';
+                    responsableApellido.value = '';
+                    responsableTelefono.value = '';
+                }
+            } catch (e) {
+                idResponsable.value = '';
+            } finally {
+                btnBuscarResponsable.disabled = false;
+            }
+        }
+
+        btnBuscarResponsable.addEventListener('click', buscarResponsablePorCi);
+        responsableCi.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                buscarResponsablePorCi();
+            }
+        });
+    </script>
 </body>
 </html>

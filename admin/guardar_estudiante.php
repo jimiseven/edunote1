@@ -73,9 +73,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $sql = "INSERT INTO estudiantes 
-            (nombres, apellido_paterno, apellido_materno, genero, rude, carnet_identidad, fecha_nacimiento, id_curso, id_responsable)
+            (nombres, apellido_paterno, apellido_materno, genero, rude, carnet_identidad, fecha_nacimiento, id_curso, id_responsable, estado_1, estado_2)
             VALUES
-            (:nombres, :apellido_paterno, :apellido_materno, :genero, :rude, :carnet_identidad, :fecha_nacimiento, :id_curso, :id_responsable)";
+            (:nombres, :apellido_paterno, :apellido_materno, :genero, :rude, :carnet_identidad, :fecha_nacimiento, :id_curso, :id_responsable, :estado_1, :estado_2)";
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(':nombres', $nombres);
         $stmt->bindParam(':apellido_paterno', $apellido_paterno);
@@ -85,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':carnet_identidad', $carnet_identidad);
         $stmt->bindParam(':fecha_nacimiento', $fecha_nacimiento);
         $stmt->bindParam(':id_curso', $id_curso, PDO::PARAM_INT);
-        $stmt->bindParam(':id_responsable', $final_id_responsable, PDO::PARAM_INT);
+        $stmt->bindValue(':id_responsable', $final_id_responsable, $final_id_responsable === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+        $stmt->bindValue(':estado_1', 'EFECTIVO');
+        $stmt->bindValue(':estado_2', null, PDO::PARAM_NULL);
 
         $stmt->execute();
 
