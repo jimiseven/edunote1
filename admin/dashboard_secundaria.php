@@ -10,6 +10,53 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
 
 $conn = (new Database())->connect();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cambiar_curso') {
+    $idEstudiante = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
+    $nuevoCurso = isset($_POST['id_curso']) ? (int)$_POST['id_curso'] : 0;
+
+    $toastMsg = null;
+
+    if ($idEstudiante > 0 && $nuevoCurso > 0) {
+        try {
+            $check = $conn->prepare('SELECT id_estudiante FROM estudiantes WHERE id_estudiante = ?');
+            $check->execute([$idEstudiante]);
+            if ($check->fetch(PDO::FETCH_ASSOC)) {
+                $checkCurso = $conn->prepare('SELECT id_curso FROM cursos WHERE id_curso = ?');
+                $checkCurso->execute([$nuevoCurso]);
+                if ($checkCurso->fetch(PDO::FETCH_ASSOC)) {
+                    $upd = $conn->prepare('UPDATE estudiantes SET id_curso = ? WHERE id_estudiante = ?');
+                    $upd->execute([$nuevoCurso, $idEstudiante]);
+
+                    $stmtEstNombre = $conn->prepare("SELECT TRIM(CONCAT(COALESCE(apellido_paterno,''), ' ', COALESCE(apellido_materno,''), ' ', COALESCE(nombres,''))) AS estudiante FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
+                    $stmtEstNombre->execute([$idEstudiante]);
+                    $rowEst = $stmtEstNombre->fetch(PDO::FETCH_ASSOC);
+
+                    $stmtCursoNombre = $conn->prepare("SELECT CONCAT(nivel, ' ', curso, '° ', paralelo) AS curso FROM cursos WHERE id_curso = ? LIMIT 1");
+                    $stmtCursoNombre->execute([$nuevoCurso]);
+                    $rowCurso = $stmtCursoNombre->fetch(PDO::FETCH_ASSOC);
+
+                    $nombreEst = $rowEst['estudiante'] ?? '';
+                    $nombreCurso = $rowCurso['curso'] ?? '';
+                    if ($nombreEst !== '' && $nombreCurso !== '') {
+                        $toastMsg = 'Se cambió al estudiante "' . $nombreEst . '" al curso "' . $nombreCurso . '"';
+                    }
+                }
+            }
+        } catch (PDOException $e) {
+        }
+    }
+
+    if ($toastMsg) {
+        $_SESSION['toast_message'] = $toastMsg;
+    }
+
+    header('Location: dashboard_secundaria.php');
+    exit();
+}
+
+$stmtTodosCursos = $conn->query("SELECT id_curso, CONCAT(nivel, ' ', curso, '° ', paralelo) AS nombre FROM cursos ORDER BY nivel, curso, paralelo");
+$todosCursos = $stmtTodosCursos->fetchAll(PDO::FETCH_ASSOC);
+
 // Obtener cursos de secundaria
 $stmt = $conn->query("
     SELECT c.id_curso, c.curso, c.paralelo 
@@ -18,6 +65,38 @@ $stmt = $conn->query("
     ORDER BY c.curso, c.paralelo
 ");
 $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$estudiantesPorCurso = [];
+if (!empty($cursos)) {
+    $idsCursos = array_map(static function ($c) {
+        return (int)$c['id_curso'];
+    }, $cursos);
+
+    $placeholders = implode(',', array_fill(0, count($idsCursos), '?'));
+    $stmtEst = $conn->prepare("
+        SELECT 
+            id_estudiante,
+            id_curso,
+            nombres,
+            apellido_paterno,
+            apellido_materno,
+            genero,
+            estado_1
+        FROM estudiantes
+        WHERE id_curso IN ($placeholders)
+        ORDER BY apellido_paterno, apellido_materno, nombres
+    ");
+    $stmtEst->execute($idsCursos);
+    $rowsEst = $stmtEst->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($rowsEst as $row) {
+        $idCurso = (int)$row['id_curso'];
+        if (!isset($estudiantesPorCurso[$idCurso])) {
+            $estudiantesPorCurso[$idCurso] = [];
+        }
+        $estudiantesPorCurso[$idCurso][] = $row;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -200,6 +279,82 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                     <a href="nomina_excel.php?id_curso=<?= $curso['id_curso'] ?>" class="btn btn-warning btn-action">
                                                         Nómina
                                                     </a>
+
+                                                    <?php $modalInfoId = 'modalInfoCurso' . (int)$curso['id_curso']; ?>
+                                                    <button type="button" class="btn btn-secondary btn-action" data-bs-toggle="modal" data-bs-target="#<?php echo $modalInfoId; ?>">
+                                                        Info
+                                                    </button>
+
+                                                    <div class="modal fade" id="<?php echo $modalInfoId; ?>" tabindex="-1" aria-hidden="true">
+                                                        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+                                                            <div class="modal-content">
+                                                                <div class="modal-header">
+                                                                    <h5 class="modal-title">
+                                                                        Estudiantes - <?php echo htmlspecialchars("{$curso['curso']} {$curso['paralelo']}"); ?>
+                                                                    </h5>
+                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                                </div>
+                                                                <div class="modal-body">
+                                                                    <div class="table-responsive">
+                                                                        <table class="table table-sm table-bordered align-middle mb-0">
+                                                                            <thead>
+                                                                                <tr>
+                                                                                    <th style="width: 70px;">#</th>
+                                                                                    <th>Estudiante</th>
+                                                                                    <th style="width: 160px;">Estado</th>
+                                                                                    <th style="width: 140px;">Género</th>
+                                                                                    <th style="width: 200px;">Acción</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                                <?php
+                                                                                $idCursoActual = (int)$curso['id_curso'];
+                                                                                $lista = $estudiantesPorCurso[$idCursoActual] ?? [];
+                                                                                if (empty($lista)):
+                                                                                ?>
+                                                                                    <tr>
+                                                                                        <td colspan="5" class="text-center text-muted">Sin estudiantes registrados</td>
+                                                                                    </tr>
+                                                                                <?php else:
+                                                                                    $i = 1;
+                                                                                    foreach ($lista as $est):
+                                                                                        $nombreCompleto = trim(($est['apellido_paterno'] ?? '') . ' ' . ($est['apellido_materno'] ?? '') . ' ' . ($est['nombres'] ?? ''));
+                                                                                ?>
+                                                                                        <tr>
+                                                                                            <td class="text-center"><?php echo $i++; ?></td>
+                                                                                            <td><?php echo htmlspecialchars($nombreCompleto); ?></td>
+                                                                                            <td class="text-center"><?php echo htmlspecialchars($est['estado_1'] ?? '-'); ?></td>
+                                                                                            <td class="text-center"><?php echo htmlspecialchars($est['genero'] ?? ''); ?></td>
+                                                                                            <td class="text-center">
+                                                                                                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                                                                                                    <a class="btn btn-sm btn-primary" href="editar_estudiante.php?id=<?php echo (int)$est['id_estudiante']; ?>&return=dashboard_secundaria.php">
+                                                                                                        Ver
+                                                                                                    </a>
+
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        class="btn btn-sm btn-warning"
+                                                                                                        data-bs-toggle="modal"
+                                                                                                        data-bs-target="#modalCambiarCursoGlobal"
+                                                                                                        data-estudiante-id="<?php echo (int)$est['id_estudiante']; ?>"
+                                                                                                        data-estudiante-nombre="<?php echo htmlspecialchars($nombreCompleto); ?>"
+                                                                                                        data-estudiante-curso="<?php echo (int)$est['id_curso']; ?>">
+                                                                                                        Cambiar curso
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    <?php endforeach; endif; ?>
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="modal-footer">
+                                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -212,6 +367,60 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </main>
         </div>
     </div>
+
+    <?php if (!empty($_SESSION['toast_message'])): ?>
+        <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+            <div id="toastCambioCurso" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3500">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <?php echo htmlspecialchars($_SESSION['toast_message']); ?>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        </div>
+        <?php unset($_SESSION['toast_message']); ?>
+    <?php endif; ?>
+
+    <div class="modal fade" id="modalCambiarCursoGlobal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cambiar curso</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="cambiar_curso">
+                        <input type="hidden" name="id_estudiante" id="cambiarCursoIdEstudiante" value="">
+
+                        <div class="mb-2 text-start">
+                            <div class="fw-semibold">Estudiante</div>
+                            <div class="text-muted small" id="cambiarCursoNombreEstudiante"></div>
+                        </div>
+
+                        <div class="mb-2 text-start">
+                            <label class="form-label">Nuevo curso</label>
+                            <select class="form-select" name="id_curso" id="cambiarCursoSelect" required>
+                                <option value="">Seleccionar</option>
+                                <?php foreach ($todosCursos as $cOpt): ?>
+                                    <option value="<?php echo (int)$cOpt['id_curso']; ?>">
+                                        <?php echo htmlspecialchars($cOpt['nombre']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-warning">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
         // Modo claro/oscuro con persistencia en cookie
         const toggle = document.getElementById('toggleMode');
@@ -234,6 +443,51 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 document.body.classList.add('dark-mode');
                 toggle.checked = true;
             }
+        }
+    </script>
+
+    <script>
+        const modalCambiarCursoGlobal = document.getElementById('modalCambiarCursoGlobal');
+        let lastInfoModalId = null;
+
+        modalCambiarCursoGlobal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const idEst = button.getAttribute('data-estudiante-id') || '';
+            const nombre = button.getAttribute('data-estudiante-nombre') || '';
+            const idCurso = button.getAttribute('data-estudiante-curso') || '';
+
+            const parentModal = button.closest('.modal');
+            lastInfoModalId = parentModal ? parentModal.id : null;
+
+            const inputId = document.getElementById('cambiarCursoIdEstudiante');
+            const lblNombre = document.getElementById('cambiarCursoNombreEstudiante');
+            const selectCurso = document.getElementById('cambiarCursoSelect');
+
+            inputId.value = idEst;
+            lblNombre.textContent = nombre;
+            selectCurso.value = idCurso;
+        });
+
+        modalCambiarCursoGlobal.addEventListener('hidden.bs.modal', function() {
+            if (!lastInfoModalId) {
+                return;
+            }
+
+            const infoEl = document.getElementById(lastInfoModalId);
+            if (!infoEl) {
+                return;
+            }
+
+            const infoModal = bootstrap.Modal.getOrCreateInstance(infoEl);
+            infoModal.show();
+        });
+    </script>
+
+    <script>
+        const toastEl = document.getElementById('toastCambioCurso');
+        if (toastEl) {
+            const toast = bootstrap.Toast.getOrCreateInstance(toastEl);
+            toast.show();
         }
     </script>
 </body>

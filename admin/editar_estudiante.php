@@ -11,6 +11,18 @@ if (!isset($_SESSION['user_id'])) {
 $db = new Database();
 $conn = $db->connect();
 
+$allowedReturns = [
+    'dashboard_primaria.php',
+    'dashboard_secundaria.php',
+    'estudiantes.php'
+];
+
+$returnParam = $_GET['return'] ?? ($_POST['return'] ?? null);
+$returnUrl = null;
+if (is_string($returnParam) && in_array($returnParam, $allowedReturns, true)) {
+    $returnUrl = $returnParam;
+}
+
 // Obtener ID del estudiante
 $id_estudiante = $_GET['id'] ?? null;
 if (!$id_estudiante) {
@@ -43,6 +55,26 @@ if (!$estudiante) {
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        if (isset($_POST['action']) && $_POST['action'] === 'eliminar_estudiante') {
+            $idEliminar = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
+            if ($idEliminar > 0) {
+                $stmtNombre = $conn->prepare("SELECT TRIM(CONCAT(COALESCE(apellido_paterno,''), ' ', COALESCE(apellido_materno,''), ' ', COALESCE(nombres,''))) AS nombre FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
+                $stmtNombre->execute([$idEliminar]);
+                $rowNombre = $stmtNombre->fetch(PDO::FETCH_ASSOC);
+                $nombreEliminar = $rowNombre['nombre'] ?? '';
+
+                $stmtDel = $conn->prepare('DELETE FROM estudiantes WHERE id_estudiante = ?');
+                $stmtDel->execute([$idEliminar]);
+
+                $msg = 'Se eliminó al estudiante "' . $nombreEliminar . '"';
+                $_SESSION['success'] = $msg;
+                $_SESSION['toast_message'] = $msg;
+            }
+
+            header('Location: ' . ($returnUrl ?? 'estudiantes.php'));
+            exit();
+        }
+
         $nombres = trim($_POST['nombres']);
         $apellido_paterno = trim($_POST['apellido_paterno']);
         $apellido_materno = trim($_POST['apellido_materno']);
@@ -97,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         $_SESSION['success'] = 'Estudiante actualizado correctamente';
-        header('Location: estudiantes.php');
+        header('Location: ' . ($returnUrl ?? 'estudiantes.php'));
         exit();
     } catch (PDOException $e) {
         $error = 'Error al actualizar: ' . $e->getMessage();
@@ -174,10 +206,16 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
             
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2 class="main-title">Editar Estudiante</h2>
-                <a href="estudiantes.php" class="btn btn-outline-secondary">Volver</a>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalEliminarEstudiante">
+                        Eliminar
+                    </button>
+                    <a href="<?php echo htmlspecialchars($returnUrl ?? 'estudiantes.php'); ?>" class="btn btn-outline-secondary">Volver</a>
+                </div>
             </div>
             
             <form method="POST">
+                <input type="hidden" name="return" value="<?php echo htmlspecialchars($returnUrl ?? ''); ?>">
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
                         <label for="nombres" class="form-label">Nombres*</label>
@@ -291,6 +329,31 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
                     <button type="submit" class="btn btn-primary">Guardar Cambios</button>
                 </div>
             </form>
+
+            <div class="modal fade" id="modalEliminarEstudiante" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Eliminar estudiante</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-danger mb-0">
+                                Se eliminará al estudiante irrevocablemente. Esta acción no se puede deshacer.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <form method="POST" class="m-0">
+                                <input type="hidden" name="action" value="eliminar_estudiante">
+                                <input type="hidden" name="id_estudiante" value="<?php echo (int)$id_estudiante; ?>">
+                                <input type="hidden" name="return" value="<?php echo htmlspecialchars($returnUrl ?? ''); ?>">
+                                <button type="submit" class="btn btn-danger">Eliminar</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
