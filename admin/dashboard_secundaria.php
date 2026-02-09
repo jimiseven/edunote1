@@ -59,9 +59,17 @@ $todosCursos = $stmtTodosCursos->fetchAll(PDO::FETCH_ASSOC);
 
 // Obtener cursos de secundaria
 $stmt = $conn->query("
-    SELECT c.id_curso, c.curso, c.paralelo 
+    SELECT 
+        c.id_curso,
+        c.curso,
+        c.paralelo,
+        COALESCE(SUM(CASE WHEN e.genero = 'Masculino' THEN 1 ELSE 0 END), 0) AS total_masculino,
+        COALESCE(SUM(CASE WHEN e.genero = 'Femenino' THEN 1 ELSE 0 END), 0) AS total_femenino,
+        COALESCE(COUNT(e.id_estudiante), 0) AS total_estudiantes
     FROM cursos c
+    LEFT JOIN estudiantes e ON e.id_curso = c.id_curso
     WHERE c.nivel = 'Secundaria'
+    GROUP BY c.id_curso, c.curso, c.paralelo
     ORDER BY c.curso, c.paralelo
 ");
 $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -221,6 +229,41 @@ if (!empty($cursos)) {
             --th-bg: #232323;
             --tr-hover: #282828;
         }
+
+        .student-stats {
+            display: inline-flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .student-stats .stat-badge {
+            padding: 0.35rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            line-height: 1;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        body:not(.dark-mode) .student-stats .stat-badge {
+            background: rgba(17, 48, 94, 0.06);
+            border-color: rgba(17, 48, 94, 0.14);
+        }
+
+        .student-stats .stat-m {
+            color: #0dcaf0;
+        }
+
+        .student-stats .stat-f {
+            color: #d63384;
+        }
+
+        .student-stats .stat-t {
+            color: #99b898;
+        }
     </style>
 </head>
 
@@ -246,13 +289,14 @@ if (!empty($cursos)) {
                                 <tr>
                                     <th style="width: 80px;">#</th>
                                     <th>Curso</th>
+                                    <th>Estudiantes</th>
                                     <th>Centralizador</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($cursos)): ?>
                                     <tr>
-                                        <td colspan="3">
+                                        <td colspan="4">
                                             <div class="alert alert-warning mb-0">
                                                 No hay cursos de secundaria registrados.
                                             </div>
@@ -264,6 +308,18 @@ if (!empty($cursos)) {
                                         <tr>
                                             <td><?php echo $n++; ?></td>
                                             <td><?php echo htmlspecialchars("{$curso['curso']} {$curso['paralelo']}"); ?></td>
+                                            <td>
+                                                <?php
+                                                $m = (int)($curso['total_masculino'] ?? 0);
+                                                $f = (int)($curso['total_femenino'] ?? 0);
+                                                $t = (int)($curso['total_estudiantes'] ?? 0);
+                                                echo '<div class="student-stats">'
+                                                    . '<span class="stat-badge stat-m">M: ' . $m . '</span>'
+                                                    . '<span class="stat-badge stat-f">F: ' . $f . '</span>'
+                                                    . '<span class="stat-badge stat-t">T: ' . $t . '</span>'
+                                                    . '</div>';
+                                                ?>
+                                            </td>
                                             <td>
                                                 <div class="d-flex gap-2 justify-content-center flex-wrap">
                                                     <a href="ver_curso.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
