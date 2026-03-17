@@ -139,6 +139,7 @@ foreach ($periodos as $periodo) {
 
 $trimestreSeleccionado = isset($_REQUEST['trimestre']) ? (int)$_REQUEST['trimestre'] : 0;
 $parcialSeleccionado = isset($_REQUEST['parcial']) ? (int)$_REQUEST['parcial'] : 0;
+$periodoConfirmado = isset($_GET['confirmar']) && $_GET['confirmar'] === '1';
 
 if ($trimestreSeleccionado <= 0 || $parcialSeleccionado <= 0 || !isset($periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado])) {
     if (!empty($periodosActivos)) {
@@ -149,6 +150,7 @@ if ($trimestreSeleccionado <= 0 || $parcialSeleccionado <= 0 || !isset($periodos
         $trimestreSeleccionado = (int)$primerPeriodo['trimestre'];
         $parcialSeleccionado = (int)$primerPeriodo['parcial'];
     }
+    $periodoConfirmado = false;
 }
 
 $periodoSeleccionado = $periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado];
@@ -317,51 +319,143 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>EduNote - Cargar Notas</title>
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <style>
+        body {
+            background: #f4f8fa;
+        }
         .container-card {
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
-            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 30px;
             margin: 20px 0;
         }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 1.5rem;
+        }
+        .page-header h3 {
+            color: #11305e;
+            font-weight: 700;
+            margin: 0;
+        }
+        .page-header h4 {
+            color: #4682B4;
+            font-weight: 600;
+            margin: 0;
+        }
+        .intro-block {
+            background: linear-gradient(135deg, #ffffff, #f8fbff);
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .intro-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.4rem;
+        }
+        .intro-text {
+            font-size: 0.9rem;
+            color: #475569;
+            margin: 0;
+        }
+        .periodo-toolbar {
+            background: #ffffff;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        .periodo-toolbar-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 1rem;
+        }
+        .periodo-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        .periodo-badge {
+            font-size: 0.85rem;
+            padding: 0.4rem 0.75rem;
+            font-weight: 600;
+        }
+        .status-badge-enabled {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .status-badge-disabled {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .form-select, .btn {
+            border-radius: 8px;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #475569;
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+        }
         .nota-input {
-            width: 80px;
+            width: 85px;
             text-align: center;
+            font-weight: 600;
+            border-radius: 6px;
         }
         .nota-disabled,
         .coment-disabled {
-            background: #f2f2f2 !important;
+            background: #f8f9fa !important;
             border-color: #d1d5db !important;
             color: #888 !important;
             cursor: not-allowed;
         }
         .periodo-inactivo-th {
-            background: #f8f8f8 !important;
-            color: #999 !important;
-            font-weight: 400;
+            background: #f1f5f9 !important;
+            color: #64748b !important;
+            font-weight: 500;
         }
         .periodo-activo-th {
-            background: #e8f4ff !important;
-            color: #244876 !important;
-            font-weight: 600;
+            background: #dbeafe !important;
+            color: #1d4ed8 !important;
+            font-weight: 700;
+            border: 2px solid #93c5fd !important;
         }
         .modal-body textarea {
             width: 100%;
             height: 150px;
             resize: none;
             font-family: monospace;
+            border-radius: 8px;
         }
         .coment-textarea {
             width: 100%;
             height: 100px;
             resize: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
         }
         .table-container {
             max-height: 70vh;
             overflow: auto;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
             margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
         }
         .table-container table {
             margin-bottom: 0;
@@ -371,6 +465,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             top: 0;
             background-color: #f8f9fa;
             z-index: 10;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            padding: 0.85rem 0.75rem;
+        }
+        .table-container tbody td {
+            vertical-align: middle;
         }
         .table-container tbody td:first-child,
         .table-container thead th:first-child {
@@ -382,7 +483,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .table-container tbody td:nth-child(2),
         .table-container thead th:nth-child(2) {
             position: sticky;
-            left: 40px; /* Aprox el ancho de la columna # */
+            left: 40px;
             background-color: white;
             z-index: 5;
         }
@@ -390,19 +491,123 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .table-container thead th:nth-child(2) {
             z-index: 15;
         }
-        .periodo-toolbar {
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
-        }
-        .periodo-badge {
-            font-size: 0.9rem;
-        }
         .nota-ref {
             font-weight: 600;
             text-align: center;
+            color: #475569;
+        }
+        .table-primary {
+            background-color: #eff6ff !important;
+        }
+        .helper-alert {
+            background: #f8fbff;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            color: #475569;
+        }
+        .helper-alert strong {
+            color: #11305e;
+        }
+        .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 2px solid #e5e7eb;
+        }
+        .preview-card {
+            background: linear-gradient(135deg, #ffffff, #f8fbff);
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            padding: 2.5rem;
+            text-align: center;
+            margin-top: 2rem;
+        }
+        .preview-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 80px;
+            height: 80px;
+            background: #eff6ff;
+            border-radius: 50%;
+            margin-bottom: 1.5rem;
+            color: #4682B4;
+        }
+        .preview-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.75rem;
+        }
+        .preview-text {
+            font-size: 1rem;
+            color: #475569;
+            margin-bottom: 2rem;
+        }
+        .preview-status {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 600px;
+            margin: 0 auto 2rem;
+            text-align: left;
+        }
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            color: #475569;
+        }
+        .status-item svg {
+            flex-shrink: 0;
+            color: #4682B4;
+        }
+        .status-item.status-success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+        }
+        .status-item.status-success svg {
+            color: #16a34a;
+        }
+        .status-item.status-warning {
+            background: #fef3c7;
+            border-color: #fde68a;
+        }
+        .status-item.status-warning svg {
+            color: #d97706;
+        }
+        .preview-action {
+            padding-top: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        .preview-hint {
+            font-size: 0.95rem;
+            color: #64748b;
+            margin: 0;
+        }
+        @media (max-width: 768px) {
+            .page-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            .preview-card {
+                padding: 1.5rem;
+            }
+            .preview-icon {
+                width: 64px;
+                height: 64px;
+            }
         }
     </style>
 </head>
@@ -412,18 +617,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php include '../includes/sidebar.php'; ?>
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
                 <div class="container-card mt-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h3 class="text-primary"><?php echo $curso['curso_nombre']; ?></h3>
-                        <h4 class="text-secondary"><?php echo $curso['nombre_materia']; ?></h4>
+                    <div class="page-header">
+                        <h3><?php echo $curso['curso_nombre']; ?></h3>
+                        <h4><?php echo $curso['nombre_materia']; ?></h4>
                     </div>
+
+                    <div class="intro-block">
+                        <div class="intro-title">Carga de notas por parcial</div>
+                        <p class="intro-text">
+                            Selecciona el trimestre y parcial correspondiente, verifica que el periodo esté habilitado y procede a cargar las notas de tus estudiantes.
+                        </p>
+                    </div>
+
                     <?php if (isset($error)): ?>
                         <div class="alert alert-danger"><?php echo $error; ?></div>
                     <?php elseif (isset($_GET['success'])): ?>
                         <div class="alert alert-success">¡Notas cargadas correctamente!</div>
                     <?php endif; ?>
                     <div class="periodo-toolbar">
+                        <div class="periodo-toolbar-title">Selección de periodo</div>
                         <form method="get" class="row g-3 align-items-end">
                             <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
+                            <input type="hidden" name="confirmar" value="1">
                             <div class="col-md-3">
                                 <label class="form-label">Trimestre</label>
                                 <select name="trimestre" class="form-select">
@@ -445,143 +660,220 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <button type="submit" class="btn btn-outline-primary w-100">Ver periodo</button>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <?php echo $periodoConfirmado ? 'Cambiar periodo' : 'Cargar periodo'; ?>
+                                </button>
                             </div>
                         </form>
-                        <div class="d-flex flex-wrap gap-2 mt-3">
-                            <span class="badge <?php echo $periodoEditable ? 'bg-success' : 'bg-secondary'; ?> periodo-badge">
-                                <?php echo $periodoEditable ? 'Periodo habilitado' : 'Periodo no habilitado'; ?>
+                        <div class="periodo-info">
+                            <span class="badge periodo-badge <?php echo $periodoEditable ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
+                                <?php echo $periodoEditable ? '✓ Habilitado para carga' : '✗ No habilitado'; ?>
                             </span>
-                            <span class="badge bg-info text-dark periodo-badge">
+                            <span class="badge bg-light text-dark border periodo-badge">
                                 Gestión <?php echo htmlspecialchars($gestionActual); ?>
                             </span>
                             <span class="badge bg-light text-dark border periodo-badge">
-                                Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?>
+                                T<?php echo $trimestreSeleccionado; ?> - P<?php echo $parcialSeleccionado; ?>
                             </span>
-                            <span class="badge bg-light text-dark border periodo-badge">
-                                Inicio: <?php echo $periodoSeleccionado['fecha_inicio'] ? htmlspecialchars($periodoSeleccionado['fecha_inicio']) : 'Sin fecha'; ?>
-                            </span>
-                            <span class="badge bg-light text-dark border periodo-badge">
-                                Fin: <?php echo $periodoSeleccionado['fecha_fin'] ? htmlspecialchars($periodoSeleccionado['fecha_fin']) : 'Sin fecha'; ?>
-                            </span>
+                            <?php if ($periodoSeleccionado['fecha_inicio'] || $periodoSeleccionado['fecha_fin']): ?>
+                                <span class="badge bg-light text-dark border periodo-badge">
+                                    <?php echo $periodoSeleccionado['fecha_inicio'] ? date('d/m/Y', strtotime($periodoSeleccionado['fecha_inicio'])) : 'Sin inicio'; ?>
+                                    -
+                                    <?php echo $periodoSeleccionado['fecha_fin'] ? date('d/m/Y', strtotime($periodoSeleccionado['fecha_fin'])) : 'Sin fin'; ?>
+                                </span>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <?php if (!$es_inicial): ?>
-                        <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
-                            Cargar desde Excel
-                        </button>
-                        <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
-                            <div class="modal-dialog modal-lg">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title" id="modalExcelLabel">Cargar Notas desde Excel</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+
+                    <?php if ($periodoConfirmado): ?>
+                        <?php if (!$es_inicial): ?>
+                            <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
+                                Cargar desde Excel
+                            </button>
+                            <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="modalExcelLabel">Cargar Notas desde Excel</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <form method="post">
+                                            <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
+                                            <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                                            <div class="modal-body">
+                                                <div class="alert alert-info">
+                                                    Cargará notas para <strong>Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?></strong>.
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label>Pegue aquí la columna de notas:</label>
+                                                    <textarea name="datos_excel" class="form-control" placeholder="Pegue aquí SOLO la columna de notas desde Excel"></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                <button type="submit" name="guardar_excel" class="btn btn-primary" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>Cargar Notas</button>
+                                            </div>
+                                        </form>
                                     </div>
-                                    <form method="post">
-                                        <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
-                                        <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                                        <div class="modal-body">
-                                            <div class="alert alert-info">
-                                                Cargará notas para <strong>Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?></strong>.
-                                            </div>
-                                            <div class="mb-3">
-                                                <label>Pegue aquí la columna de notas:</label>
-                                                <textarea name="datos_excel" class="form-control" placeholder="Pegue aquí SOLO la columna de notas desde Excel"></textarea>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                            <button type="submit" name="guardar_excel" class="btn btn-primary" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>Cargar Notas</button>
-                                        </div>
-                                    </form>
                                 </div>
+                            </div>
+                        <?php endif; ?>
+                        <form method="post">
+                            <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
+                            <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                            
+                            <div class="helper-alert">
+                                <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
+                            </div>
+                            
+                            <?php if (!$periodoEditable): ?>
+                                <div class="alert alert-warning">
+                                    <strong>Modo consulta:</strong> Este periodo no está habilitado para edición. Contacta al administrador si necesitas cargar o modificar notas.
+                                </div>
+                            <?php endif; ?>
+                            <div class="table-container">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Estudiante</th>
+                                            <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
+                                                Parcial actual
+                                            </th>
+                                            <th class="text-center">P1</th>
+                                            <th class="text-center">P2</th>
+                                            <th class="text-center">P3</th>
+                                            <th>Promedio trimestre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php $contador = 1; ?>
+                                        <?php foreach ($estudiantes as $est): ?>
+                                        <tr>
+                                            <td><?php echo $contador++; ?></td>
+                                            <td><?php echo htmlspecialchars($est['nombre']); ?></td>
+                                            <?php
+                                            $notaActual = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialSeleccionado] ?? '';
+                                            $notasTrimestre = $notas[$est['id_estudiante']][$trimestreSeleccionado] ?? [];
+                                            ?>
+                                            <td>
+                                                <?php if ($es_inicial): ?>
+                                                    <textarea
+                                                        name="notas[<?php echo $est['id_estudiante']; ?>]"
+                                                        class="coment-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
+                                                        placeholder="<?php echo $periodoEditable ? 'Comentario parcial '.$parcialSeleccionado : 'No habilitado'; ?>"
+                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                    ><?php echo htmlspecialchars($notaActual); ?></textarea>
+                                                <?php else: ?>
+                                                    <?php
+                                                    $notaStyle = '';
+                                                    if ($notaActual !== '' && is_numeric($notaActual) && $notaActual < 51) {
+                                                        $notaStyle = 'color: #dc3545;';
+                                                    }
+                                                    ?>
+                                                    <input
+                                                        type="number"
+                                                        name="notas[<?php echo $est['id_estudiante']; ?>]"
+                                                        class="form-control nota-input <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                        value="<?php echo htmlspecialchars($notaActual); ?>"
+                                                        step="0.01"
+                                                        min="0"
+                                                        max="100"
+                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                        oninput="highlightLowGrades(this)"
+                                                        style="<?php echo $notaStyle; ?>"
+                                                    >
+                                                <?php endif; ?>
+                                            </td>
+                                            <?php for ($parcialRef = 1; $parcialRef <= 3; $parcialRef++): ?>
+                                                <?php $valorReferencia = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialRef] ?? ''; ?>
+                                                <td class="nota-ref <?php echo ($parcialRef === $parcialSeleccionado) ? 'table-primary' : ''; ?>">
+                                                    <?php echo $valorReferencia !== '' ? htmlspecialchars($valorReferencia) : '--'; ?>
+                                                </td>
+                                            <?php endfor; ?>
+                                            <td class="align-middle">
+                                                <span class="promedio"><?php echo calcularPromedioTrimestre($notasTrimestre, $es_inicial); ?></span>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="action-buttons">
+                                <a href="dashboard.php" class="btn btn-outline-secondary">← Volver al panel</a>
+                                <button type="submit" name="guardar_notas" class="btn btn-primary px-4" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
+                                    <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
+                                </button>
+                            </div>
+                        </form>
+                    <?php else: ?>
+                        <div class="preview-card">
+                            <div class="preview-icon">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M9 11l3 3L22 4"></path>
+                                    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+                                </svg>
+                            </div>
+                            <h5 class="preview-title">Periodo seleccionado</h5>
+                            <p class="preview-text">
+                                Has seleccionado <strong>Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?></strong>.
+                            </p>
+                            <div class="preview-status">
+                                <?php if ($periodoEditable): ?>
+                                    <div class="status-item status-success">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                        <span>Periodo habilitado para carga de notas</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                        <span>
+                                            <?php if ($periodoSeleccionado['fecha_inicio'] && $periodoSeleccionado['fecha_fin']): ?>
+                                                Desde <?php echo date('d/m/Y', strtotime($periodoSeleccionado['fecha_inicio'])); ?>
+                                                hasta <?php echo date('d/m/Y', strtotime($periodoSeleccionado['fecha_fin'])); ?>
+                                            <?php else: ?>
+                                                Sin rango de fechas definido
+                                            <?php endif; ?>
+                                        </span>
+                                    </div>
+                                    <div class="status-item">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path>
+                                            <circle cx="9" cy="7" r="4"></circle>
+                                            <path d="M23 21v-2a4 4 0 00-3-3.87"></path>
+                                            <path d="M16 3.13a4 4 0 010 7.75"></path>
+                                        </svg>
+                                        <span><?php echo count($estudiantes); ?> estudiantes en este curso</span>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="status-item status-warning">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                        </svg>
+                                        <span>Este periodo no está habilitado para edición</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                            <circle cx="12" cy="12" r="3"></circle>
+                                        </svg>
+                                        <span>Podrás consultar las notas en modo solo lectura</span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="preview-action">
+                                <p class="preview-hint">Haz clic en "Cargar periodo" arriba para <?php echo $periodoEditable ? 'comenzar a cargar notas' : 'ver las notas cargadas'; ?></p>
                             </div>
                         </div>
                     <?php endif; ?>
-                    <form method="post">
-                        <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
-                        <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                        <div class="alert alert-warning mb-3">
-                            <strong>Importante:</strong> Siempre revisar el orden de los estudiantes en la lista para que coincida con su lista propia
-                        </div>
-                        <?php if (!$periodoEditable): ?>
-                            <div class="alert alert-secondary">
-                                El periodo seleccionado está en modo consulta. Puedes ver las notas cargadas, pero no editar hasta que el administrador lo habilite y la fecha esté dentro del rango.
-                            </div>
-                        <?php endif; ?>
-                        <div class="table-container">
-                            <table class="table table-bordered">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Estudiante</th>
-                                        <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
-                                            Parcial actual
-                                        </th>
-                                        <th class="text-center">P1</th>
-                                        <th class="text-center">P2</th>
-                                        <th class="text-center">P3</th>
-                                        <th>Promedio trimestre</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php $contador = 1; ?>
-                                    <?php foreach ($estudiantes as $est): ?>
-                                    <tr>
-                                        <td><?php echo $contador++; ?></td>
-                                        <td><?php echo htmlspecialchars($est['nombre']); ?></td>
-                                        <?php
-                                        $notaActual = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialSeleccionado] ?? '';
-                                        $notasTrimestre = $notas[$est['id_estudiante']][$trimestreSeleccionado] ?? [];
-                                        ?>
-                                        <td>
-                                            <?php if ($es_inicial): ?>
-                                                <textarea
-                                                    name="notas[<?php echo $est['id_estudiante']; ?>]"
-                                                    class="coment-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
-                                                    placeholder="<?php echo $periodoEditable ? 'Comentario parcial '.$parcialSeleccionado : 'No habilitado'; ?>"
-                                                    <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
-                                                ><?php echo htmlspecialchars($notaActual); ?></textarea>
-                                            <?php else: ?>
-                                                <?php
-                                                $notaStyle = '';
-                                                if ($notaActual !== '' && is_numeric($notaActual) && $notaActual < 51) {
-                                                    $notaStyle = 'color: #dc3545;';
-                                                }
-                                                ?>
-                                                <input
-                                                    type="number"
-                                                    name="notas[<?php echo $est['id_estudiante']; ?>]"
-                                                    class="form-control nota-input <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
-                                                    value="<?php echo htmlspecialchars($notaActual); ?>"
-                                                    step="0.01"
-                                                    min="0"
-                                                    max="100"
-                                                    <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
-                                                    oninput="highlightLowGrades(this)"
-                                                    style="<?php echo $notaStyle; ?>"
-                                                >
-                                            <?php endif; ?>
-                                        </td>
-                                        <?php for ($parcialRef = 1; $parcialRef <= 3; $parcialRef++): ?>
-                                            <?php $valorReferencia = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialRef] ?? ''; ?>
-                                            <td class="nota-ref <?php echo ($parcialRef === $parcialSeleccionado) ? 'table-primary' : ''; ?>">
-                                                <?php echo $valorReferencia !== '' ? htmlspecialchars($valorReferencia) : '--'; ?>
-                                            </td>
-                                        <?php endfor; ?>
-                                        <td class="align-middle">
-                                            <span class="promedio"><?php echo calcularPromedioTrimestre($notasTrimestre, $es_inicial); ?></span>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="d-flex justify-content-between mt-4">
-                            <a href="dashboard.php" class="btn btn-secondary">Volver</a>
-                            <button type="submit" name="guardar_notas" class="btn btn-primary" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>Guardar Notas</button>
-                        </div>
-                    </form>
                 </div>
             </main>
         </div>
