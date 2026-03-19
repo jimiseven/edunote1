@@ -12,6 +12,15 @@ $trimestre = $_GET['trimestre'] ?? 1;
 
 $conn = (new Database())->connect();
 
+$stmt_gestion = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$gestionConfigurada = $stmt_gestion->fetchColumn();
+$gestionConfigurada = $gestionConfigurada ? trim((string)$gestionConfigurada) : '';
+$gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$gestionAlternativa = null;
+if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
+    $gestionAlternativa = $matches[1];
+}
+
 // 1. Obtener información del curso
 $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
 $stmt_curso->execute([$id_curso]);
@@ -71,31 +80,80 @@ $materias = array_merge(
     }, [])
 );
 
-// 5. Calificaciones y promedios
-$calificaciones = [];
+// 5. Calificaciones parciales y promedios del trimestre
+$calificacionesParciales = [];
+$promediosMateriaTrimestre = [];
 foreach ($estudiantes as $estudiante) {
     foreach ($todas_materias as $materia) {
-        $stmt = $conn->prepare("
-            SELECT calificacion 
-            FROM calificaciones 
-            WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-        ");
-        $stmt->execute([$estudiante['id_estudiante'], $materia['id_materia'], $trimestre]);
-        $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']] = $stmt->fetchColumn() ?? '';
+        for ($parcial = 1; $parcial <= 3; $parcial++) {
+            $calificacionesParciales[$estudiante['id_estudiante']][$materia['id_materia']][$parcial] = '';
+        }
+        $promediosMateriaTrimestre[$estudiante['id_estudiante']][$materia['id_materia']] = '';
+    }
+}
+
+$sqlCalificaciones = "SELECT cp.id_estudiante, cp.id_materia, pe.parcial, cp.calificacion
+                      FROM calificaciones_parciales cp
+                      INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                      INNER JOIN estudiantes e ON e.id_estudiante = cp.id_estudiante
+                      INNER JOIN cursos_materias cm ON cm.id_materia = cp.id_materia
+                      WHERE e.id_curso = ?
+                        AND cm.id_curso = ?
+                        AND pe.trimestre = ?
+                        AND (pe.gestion = ?";
+$paramsCalificaciones = [$id_curso, $id_curso, $trimestre, $gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $sqlCalificaciones .= " OR pe.gestion = ?";
+    $paramsCalificaciones[] = $gestionAlternativa;
+}
+$sqlCalificaciones .= ")";
+
+$stmt_calificaciones = $conn->prepare($sqlCalificaciones);
+$stmt_calificaciones->execute($paramsCalificaciones);
+foreach ($stmt_calificaciones->fetchAll(PDO::FETCH_ASSOC) as $filaCalificacion) {
+    if ($filaCalificacion['calificacion'] === null || $filaCalificacion['calificacion'] === '') {
+        continue;
+    }
+    $idEstudiante = (int)$filaCalificacion['id_estudiante'];
+    $idMateria = (int)$filaCalificacion['id_materia'];
+    $parcial = (int)$filaCalificacion['parcial'];
+    $calificacionesParciales[$idEstudiante][$idMateria][$parcial] = number_format((float)$filaCalificacion['calificacion'], 2);
+}
+
+foreach ($estudiantes as $estudiante) {
+    foreach ($todas_materias as $materia) {
+        $parcialesMateria = $calificacionesParciales[$estudiante['id_estudiante']][$materia['id_materia']] ?? [];
+        $parcialesValidos = array_filter($parcialesMateria, function ($valor) {
+            return $valor !== '' && $valor !== null;
+        });
+        if (!empty($parcialesValidos)) {
+            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$materia['id_materia']] = number_format(array_sum(array_map('floatval', $parcialesValidos)) / count($parcialesValidos), 2);
+        }
     }
 }
 
 foreach ($estudiantes as $estudiante) {
     foreach ($materias_padre_con_hijas as $padre) {
-        $suma = $cont = 0;
-        foreach ($padre['hijas'] as $hija) {
-            $nota = $calificaciones[$estudiante['id_estudiante']][$hija['id_materia']] ?? '';
-            if ($nota !== '') {
-                $suma += floatval($nota);
-                $cont++;
+        for ($parcial = 1; $parcial <= 3; $parcial++) {
+            $suma = 0;
+            $cont = 0;
+            foreach ($padre['hijas'] as $hija) {
+                $nota = $calificacionesParciales[$estudiante['id_estudiante']][$hija['id_materia']][$parcial] ?? '';
+                if ($nota !== '') {
+                    $suma += floatval($nota);
+                    $cont++;
+                }
             }
+            $calificacionesParciales[$estudiante['id_estudiante']][$padre['id_materia']][$parcial] = $cont > 0 ? number_format($suma / $cont, 2) : '';
         }
-        $calificaciones[$estudiante['id_estudiante']][$padre['id_materia']] = $cont > 0 ? number_format($suma / $cont, 2) : '';
+
+        $parcialesPadre = $calificacionesParciales[$estudiante['id_estudiante']][$padre['id_materia']] ?? [];
+        $parcialesValidosPadre = array_filter($parcialesPadre, function ($valor) {
+            return $valor !== '' && $valor !== null;
+        });
+        $promediosMateriaTrimestre[$estudiante['id_estudiante']][$padre['id_materia']] = !empty($parcialesValidosPadre)
+            ? number_format(array_sum(array_map('floatval', $parcialesValidosPadre)) / count($parcialesValidosPadre), 2)
+            : '';
     }
 }
 
@@ -105,7 +163,7 @@ foreach ($estudiantes as $estudiante) {
     foreach ($materias as $mat) {
         if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id']))
             continue;
-        $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
+        $nota = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
         if ($nota !== '') {
             $suma += floatval($nota);
             $contador++;
@@ -148,18 +206,107 @@ foreach ($estudiantes as $estudiante) {
             padding: 20px;
         }
 
+        .trimester-table {
+            min-width: max-content;
+            margin-bottom: 0;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .trimester-table th,
+        .trimester-table td {
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .number-col {
+            min-width: 56px;
+            width: 56px;
+            text-align: center;
+            position: sticky;
+            left: 0;
+            z-index: 6;
+            background: #ffffff;
+            box-shadow: 1px 0 0 #dee2e6;
+        }
+
         .student-name {
             min-width: 220px;
             background: #fff;
             position: sticky;
-            left: 0;
-            z-index: 2;
+            left: 56px;
+            z-index: 6;
+            box-shadow: 4px 0 12px rgba(15, 23, 42, 0.08);
         }
 
         .table-responsive {
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+            overflow: auto;
+            max-height: calc(100vh - 220px);
+            scrollbar-gutter: stable both-edges;
+            position: relative;
+        }
+
+        .table-responsive::after {
+            content: '';
+            position: sticky;
+            right: 0;
+            top: 0;
+            display: block;
+            width: 18px;
+            height: 100%;
+            float: right;
+            pointer-events: none;
+            background: linear-gradient(to left, rgba(248, 249, 250, 0.95), rgba(248, 249, 250, 0));
+        }
+
+        .trim-header-top th {
+            white-space: nowrap;
+            text-align: center;
+            vertical-align: middle;
+            position: sticky;
+            top: 0;
+            z-index: 4;
+            background: #e9ecef !important;
+        }
+
+        .trim-header-sub th {
+            white-space: nowrap;
+            text-align: center;
+            font-size: 0.82rem;
+            position: sticky;
+            top: 45px;
+            z-index: 4;
+            background: #f8f9fa !important;
+        }
+
+        .trim-header-top .number-col,
+        .trim-header-sub .number-col {
+            z-index: 8;
+        }
+
+        .trim-header-top .student-name,
+        .trim-header-sub .student-name {
+            z-index: 8;
+            background: #e9ecef !important;
+        }
+
+        .partial-col {
+            min-width: 72px;
+            text-align: center;
+        }
+
+        .average-col {
+            min-width: 82px;
+            text-align: center;
+            background: #f4f6fb;
+            font-weight: 600;
+        }
+
+        .table td.average-col.nota-baja {
+            background: #fff5f6 !important;
         }
 
         .padre-th {
@@ -182,6 +329,62 @@ foreach ($estudiantes as $estudiante) {
         .table td.nota-baja {
             color: #dc3545 !important;
             font-weight: 600 !important;
+        }
+
+        .trimester-table tbody tr {
+            transition: background-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .trimester-table tbody tr:nth-child(odd) td {
+            background: #ffffff;
+        }
+
+        .trimester-table tbody tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+
+        .trimester-table tbody tr {
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .trimester-table tbody tr:hover td {
+            background: #bfdbfe !important;
+            color: #0f172a !important;
+        }
+
+        .trimester-table tbody tr:hover .number-col,
+        .trimester-table tbody tr:hover .student-name {
+            background: #93c5fd !important;
+            color: #0b2545 !important;
+            box-shadow: 4px 0 12px rgba(59, 130, 246, 0.22);
+        }
+
+        .trimester-table tbody tr:focus,
+        .trimester-table tbody tr:active,
+        .trimester-table tbody tr td:focus,
+        .trimester-table tbody tr td:active {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        .table tbody .number-col,
+        .table tbody .student-name {
+            background: #ffffff !important;
+        }
+
+        .table tbody tr:nth-child(even) .number-col,
+        .table tbody tr:nth-child(even) .student-name {
+            background: #f8fafc !important;
+        }
+
+        .trimester-table tbody .student-name {
+            font-weight: 600;
+            border-right: 2px solid #dbe4f0;
+        }
+
+        .trimester-table tbody .number-col {
+            color: #475569;
+            font-weight: 700;
         }
 
         @media print {
@@ -236,8 +439,20 @@ foreach ($estudiantes as $estudiante) {
                 // Agregar encabezados de materias
                 <?php foreach($materias as $mat): ?>
                     headers.push({
-                        title: '<?= addslashes($mat['nombre_materia']) ?>',
-                        dataKey: 'materia_<?= $mat['id_materia'] ?>'
+                        title: '<?= addslashes($mat['nombre_materia']) ?> P1',
+                        dataKey: 'materia_<?= $mat['id_materia'] ?>_p1'
+                    });
+                    headers.push({
+                        title: '<?= addslashes($mat['nombre_materia']) ?> P2',
+                        dataKey: 'materia_<?= $mat['id_materia'] ?>_p2'
+                    });
+                    headers.push({
+                        title: '<?= addslashes($mat['nombre_materia']) ?> P3',
+                        dataKey: 'materia_<?= $mat['id_materia'] ?>_p3'
+                    });
+                    headers.push({
+                        title: '<?= addslashes($mat['nombre_materia']) ?> Prom.',
+                        dataKey: 'materia_<?= $mat['id_materia'] ?>_prom'
                     });
                 <?php endforeach; ?>
                 
@@ -252,7 +467,10 @@ foreach ($estudiantes as $estudiante) {
                     };
                     
                     <?php foreach($materias as $mat): ?>
-                        rowData['materia_<?= $mat['id_materia'] ?>'] = '<?= $calificaciones[$est['id_estudiante']][$mat['id_materia']] ?? '' ?>';
+                        rowData['materia_<?= $mat['id_materia'] ?>_p1'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][1] ?? '--' ?>';
+                        rowData['materia_<?= $mat['id_materia'] ?>_p2'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][2] ?? '--' ?>';
+                        rowData['materia_<?= $mat['id_materia'] ?>_p3'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][3] ?? '--' ?>';
+                        rowData['materia_<?= $mat['id_materia'] ?>_prom'] = '<?= $promediosMateriaTrimestre[$est['id_estudiante']][$mat['id_materia']] ?? '--' ?>';
                     <?php endforeach; ?>
                     
                     rowData['promedio'] = '<?= $promedios_trimestre[$est['id_estudiante']] ?>';
@@ -286,7 +504,7 @@ foreach ($estudiantes as $estudiante) {
                         }
                         
                         // Resaltar notas bajas
-                        if (data.section === 'body' && parseFloat(data.cell.text[0]) < 51) {
+                        if (data.section === 'body' && !isNaN(parseFloat(data.cell.text[0])) && parseFloat(data.cell.text[0]) < 51) {
                             data.cell.styles.textColor = [220, 53, 69];
                             data.cell.styles.fontStyle = 'bold';
                         }
@@ -348,11 +566,11 @@ foreach ($estudiantes as $estudiante) {
 
         <!-- Tabla -->
         <div class="table-responsive">
-            <table class="table table-bordered align-middle">
+            <table class="table table-bordered align-middle trimester-table">
                 <thead class="table-light">
-                    <tr>
-                        <th>#</th>
-                        <th class="student-name">Estudiante</th>
+                    <tr class="trim-header-top">
+                        <th rowspan="2" class="number-col">#</th>
+                        <th rowspan="2" class="student-name">Estudiante</th>
                         <?php foreach ($materias as $mat): ?>
                             <?php
                             $clase = '';
@@ -363,19 +581,27 @@ foreach ($estudiantes as $estudiante) {
                             elseif (!empty($mat['hijas']))
                                 $clase = 'padre-th';
                             ?>
-                            <th class="<?= $clase ?>">
+                            <th colspan="4" class="<?= $clase ?>">
                                 <?= htmlspecialchars($mat['nombre_materia']) ?>
                                 <?= $mat['es_extra'] ? '<small>(Extra)</small>' : '' ?>
                             </th>
                         <?php endforeach; ?>
-                        <th>Promedio</th>
+                        <th rowspan="2">Promedio</th>
+                    </tr>
+                    <tr class="trim-header-sub">
+                        <?php foreach ($materias as $mat): ?>
+                            <th class="partial-col">P1</th>
+                            <th class="partial-col">P2</th>
+                            <th class="partial-col">P3</th>
+                            <th class="average-col">Prom.</th>
+                        <?php endforeach; ?>
                     </tr>
                 </thead>
                 <tbody>
                     <?php $contador = 1; ?>
                     <?php foreach ($estudiantes as $estudiante): ?>
                         <tr>
-                            <td><?= $contador++ ?></td>
+                            <td class="number-col"><?= $contador++ ?></td>
                             <td class="student-name">
                                 <?= htmlspecialchars(strtoupper(
                                     $estudiante['apellido_paterno'] . ' ' .
@@ -385,15 +611,20 @@ foreach ($estudiantes as $estudiante) {
                             </td>
                             <?php foreach ($materias as $mat): ?>
                                 <?php
-                                $nota = $calificaciones[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
                                 $clase = '';
                                 if ($mat['es_extra'] == 1)
                                     $clase = 'extra-td';
                                 elseif (isset($mat['materia_padre_id']))
                                     $clase = 'hija-td';
-                                $clase .= (is_numeric($nota) && floatval($nota) < 51) ? ' nota-baja' : '';
+                                $p1 = $calificacionesParciales[$estudiante['id_estudiante']][$mat['id_materia']][1] ?? '';
+                                $p2 = $calificacionesParciales[$estudiante['id_estudiante']][$mat['id_materia']][2] ?? '';
+                                $p3 = $calificacionesParciales[$estudiante['id_estudiante']][$mat['id_materia']][3] ?? '';
+                                $promedioMateria = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
                                 ?>
-                                <td class="<?= $clase ?>"><?= $nota ?></td>
+                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p1) && floatval($p1) < 51) ? 'nota-baja' : '' ?>"><?= $p1 !== '' ? $p1 : '--' ?></td>
+                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p2) && floatval($p2) < 51) ? 'nota-baja' : '' ?>"><?= $p2 !== '' ? $p2 : '--' ?></td>
+                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p3) && floatval($p3) < 51) ? 'nota-baja' : '' ?>"><?= $p3 !== '' ? $p3 : '--' ?></td>
+                                <td class="average-col <?= $clase ?> <?= (is_numeric($promedioMateria) && floatval($promedioMateria) < 51) ? 'nota-baja' : '' ?>"><?= $promedioMateria !== '' ? $promedioMateria : '--' ?></td>
                             <?php endforeach; ?>
                             <td class="fw-bold"><?= $promedios_trimestre[$estudiante['id_estudiante']] ?></td>
                         </tr>

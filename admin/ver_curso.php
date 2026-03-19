@@ -26,6 +26,15 @@ $trimestre = isset($_GET['trimestre']) ? intval($_GET['trimestre']) : 1;
 $database = new Database();
 $conn = $database->connect();
 
+$stmt_gestion = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$gestionConfigurada = $stmt_gestion->fetchColumn();
+$gestionConfigurada = $gestionConfigurada ? trim((string)$gestionConfigurada) : '';
+$gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$gestionAlternativa = null;
+if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
+    $gestionAlternativa = $matches[1];
+}
+
 $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
 $stmt_curso->execute([$id_curso]);
 
@@ -126,17 +135,50 @@ $calificaciones = [];
 foreach ($estudiantes as $estudiante) {
     foreach ($todas_materias as $materia) {
         for ($i = 1; $i <= 3; $i++) {
-            $stmt = $conn->prepare("
-                SELECT calificacion 
-                FROM calificaciones 
-                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-            ");
-            $stmt->execute([$estudiante['id_estudiante'], $materia['id_materia'], $i]);
-            $nota = $stmt->fetchColumn();
-            $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$i] = $nota !== false ? $nota : '';
+            $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$i] = '';
         }
     }
 }
+
+$sqlCalificaciones = "SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, cp.calificacion
+                      FROM calificaciones_parciales cp
+                      INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                      INNER JOIN estudiantes e ON e.id_estudiante = cp.id_estudiante
+                      INNER JOIN cursos_materias cm ON cm.id_materia = cp.id_materia
+                      WHERE e.id_curso = ?
+                        AND cm.id_curso = ?
+                        AND (pe.gestion = ?";
+$paramsCalificaciones = [$id_curso, $id_curso, $gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $sqlCalificaciones .= " OR pe.gestion = ?";
+    $paramsCalificaciones[] = $gestionAlternativa;
+}
+$sqlCalificaciones .= ")";
+
+$stmt_calificaciones = $conn->prepare($sqlCalificaciones);
+$stmt_calificaciones->execute($paramsCalificaciones);
+
+$parcialesPorTrimestre = [];
+foreach ($stmt_calificaciones->fetchAll(PDO::FETCH_ASSOC) as $filaCalificacion) {
+    if ($filaCalificacion['calificacion'] === null || $filaCalificacion['calificacion'] === '') {
+        continue;
+    }
+    $idEstudiante = (int)$filaCalificacion['id_estudiante'];
+    $idMateria = (int)$filaCalificacion['id_materia'];
+    $trimestreFila = (int)$filaCalificacion['trimestre'];
+    $parcialesPorTrimestre[$idEstudiante][$idMateria][$trimestreFila][] = (float)$filaCalificacion['calificacion'];
+}
+
+foreach ($parcialesPorTrimestre as $idEstudiante => $materiasParciales) {
+    foreach ($materiasParciales as $idMateria => $trimestresParciales) {
+        foreach ($trimestresParciales as $numeroTrimestre => $notasParciales) {
+            if (!empty($notasParciales)) {
+                $calificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = number_format(array_sum($notasParciales) / count($notasParciales), 2);
+            }
+        }
+    }
+}
+
 // NOTA AUTOMÁTICA para materias padre (promedio de hijas)
 foreach ($estudiantes as $estudiante) {
     foreach ($materias_padre as $padre) {
@@ -267,11 +309,40 @@ $estudiantes_ordenados = $estudiantes;
             margin-bottom: 0;
         }
 
+        .centralizador-table tbody tr {
+            transition: background-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
         .centralizador-table th,
         .centralizador-table td {
             vertical-align: middle;
             padding: 0.34rem 0.44rem;
             font-size: 0.94rem;
+        }
+
+        .centralizador-table tbody tr:nth-child(odd) td {
+            background: #ffffff;
+        }
+
+        .centralizador-table tbody tr:nth-child(even) td {
+            background: #f8fafc;
+        }
+
+        .centralizador-table tbody tr {
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .centralizador-table tbody tr:hover td {
+            background: #bfdbfe !important;
+            color: #0f172a !important;
+        }
+
+        .centralizador-table tbody tr:hover td:nth-child(1),
+        .centralizador-table tbody tr:hover td:nth-child(2),
+        .centralizador-table tbody tr:hover td:nth-child(3) {
+            background: #93c5fd !important;
+            color: #0b2545 !important;
+            box-shadow: 4px 0 12px rgba(59, 130, 246, 0.22);
         }
 
         .centralizador-table thead th {
@@ -349,6 +420,18 @@ $estudiantes_ordenados = $estudiantes;
             position: sticky;
             z-index: 15;
             background: #fff;
+        }
+
+        .centralizador-table tbody td:nth-child(1),
+        .centralizador-table tbody td:nth-child(2),
+        .centralizador-table tbody td:nth-child(3) {
+            background: #ffffff !important;
+        }
+
+        .centralizador-table tbody tr:nth-child(even) td:nth-child(1),
+        .centralizador-table tbody tr:nth-child(even) td:nth-child(2),
+        .centralizador-table tbody tr:nth-child(even) td:nth-child(3) {
+            background: #f8fafc !important;
         }
 
         .centralizador-table th:nth-child(1),
