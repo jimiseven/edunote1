@@ -39,9 +39,17 @@ $estudiantes = $stmt_estudiantes->fetchAll(PDO::FETCH_ASSOC);
 
 // 3. Clasificación de materias
 $stmt_materias = $conn->prepare("
-    SELECT m.id_materia, m.nombre_materia, m.es_extra, m.es_submateria, m.materia_padre_id
+    SELECT 
+        m.id_materia,
+        m.nombre_materia,
+        m.es_extra,
+        m.es_submateria,
+        m.materia_padre_id,
+        CONCAT(COALESCE(p.nombres, ''), CASE WHEN p.apellidos IS NOT NULL AND p.apellidos <> '' THEN ' ' ELSE '' END, COALESCE(p.apellidos, '')) AS nombre_profesor
     FROM cursos_materias cm 
     JOIN materias m ON cm.id_materia = m.id_materia 
+    LEFT JOIN profesores_materias_cursos pmc ON cm.id_curso_materia = pmc.id_curso_materia
+    LEFT JOIN personal p ON pmc.id_personal = p.id_personal
     WHERE cm.id_curso = ?
 ");
 $stmt_materias->execute([$id_curso]);
@@ -189,6 +197,22 @@ foreach ($estudiantes as $estudiante) {
         body {
             background: #f8f9fa;
             margin-left: var(--sidebar-width);
+            transition: background-color 0.25s ease, color 0.25s ease;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        h3,
+        .fw-bold {
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.01em;
+        }
+
+        .trimester-table th,
+        .trimester-table td,
+        .badge,
+        .btn {
+            font-size: 0.92rem;
         }
 
         .sidebar {
@@ -204,6 +228,183 @@ foreach ($estudiantes as $estudiante) {
 
         .main-content {
             padding: 20px;
+        }
+
+        .theme-toggle-btn {
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-weight: 600;
+        }
+
+        .header-main {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 0.15rem;
+            margin-bottom: 0;
+        }
+
+        .header-title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-height: 44px;
+        }
+
+        .header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            justify-content: flex-end;
+            max-width: 100%;
+        }
+
+        .header-controls {
+            margin-bottom: 1rem;
+        }
+
+        .selector-card {
+            margin-bottom: 1rem !important;
+        }
+
+        .btn {
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+        }
+
+        .btn-outline-secondary,
+        .btn-outline-primary {
+            background: #ffffff;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border-color: #1d4ed8;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            border-color: #15803d;
+        }
+
+        body.dark-mode {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body.dark-mode .table-responsive,
+        body.dark-mode .card,
+        body.dark-mode .card-body,
+        body.dark-mode .header-controls {
+            background: #111827 !important;
+            color: #e5e7eb;
+            border-color: #1f2937 !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        }
+
+        body.dark-mode .trimester-table thead th,
+        body.dark-mode .trim-header-top th,
+        body.dark-mode .trim-header-sub th,
+        body.dark-mode .trim-header-top .student-name,
+        body.dark-mode .trim-header-sub .student-name,
+        body.dark-mode .trim-header-top .number-col,
+        body.dark-mode .trim-header-sub .number-col {
+            background: #1f2937 !important;
+            color: #e5e7eb !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:nth-child(odd) td,
+        body.dark-mode .table tbody .number-col,
+        body.dark-mode .table tbody .student-name {
+            background: #0f172a !important;
+            color: #dbeafe;
+        }
+
+        body.dark-mode .trimester-table tbody tr:nth-child(even) td,
+        body.dark-mode .table tbody tr:nth-child(even) .number-col,
+        body.dark-mode .table tbody tr:nth-child(even) .student-name {
+            background: #111827 !important;
+            color: #dbeafe;
+        }
+
+        body.dark-mode .trimester-table tbody tr:hover td {
+            background: #1d4ed8 !important;
+            color: #eff6ff !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:hover .number-col,
+        body.dark-mode .trimester-table tbody tr:hover .student-name {
+            background: #2563eb !important;
+            color: #ffffff !important;
+            box-shadow: 4px 0 12px rgba(37, 99, 235, 0.35);
+        }
+
+        body.dark-mode .average-col {
+            background: #1e293b !important;
+            color: #e2e8f0;
+        }
+
+        body.dark-mode .padre-th {
+            background: #1f2937 !important;
+            color: #f8fafc !important;
+        }
+
+        body.dark-mode .hija-th {
+            background: #162032 !important;
+            color: #94a3b8 !important;
+        }
+
+        body.dark-mode .extra-th {
+            background: #172554 !important;
+            color: #bfdbfe !important;
+        }
+
+        body.dark-mode .table td.nota-baja,
+        body.dark-mode .table td.average-col.nota-baja {
+            background: #3b0d19 !important;
+            color: #fda4af !important;
+        }
+
+        body.dark-mode .student-name,
+        body.dark-mode .number-col,
+        body.dark-mode .trimester-table td,
+        body.dark-mode .trimester-table th,
+        body.dark-mode .table-responsive,
+        body.dark-mode .card {
+            border-color: #334155 !important;
+        }
+
+        body.dark-mode .btn-outline-secondary,
+        body.dark-mode .btn-outline-primary {
+            color: #dbeafe;
+            border-color: #41566f;
+            background: #182234 !important;
+        }
+
+        body.dark-mode .badge.bg-primary {
+            background: #1d4ed8 !important;
+        }
+
+        body.dark-mode .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            border-color: #1e40af;
+        }
+
+        body.dark-mode .btn-success {
+            background: linear-gradient(135deg, #15803d, #166534);
+            border-color: #166534;
         }
 
         .trimester-table {
@@ -296,6 +497,20 @@ foreach ($estudiantes as $estudiante) {
         .partial-col {
             min-width: 72px;
             text-align: center;
+        }
+
+        .subject-heading {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            max-width: 100%;
+            cursor: help;
+        }
+
+        .subject-heading .bi-info-circle {
+            font-size: 0.82rem;
+            opacity: 0.78;
         }
 
         .average-col {
@@ -398,11 +613,161 @@ foreach ($estudiantes as $estudiante) {
                 margin-left: 0 !important;
             }
         }
+
+        @media (max-width: 767px) {
+            .header-main {
+                align-items: flex-start;
+            }
+
+            .header-title-group,
+            .header-actions {
+                width: 100%;
+            }
+
+            .header-actions {
+                justify-content: flex-start;
+            }
+        }
+
+        body.dark-mode {
+            background: #0b1220 !important;
+            color: #e5eefb !important;
+        }
+
+        body.dark-mode .main-content,
+        body.dark-mode .header-controls,
+        body.dark-mode .card,
+        body.dark-mode .card-body,
+        body.dark-mode .table-responsive {
+            background: #111827 !important;
+            color: #e5eefb !important;
+            border-color: #243244 !important;
+        }
+
+        body.dark-mode .table-responsive::after {
+            background: linear-gradient(to left, rgba(17, 24, 39, 0.98), rgba(17, 24, 39, 0)) !important;
+        }
+
+        body.dark-mode .trimester-table td,
+        body.dark-mode .trimester-table th,
+        body.dark-mode .student-name,
+        body.dark-mode .number-col {
+            border-color: #243244 !important;
+        }
+
+        body.dark-mode .trim-header-top th,
+        body.dark-mode .trim-header-sub th,
+        body.dark-mode .trim-header-top .number-col,
+        body.dark-mode .trim-header-top .student-name,
+        body.dark-mode .trim-header-sub .number-col,
+        body.dark-mode .trim-header-sub .student-name {
+            background: #1b2535 !important;
+            color: #f8fbff !important;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35) !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:nth-child(odd) td,
+        body.dark-mode .table tbody .number-col,
+        body.dark-mode .table tbody .student-name {
+            background: #0f172a !important;
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:nth-child(even) td,
+        body.dark-mode .table tbody tr:nth-child(even) .number-col,
+        body.dark-mode .table tbody tr:nth-child(even) .student-name {
+            background: #131d31 !important;
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:hover td {
+            background: #1e40af !important;
+            color: #eff6ff !important;
+        }
+
+        body.dark-mode .trimester-table tbody tr:hover .number-col,
+        body.dark-mode .trimester-table tbody tr:hover .student-name {
+            background: #2563eb !important;
+            color: #ffffff !important;
+            box-shadow: 4px 0 12px rgba(37, 99, 235, 0.35) !important;
+        }
+
+        body.dark-mode .average-col {
+            background: #1c2a3d !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.dark-mode .padre-th {
+            background: #223047 !important;
+            color: #f8fafc !important;
+        }
+
+        body.dark-mode .hija-th {
+            background: #162235 !important;
+            color: #93a8c4 !important;
+        }
+
+        body.dark-mode .extra-th {
+            background: #17304f !important;
+            color: #bfdbfe !important;
+        }
+
+        body.dark-mode .table td.nota-baja,
+        body.dark-mode .table td.average-col.nota-baja {
+            background: #3b1220 !important;
+            color: #fda4af !important;
+        }
+
+        body.dark-mode .btn-outline-secondary,
+        body.dark-mode .btn-outline-primary {
+            color: #dbeafe !important;
+            border-color: #41566f !important;
+            background: #182234 !important;
+        }
+
+        body.dark-mode .badge.bg-primary {
+            background: #2563eb !important;
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const themeToggle = document.getElementById('themeToggle');
+            const themeIcon = themeToggle ? themeToggle.querySelector('i') : null;
+            const themeText = themeToggle ? themeToggle.querySelector('span') : null;
+            const storageKey = 'edunote-theme-dark';
+
+            function applyTheme(isDark) {
+                document.body.classList.toggle('dark-mode', isDark);
+                if (themeIcon) {
+                    themeIcon.className = isDark ? 'bi bi-sun' : 'bi bi-moon-stars';
+                }
+                if (themeText) {
+                    themeText.textContent = isDark ? 'Vista diurna' : 'Vista nocturna';
+                }
+            }
+
+            const savedTheme = localStorage.getItem(storageKey);
+            applyTheme(savedTheme === 'true');
+
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    const isDark = !document.body.classList.contains('dark-mode');
+                    applyTheme(isDark);
+                    localStorage.setItem(storageKey, isDark ? 'true' : 'false');
+                });
+            }
+
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltipTriggerList.forEach(function(tooltipTriggerEl) {
+                new bootstrap.Tooltip(tooltipTriggerEl, {
+                    boundary: document.body,
+                    html: false,
+                    placement: 'top'
+                });
+            });
+
             document.getElementById('pdfBtn').addEventListener('click', function() {
                 // Verificar que jspdf esté cargado
                 if (typeof jspdf === 'undefined') {
@@ -461,20 +826,18 @@ foreach ($estudiantes as $estudiante) {
                 // Preparar datos de estudiantes
                 const body = [];
                 <?php foreach($estudiantes as $i => $est): ?>
-                    const rowData = {
+                    body.push({
                         index: <?= $i + 1 ?>,
                         estudiante: '<?= addslashes(strtoupper($est['apellido_paterno'] . ' ' . $est['apellido_materno'] . ', ' . $est['nombres'])) ?>'
-                    };
+                    <?php foreach($materias as $mat): ?>,
+                        'materia_<?= $mat['id_materia'] ?>_p1': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][1] ?? '--' ?>',
+                        'materia_<?= $mat['id_materia'] ?>_p2': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][2] ?? '--' ?>',
+                        'materia_<?= $mat['id_materia'] ?>_p3': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][3] ?? '--' ?>',
+                        'materia_<?= $mat['id_materia'] ?>_prom': '<?= $promediosMateriaTrimestre[$est['id_estudiante']][$mat['id_materia']] ?? '--' ?>'
+                    <?php endforeach; ?>,
+                        promedio: '<?= $promedios_trimestre[$est['id_estudiante']] ?>'
+                    });
                     
-                    <?php foreach($materias as $mat): ?>
-                        rowData['materia_<?= $mat['id_materia'] ?>_p1'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][1] ?? '--' ?>';
-                        rowData['materia_<?= $mat['id_materia'] ?>_p2'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][2] ?? '--' ?>';
-                        rowData['materia_<?= $mat['id_materia'] ?>_p3'] = '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][3] ?? '--' ?>';
-                        rowData['materia_<?= $mat['id_materia'] ?>_prom'] = '<?= $promediosMateriaTrimestre[$est['id_estudiante']][$mat['id_materia']] ?? '--' ?>';
-                    <?php endforeach; ?>
-                    
-                    rowData['promedio'] = '<?= $promedios_trimestre[$est['id_estudiante']] ?>';
-                    body.push(rowData);
                 <?php endforeach; ?>
 
                 // Configuración de la tabla
@@ -526,28 +889,34 @@ foreach ($estudiantes as $estudiante) {
     <!-- Contenido Principal -->
     <div class="main-content">
         <!-- Header -->
-        <div class="header-controls d-flex justify-content-between align-items-center mb-4 no-print">
-            <div class="d-flex align-items-center gap-3">
-                <a href="ver_curso.php?id=<?= $id_curso ?>" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-arrow-left"></i> Volver
-                </a>
-                <h3 class="mb-0"><?= htmlspecialchars($nombre_curso) ?></h3>
-            </div>
-            <div class="d-flex gap-2">
-                <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-printer"></i> Imprimir
-                </button>
-                <button id="pdfBtn" class="btn btn-primary btn-sm">
-                    <i class="bi bi-file-earmark-pdf"></i> PDF
-                </button>
-                <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success">
-                    <i class="bi bi-file-excel"></i> Excel
-                </a>
+        <div class="header-controls no-print">
+            <div class="header-main">
+                <div class="header-title-group">
+                    <a href="ver_curso.php?id=<?= $id_curso ?>" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left"></i> Volver
+                    </a>
+                    <h3 class="mb-0"><?= htmlspecialchars($nombre_curso) ?></h3>
+                </div>
+                <div class="header-actions">
+                    <button type="button" id="themeToggle" class="btn btn-outline-secondary btn-sm theme-toggle-btn">
+                        <i class="bi bi-moon-stars"></i>
+                        <span>Vista nocturna</span>
+                    </button>
+                    <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <button id="pdfBtn" class="btn btn-primary btn-sm">
+                        <i class="bi bi-file-earmark-pdf"></i> PDF
+                    </button>
+                    <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success btn-sm">
+                        <i class="bi bi-file-excel"></i> Excel
+                    </a>
+                </div>
             </div>
         </div>
 
         <!-- Selector de Trimestre -->
-        <div class="card mb-4 shadow-sm no-print">
+        <div class="card mb-4 shadow-sm no-print selector-card">
             <div class="card-body">
                 <div class="d-flex align-items-center gap-3">
                     <span class="fw-bold">Trimestre:</span>
@@ -580,9 +949,16 @@ foreach ($estudiantes as $estudiante) {
                                 $clase = 'hija-th';
                             elseif (!empty($mat['hijas']))
                                 $clase = 'padre-th';
+                            $profesorMateria = trim((string)($mat['nombre_profesor'] ?? ''));
+                            $textoProfesor = $profesorMateria !== '' ? $profesorMateria : 'Profesor no asignado';
                             ?>
                             <th colspan="4" class="<?= $clase ?>">
-                                <?= htmlspecialchars($mat['nombre_materia']) ?>
+                                <span class="subject-heading"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-title="Profesor: <?= htmlspecialchars($textoProfesor, ENT_QUOTES) ?>">
+                                    <span><?= htmlspecialchars($mat['nombre_materia']) ?></span>
+                                    <i class="bi bi-info-circle"></i>
+                                </span>
                                 <?= $mat['es_extra'] ? '<small>(Extra)</small>' : '' ?>
                             </th>
                         <?php endforeach; ?>

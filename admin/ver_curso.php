@@ -276,6 +276,22 @@ $estudiantes_ordenados = $estudiantes;
             background: #f5f6fa;
             height: 100vh;
             overflow: auto;
+            transition: background-color 0.25s ease, color 0.25s ease;
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        h3,
+        .fs-5 {
+            font-size: 1.35rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.01em;
+        }
+
+        .centralizador-table th,
+        .centralizador-table td,
+        .badge,
+        .btn {
+            font-size: 0.92rem;
         }
 
         .container-fluid {
@@ -286,27 +302,51 @@ $estudiantes_ordenados = $estudiantes;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            padding-left: 0.4rem;
+            padding-right: 0.4rem;
         }
 
         .content-section {
             background: #fff;
             border-radius: 10px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-            padding: 16px 8px;
-            margin: 24px 0 12px 0;
+            padding: 0;
+            margin: 0 0 8px 0;
             flex: 1;
+            width: 100%;
         }
 
         /* Contenedor de tabla con scroll unificado */
         .table-responsive {
-            overflow: auto;
+            background: #fff;
             border: 1px solid #dee2e6;
             border-radius: 8px;
-            max-height: calc(100vh - 180px);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+            overflow: auto;
+            max-height: calc(100vh - 132px);
+            scrollbar-gutter: stable both-edges;
+            position: relative;
+            width: 100%;
+        }
+
+        .table-responsive::after {
+            content: '';
+            position: sticky;
+            right: 0;
+            top: 0;
+            display: block;
+            width: 18px;
+            height: 100%;
+            float: right;
+            pointer-events: none;
+            background: linear-gradient(to left, rgba(248, 249, 250, 0.95), rgba(248, 249, 250, 0));
         }
 
         .centralizador-table {
+            min-width: max-content;
             margin-bottom: 0;
+            border-collapse: separate;
+            border-spacing: 0;
         }
 
         .centralizador-table tbody tr {
@@ -315,6 +355,7 @@ $estudiantes_ordenados = $estudiantes;
 
         .centralizador-table th,
         .centralizador-table td {
+            white-space: nowrap;
             vertical-align: middle;
             padding: 0.34rem 0.44rem;
             font-size: 0.94rem;
@@ -342,7 +383,7 @@ $estudiantes_ordenados = $estudiantes;
         .centralizador-table tbody tr:hover td:nth-child(3) {
             background: #93c5fd !important;
             color: #0b2545 !important;
-            box-shadow: 4px 0 12px rgba(59, 130, 246, 0.22);
+            box-shadow: 1px 0 0 #60a5fa;
         }
 
         .centralizador-table thead th {
@@ -355,11 +396,42 @@ $estudiantes_ordenados = $estudiantes;
             box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
         }
 
-        .centralizador-table th.extra-materia,
-        .centralizador-table .materia-extra {
-            background: #f6f7fa !important;
-            color: #607080 !important;
-            font-style: italic;
+        .materia-head {
+            min-width: 240px;
+            width: 240px;
+            max-width: 240px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .materia-subhead {
+            min-width: 60px;
+            width: 60px;
+            max-width: 60px;
+            text-align: center;
+        }
+
+        .nombre-materia {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            min-height: 2.4em;
+            max-width: 220px;
+            margin: 0 auto;
+            white-space: normal;
+            word-break: break-word;
+            font-size: 0.92rem;
+        }
+
+        .nombre-materia.long-name {
+            font-size: 0.82rem;
+        }
+
+        .nombre-materia.extra-long-name {
+            font-size: 0.74rem;
         }
 
         .centralizador-table .nota-baja {
@@ -392,13 +464,36 @@ $estudiantes_ordenados = $estudiantes;
             color: #5472a1;
         }
 
-        .student-name {
-            min-width: 150px;
-            white-space: nowrap;
+        .number-cell {
+            min-width: 56px;
+            width: 56px;
+            text-align: center;
             position: sticky;
             left: 0;
+            z-index: 16;
+            box-shadow: 1px 0 0 #dee2e6;
+        }
+
+        .position-cell {
+            min-width: 56px;
+            width: 56px;
+            text-align: center;
+            position: sticky;
+            left: 56px;
+            z-index: 16;
+            box-shadow: 1px 0 0 #dee2e6;
+        }
+
+        .student-name {
+            min-width: 220px;
+            white-space: nowrap;
+            position: sticky;
+            left: 112px;
             background: #fff;
-            z-index: 5;
+            z-index: 16;
+            box-shadow: 1px 0 0 #dbe4f0;
+            font-weight: 600;
+            border-right: 2px solid #dbe4f0;
         }
 
         .header-controls {
@@ -408,6 +503,203 @@ $estudiantes_ordenados = $estudiantes;
             top: 0;
             z-index: 101;
             flex-shrink: 0;
+            margin-bottom: 0.55rem;
+        }
+
+        .header-main {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.45rem 0.15rem;
+            margin-bottom: 0;
+        }
+
+        .header-title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-height: 36px;
+        }
+
+        .header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            justify-content: flex-end;
+            max-width: 100%;
+        }
+
+        .theme-toggle-btn {
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-weight: 600;
+        }
+
+        .btn {
+            border-radius: 12px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+            padding-top: 0.32rem;
+            padding-bottom: 0.32rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+        }
+
+        .btn-outline-secondary,
+        .btn-outline-warning,
+        .btn-outline-info,
+        .btn-outline-primary {
+            background: #ffffff;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border-color: #1d4ed8;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            border-color: #15803d;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+            border-color: #b91c1c;
+        }
+
+        .centralizador-table th.extra-materia,
+        .centralizador-table .materia-extra {
+            background: #e6f4ff !important;
+            color: #0d6efd !important;
+            font-style: italic;
+        }
+
+        body.dark-mode {
+            background: #0b1220 !important;
+            color: #e5eefb !important;
+        }
+
+        body.dark-mode .content-section,
+        body.dark-mode .header-controls,
+        body.dark-mode .table-responsive {
+            background: #111827 !important;
+            color: #e5eefb !important;
+            border-color: #243244 !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+        }
+
+        body.dark-mode .table-responsive::after {
+            background: linear-gradient(to left, rgba(17, 24, 39, 0.98), rgba(17, 24, 39, 0)) !important;
+        }
+
+        body.dark-mode .centralizador-table td,
+        body.dark-mode .centralizador-table th,
+        body.dark-mode .student-name,
+        body.dark-mode .number-cell,
+        body.dark-mode .position-cell {
+            border-color: #243244 !important;
+        }
+
+        body.dark-mode .centralizador-table thead th,
+        body.dark-mode .centralizador-table thead th:nth-child(1),
+        body.dark-mode .centralizador-table thead th:nth-child(2),
+        body.dark-mode .centralizador-table thead th:nth-child(3) {
+            background: #1b2535 !important;
+            color: #f8fbff !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.35) !important;
+        }
+
+        body.dark-mode .nombre-materia {
+            color: #f8fbff;
+        }
+
+        body.dark-mode .centralizador-table tbody tr:nth-child(odd) td,
+        body.dark-mode .centralizador-table tbody td:nth-child(1),
+        body.dark-mode .centralizador-table tbody td:nth-child(2),
+        body.dark-mode .centralizador-table tbody td:nth-child(3) {
+            background: #0f172a !important;
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr:nth-child(even) td,
+        body.dark-mode .centralizador-table tbody tr:nth-child(even) td:nth-child(1),
+        body.dark-mode .centralizador-table tbody tr:nth-child(even) td:nth-child(2),
+        body.dark-mode .centralizador-table tbody tr:nth-child(even) td:nth-child(3) {
+            background: #131d31 !important;
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr:hover td {
+            background: #1e40af !important;
+            color: #eff6ff !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr:hover td:nth-child(1),
+        body.dark-mode .centralizador-table tbody tr:hover td:nth-child(2),
+        body.dark-mode .centralizador-table tbody tr:hover td:nth-child(3) {
+            background: #2563eb !important;
+            color: #ffffff !important;
+            box-shadow: 1px 0 0 #60a5fa !important;
+        }
+
+        body.dark-mode .centralizador-table .average-cell {
+            background: #1c2a3d !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.dark-mode .centralizador-table .final-average {
+            background: #22345a !important;
+            color: #e0e7ff !important;
+        }
+
+        body.dark-mode .centralizador-table .nota-baja {
+            background: #3b1220 !important;
+            color: #fda4af !important;
+        }
+
+        body.dark-mode .centralizador-table th.extra-materia,
+        body.dark-mode .centralizador-table .materia-extra {
+            background: #17304f !important;
+            color: #bfdbfe !important;
+        }
+
+        body.dark-mode .btn-outline-secondary,
+        body.dark-mode .btn-outline-warning,
+        body.dark-mode .btn-outline-info,
+        body.dark-mode .btn-outline-primary {
+            color: #dbeafe !important;
+            border-color: #41566f !important;
+            background: #182234 !important;
+        }
+
+        body.dark-mode .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            border-color: #1e40af;
+        }
+
+        body.dark-mode .btn-success {
+            background: linear-gradient(135deg, #15803d, #166534);
+            border-color: #166534;
+        }
+
+        body.dark-mode .btn-danger {
+            background: linear-gradient(135deg, #b91c1c, #991b1b);
+            border-color: #991b1b;
+        }
+
+        body.dark-mode .alert-success {
+            background: #052e16;
+            color: #bbf7d0;
+            border-color: #166534;
         }
 
         /* Estilos para las columnas fijas iniciales */
@@ -441,12 +733,12 @@ $estudiantes_ordenados = $estudiantes;
 
         .centralizador-table th:nth-child(2),
         .centralizador-table td:nth-child(2) {
-            left: 40px;
+            left: 56px;
         }
 
         .centralizador-table th:nth-child(3),
         .centralizador-table td:nth-child(3) {
-            left: 80px;
+            left: 112px;
         }
 
         /* Asegurar que los headers sticky mantengan su fondo */
@@ -455,30 +747,31 @@ $estudiantes_ordenados = $estudiantes;
         .centralizador-table thead th:nth-child(3) {
             background: #e9ecef !important;
             z-index: 25;
+            box-shadow: 1px 0 0 #cbd5e1;
         }
 
         /* Responsive para diferentes tamaños de pantalla */
         @media (min-width: 1920px) {
             .table-responsive {
-                max-height: calc(100vh - 160px);
+                max-height: calc(100vh - 120px);
             }
         }
 
         @media (min-width: 1440px) and (max-width: 1919px) {
             .table-responsive {
-                max-height: calc(100vh - 170px);
+                max-height: calc(100vh - 126px);
             }
         }
 
         @media (min-width: 1200px) and (max-width: 1439px) {
             .table-responsive {
-                max-height: calc(100vh - 180px);
+                max-height: calc(100vh - 132px);
             }
         }
 
         @media (min-width: 992px) and (max-width: 1199px) {
             .table-responsive {
-                max-height: calc(100vh - 200px);
+                max-height: calc(100vh - 148px);
             }
         }
 
@@ -495,11 +788,29 @@ $estudiantes_ordenados = $estudiantes;
             }
 
             .table-responsive {
-                max-height: calc(100vh - 220px);
+                max-height: calc(100vh - 168px);
             }
         }
 
         @media (max-width: 767px) {
+            .header-main {
+                align-items: flex-start;
+            }
+
+            .header-title-group,
+            .header-actions {
+                width: 100%;
+            }
+
+            .header-actions {
+                justify-content: flex-start;
+            }
+
+            main {
+                padding-left: 0.2rem;
+                padding-right: 0.2rem;
+            }
+
             .centralizador-table th,
             .centralizador-table td {
                 font-size: .75rem !important;
@@ -512,13 +823,13 @@ $estudiantes_ordenados = $estudiantes;
             }
 
             .table-responsive {
-                max-height: calc(100vh - 260px);
+                max-height: calc(100vh - 210px);
             }
         }
 
         @media (max-width: 480px) {
             .table-responsive {
-                max-height: calc(100vh - 300px);
+                max-height: calc(100vh - 235px);
             }
         }
 
@@ -574,21 +885,21 @@ $estudiantes_ordenados = $estudiantes;
         /* Mejoras para pantallas ultrawide */
         @media (min-width: 2560px) {
             .table-responsive {
-                height: calc(100vh - 160px);
+                height: calc(100vh - 118px);
             }
         }
 
         /* Mejoras para laptops pequeños */
         @media (min-height: 600px) and (max-height: 800px) {
             .table-responsive {
-                height: calc(100vh - 220px);
+                height: calc(100vh - 160px);
             }
         }
 
         /* Pantallas muy altas */
         @media (min-height: 1080px) {
             .table-responsive {
-                height: calc(100vh - 170px);
+                height: calc(100vh - 126px);
             }
         }
     </style>
@@ -602,24 +913,18 @@ $estudiantes_ordenados = $estudiantes;
             <!-- Incluye tu sidebar real aquí, sin rehacerlo -->
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-10 ms-sm-auto col-lg-10 px-md-4">
+            <main class="col-md-10 ms-sm-auto col-lg-10 px-md-2 px-lg-2">
                 <!-- Header con título y botones -->
-                <div
-                    class="header-controls d-flex flex-wrap justify-content-between align-items-center py-2 mb-3 no-print">
-                    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
-                        <a href="javascript:history.back()" class="btn btn-outline-secondary btn-sm">
-                            <i class="bi bi-arrow-left"></i> Volver
-                        </a>
-
+                <div class="header-controls no-print">
+                    <div class="header-main">
+                    <div class="header-title-group">
                     <span class="fs-5 fw-bold text-primary"><?= htmlspecialchars($nombre_curso) ?></span>
                 </div>
-                <?php if (isset($success_message)): ?>
-                    <div class="alert alert-success alert-dismissible fade show mb-0 ms-3">
-                        <?= $success_message ?>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                <?php endif; ?>
-                <div class="d-flex gap-2">
+                <div class="header-actions">
+                        <button type="button" id="themeToggle" class="btn btn-outline-secondary btn-sm theme-toggle-btn">
+                            <i class="bi bi-moon-stars"></i>
+                            <span>Vista nocturna</span>
+                        </button>
                         <?php if ($prev_curso_id !== null): ?>
                             <a href="ver_curso.php?id=<?= $prev_curso_id ?>&vista=<?= urlencode($vista) ?>&trimestre=<?= (int)$trimestre ?>"
                                class="btn btn-outline-secondary btn-sm" title="Curso anterior">
@@ -658,6 +963,12 @@ $estudiantes_ordenados = $estudiantes;
                         </button>
                     </div>
                 </div>
+                <?php if (isset($success_message)): ?>
+                    <div class="alert alert-success alert-dismissible fade show mb-3">
+                        <?= $success_message ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
 
                 <section class="content-section">
                     <div class="table-responsive">
@@ -668,9 +979,18 @@ $estudiantes_ordenados = $estudiantes;
                                     <th rowspan="2" class="align-middle">Pos.</th>
                                     <th rowspan="2" class="align-middle text-start">Estudiante</th>
                                     <?php foreach ($materias as $materia): ?>
+                                        <?php
+                                        $longitudMateria = mb_strlen($materia['nombre_materia']);
+                                        $claseNombreMateria = 'nombre-materia';
+                                        if ($longitudMateria > 38) {
+                                            $claseNombreMateria .= ' extra-long-name';
+                                        } elseif ($longitudMateria > 24) {
+                                            $claseNombreMateria .= ' long-name';
+                                        }
+                                        ?>
                                         <th colspan="4"
-                                            class="text-center <?= $materia['es_extra'] ? 'extra-materia' : '' ?>">
-                                            <span class="nombre-materia" style="font-size: <?= strlen($materia['nombre_materia']) > 20 ? '0.8em' : '1em' ?>">
+                                            class="text-center materia-head <?= $materia['es_extra'] ? 'extra-materia' : '' ?>">
+                                            <span class="<?= $claseNombreMateria ?>">
                                                 <?= htmlspecialchars($materia['nombre_materia']) ?>
                                             </span>
                                             <?php if (!empty($materia['es_extra'])): ?>
@@ -682,10 +1002,10 @@ $estudiantes_ordenados = $estudiantes;
                                 </tr>
                                 <tr>
                                     <?php foreach ($materias as $materia): ?>
-                                        <th class="text-center<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T1</th>
-                                        <th class="text-center<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T2</th>
-                                        <th class="text-center<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T3</th>
-                                        <th class="text-center<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">P</th>
+                                        <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T1</th>
+                                        <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T2</th>
+                                        <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T3</th>
+                                        <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">P</th>
                                                     <?php endforeach; ?>
                                 </tr>
                             </thead>
@@ -734,6 +1054,34 @@ $estudiantes_ordenados = $estudiantes;
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeToggle = document.getElementById('themeToggle');
+            const themeIcon = themeToggle ? themeToggle.querySelector('i') : null;
+            const themeText = themeToggle ? themeToggle.querySelector('span') : null;
+            const storageKey = 'edunote-theme-dark';
+
+            function applyTheme(isDark) {
+                document.body.classList.toggle('dark-mode', isDark);
+                if (themeIcon) {
+                    themeIcon.className = isDark ? 'bi bi-sun' : 'bi bi-moon-stars';
+                }
+                if (themeText) {
+                    themeText.textContent = isDark ? 'Vista diurna' : 'Vista nocturna';
+                }
+            }
+
+            const savedTheme = localStorage.getItem(storageKey);
+            applyTheme(savedTheme === 'true');
+
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    const isDark = !document.body.classList.contains('dark-mode');
+                    applyTheme(isDark);
+                    localStorage.setItem(storageKey, isDark ? 'true' : 'false');
+                });
+            }
+        });
+
         function showOrderModal() {
             const modalHTML = `
                 <div class="modal fade" id="orderModal" tabindex="-1" aria-hidden="true">
