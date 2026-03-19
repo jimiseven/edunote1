@@ -292,11 +292,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $conn->prepare("UPDATE profesores_materias_cursos
-                        SET estado = 'CARGADO'
-                        WHERE id_personal = ? AND id_curso_materia = ?")
-             ->execute([$profesor_id, $id_curso_materia]);
-
         $conn->commit();
         header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, ['success' => 1]));
         exit();
@@ -316,11 +311,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>EduNote - Cargar Notas</title>
     <link rel="stylesheet" href="../css/bootstrap.min.css">
     <style>
+        html, body {
+            height: 100%;
+        }
         body {
             background: #f4f8fa;
+            overflow: hidden;
+        }
+        .page-shell {
+            height: 100vh;
+            overflow: hidden;
+        }
+        .page-shell > .row {
+            height: 100%;
+        }
+        .content-panel {
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-top: 0.5rem;
+            padding-bottom: 1.5rem;
+            scroll-behavior: smooth;
         }
         .container-card {
             background: white;
@@ -596,6 +611,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin: 0;
         }
         @media (max-width: 768px) {
+            body {
+                overflow: auto;
+            }
+            .page-shell {
+                height: auto;
+                overflow: visible;
+            }
+            .page-shell > .row {
+                height: auto;
+            }
+            .content-panel {
+                height: auto;
+                overflow: visible;
+                padding-top: 0;
+                padding-bottom: 1rem;
+            }
             .page-header {
                 flex-direction: column;
                 align-items: flex-start;
@@ -612,10 +643,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body>
-    <div class="container-fluid">
+    <div class="container-fluid page-shell">
         <div class="row">
             <?php include '../includes/sidebar.php'; ?>
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 content-panel">
                 <div class="container-card mt-4">
                     <div class="page-header">
                         <h3><?php echo $curso['curso_nombre']; ?></h3>
