@@ -2,6 +2,139 @@
 session_start();
 require_once '../config/database.php';
 
+function obtenerModalidadCargaValida($valor) {
+    return $valor === 'trimestres' ? 'trimestres' : 'parciales';
+}
+
+function cargarPeriodosGestion($conn, $gestionActual, $gestionAlternativa) {
+    $sqlPeriodos = "SELECT id_periodo_evaluacion, gestion, trimestre, parcial, nombre, fecha_inicio, fecha_fin, esta_activo
+                    FROM periodos_evaluacion
+                    WHERE gestion = ?";
+    $paramsPeriodos = [$gestionActual];
+    if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+        $sqlPeriodos .= " OR gestion = ?";
+        $paramsPeriodos[] = $gestionAlternativa;
+    }
+    $sqlPeriodos .= " ORDER BY trimestre, parcial";
+    $stmt = $conn->prepare($sqlPeriodos);
+    $stmt->execute($paramsPeriodos);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function construirMapaPeriodosPorTrimestre($periodos) {
+    $mapa = [];
+    foreach ($periodos as $periodo) {
+        $mapa[(int)$periodo['trimestre']][(int)$periodo['parcial']] = $periodo;
+    }
+    ksort($mapa);
+    return $mapa;
+}
+
+function migrarNotasEntreModalidades($conn, $gestionActual, $gestionAlternativa, $periodos, $modalidadOrigen, $modalidadDestino) {
+    if ($modalidadOrigen === $modalidadDestino || empty($periodos)) {
+        return;
+    }
+
+    $periodosPorTrimestre = construirMapaPeriodosPorTrimestre($periodos);
+    $idsPeriodos = array_map(function ($periodo) {
+        return (int)$periodo['id_periodo_evaluacion'];
+    }, $periodos);
+
+    if (empty($idsPeriodos)) {
+        return;
+    }
+
+    $marcadores = implode(',', array_fill(0, count($idsPeriodos), '?'));
+    $stmt = $conn->prepare("SELECT cp.id_estudiante, cp.id_materia, cp.id_periodo_evaluacion, cp.calificacion, cp.comentario,
+                                  pe.trimestre, pe.parcial
+                           FROM calificaciones_parciales cp
+                           INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                           WHERE cp.id_periodo_evaluacion IN ($marcadores)
+                           ORDER BY cp.id_estudiante, cp.id_materia, pe.trimestre, pe.parcial");
+    $stmt->execute($idsPeriodos);
+    $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($registros)) {
+        return;
+    }
+
+    $datosAgrupados = [];
+    foreach ($registros as $registro) {
+        $idEstudiante = (int)$registro['id_estudiante'];
+        $idMateria = (int)$registro['id_materia'];
+        $trimestre = (int)$registro['trimestre'];
+        $parcial = (int)$registro['parcial'];
+        $datosAgrupados[$idEstudiante][$idMateria][$trimestre][$parcial] = $registro;
+    }
+
+    $stmtUpsert = $conn->prepare("INSERT INTO calificaciones_parciales
+                                  (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, comentario)
+                                  VALUES (?, ?, ?, ?, ?)
+                                  ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion), comentario = VALUES(comentario)");
+
+    foreach ($datosAgrupados as $idEstudiante => $materias) {
+        foreach ($materias as $idMateria => $trimestres) {
+            foreach ($trimestres as $trimestre => $registrosTrimestre) {
+                if (empty($periodosPorTrimestre[$trimestre])) {
+                    continue;
+                }
+
+                if ($modalidadOrigen === 'parciales' && $modalidadDestino === 'trimestres') {
+                    $valores = [];
+                    $comentarioBase = null;
+                    foreach ($registrosTrimestre as $registroParcial) {
+                        if ($registroParcial['calificacion'] !== null && $registroParcial['calificacion'] !== '') {
+                            $valores[] = (float)$registroParcial['calificacion'];
+                        }
+                        if ($comentarioBase === null && $registroParcial['comentario'] !== null && trim((string)$registroParcial['comentario']) !== '') {
+                            $comentarioBase = $registroParcial['comentario'];
+                        }
+                    }
+
+                    $calificacionTrimestral = !empty($valores) ? round(array_sum($valores) / count($valores), 2) : null;
+
+                    foreach ($periodosPorTrimestre[$trimestre] as $periodoDestino) {
+                        $stmtUpsert->execute([
+                            $idEstudiante,
+                            $idMateria,
+                            (int)$periodoDestino['id_periodo_evaluacion'],
+                            $calificacionTrimestral,
+                            $comentarioBase
+                        ]);
+                    }
+                }
+
+                if ($modalidadOrigen === 'trimestres' && $modalidadDestino === 'parciales') {
+                    $registroBase = null;
+                    foreach ($registrosTrimestre as $registroParcial) {
+                        if ($registroBase === null) {
+                            $registroBase = $registroParcial;
+                        }
+                        if ($registroParcial['calificacion'] !== null || ($registroParcial['comentario'] !== null && trim((string)$registroParcial['comentario']) !== '')) {
+                            $registroBase = $registroParcial;
+                            break;
+                        }
+                    }
+
+                    if ($registroBase === null) {
+                        continue;
+                    }
+
+                    foreach ($periodosPorTrimestre[$trimestre] as $periodoDestino) {
+                        $stmtUpsert->execute([
+                            $idEstudiante,
+                            $idMateria,
+                            (int)$periodoDestino['id_periodo_evaluacion'],
+                            $registroBase['calificacion'] !== null && $registroBase['calificacion'] !== '' ? (float)$registroBase['calificacion'] : null,
+                            $registroBase['comentario']
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
     header('Location: ../index.php');
     exit();
@@ -10,39 +143,101 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
 $db = new Database();
 $conn = $db->connect();
 
-$stmt = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
-$gestionConfigurada = $stmt->fetchColumn();
-$gestionConfigurada = $gestionConfigurada ? trim((string)$gestionConfigurada) : '';
+$stmt = $conn->query("SHOW COLUMNS FROM configuracion_sistema LIKE 'modalidad_carga_notas'");
+$columnaModalidadExiste = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+if (!$columnaModalidadExiste) {
+    $conn->exec("ALTER TABLE configuracion_sistema ADD COLUMN modalidad_carga_notas VARCHAR(20) NOT NULL DEFAULT 'parciales' AFTER anio_escolar");
+}
+
+$stmt = $conn->query("SELECT id, anio_escolar, modalidad_carga_notas FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$configuracionSistema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$configuracionSistemaId = isset($configuracionSistema['id']) ? (int)$configuracionSistema['id'] : 0;
+$gestionConfigurada = isset($configuracionSistema['anio_escolar']) ? trim((string)$configuracionSistema['anio_escolar']) : '';
 $gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$modalidadCarga = obtenerModalidadCargaValida($configuracionSistema['modalidad_carga_notas'] ?? 'parciales');
 $gestionAlternativa = null;
 if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
     $gestionAlternativa = $matches[1];
 }
 
+$periodos = cargarPeriodosGestion($conn, $gestionActual, $gestionAlternativa);
+$periodosPorTrimestre = [];
+foreach ($periodos as $periodo) {
+    $periodosPorTrimestre[(int)$periodo['trimestre']][] = $periodo;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $periodosPost = $_POST['periodos'] ?? [];
-
     try {
-        $conn->beginTransaction();
+        $accion = $_POST['accion'] ?? 'guardar_periodos';
 
-        foreach ($periodosPost as $idPeriodo => $datosPeriodo) {
-            $idPeriodo = (int)$idPeriodo;
-            $estaActivo = isset($datosPeriodo['esta_activo']) ? 1 : 0;
-            $fechaInicio = !empty($datosPeriodo['fecha_inicio']) ? $datosPeriodo['fecha_inicio'] : null;
-            $fechaFin = !empty($datosPeriodo['fecha_fin']) ? $datosPeriodo['fecha_fin'] : null;
+        if ($accion === 'guardar_modalidad') {
+            $nuevaModalidad = obtenerModalidadCargaValida($_POST['modalidad_carga_notas'] ?? 'parciales');
 
-            if ($fechaInicio && $fechaFin && $fechaInicio > $fechaFin) {
-                throw new Exception("La fecha de inicio no puede ser mayor a la fecha fin.");
+            if ($nuevaModalidad !== $modalidadCarga) {
+                $conn->beginTransaction();
+
+                migrarNotasEntreModalidades($conn, $gestionActual, $gestionAlternativa, $periodos, $modalidadCarga, $nuevaModalidad);
+
+                if ($configuracionSistemaId > 0) {
+                    $stmt = $conn->prepare("UPDATE configuracion_sistema SET modalidad_carga_notas = ? WHERE id = ?");
+                    $stmt->execute([$nuevaModalidad, $configuracionSistemaId]);
+                } else {
+                    $stmt = $conn->prepare("INSERT INTO configuracion_sistema (anio_escolar, modalidad_carga_notas) VALUES (?, ?)");
+                    $stmt->execute([$gestionActual, $nuevaModalidad]);
+                }
+
+                $conn->commit();
+
+                $modalidadCarga = $nuevaModalidad;
+                $success = 'Modalidad de carga actualizada correctamente y notas migradas según la nueva modalidad';
+            } else {
+                $success = 'La modalidad de carga ya se encuentra activa';
+            }
+        } else {
+            $conn->beginTransaction();
+
+            if ($modalidadCarga === 'trimestres') {
+                $trimestresPost = $_POST['trimestres'] ?? [];
+                foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
+                    $datosTrimestre = $trimestresPost[$trimestre] ?? [];
+                    $estaActivo = isset($datosTrimestre['esta_activo']) ? 1 : 0;
+                    $fechaInicio = !empty($datosTrimestre['fecha_inicio']) ? $datosTrimestre['fecha_inicio'] : null;
+                    $fechaFin = !empty($datosTrimestre['fecha_fin']) ? $datosTrimestre['fecha_fin'] : null;
+
+                    if ($fechaInicio && $fechaFin && $fechaInicio > $fechaFin) {
+                        throw new Exception("La fecha de inicio no puede ser mayor a la fecha fin.");
+                    }
+
+                    foreach ($periodosTrimestre as $periodo) {
+                        $stmt = $conn->prepare("UPDATE periodos_evaluacion
+                                                SET esta_activo = ?, fecha_inicio = ?, fecha_fin = ?
+                                                WHERE id_periodo_evaluacion = ?");
+                        $stmt->execute([$estaActivo, $fechaInicio, $fechaFin, (int)$periodo['id_periodo_evaluacion']]);
+                    }
+                }
+                $success = 'Configuración de trimestres actualizada correctamente';
+            } else {
+                $periodosPost = $_POST['periodos'] ?? [];
+                foreach ($periodosPost as $idPeriodo => $datosPeriodo) {
+                    $idPeriodo = (int)$idPeriodo;
+                    $estaActivo = isset($datosPeriodo['esta_activo']) ? 1 : 0;
+                    $fechaInicio = !empty($datosPeriodo['fecha_inicio']) ? $datosPeriodo['fecha_inicio'] : null;
+                    $fechaFin = !empty($datosPeriodo['fecha_fin']) ? $datosPeriodo['fecha_fin'] : null;
+
+                    if ($fechaInicio && $fechaFin && $fechaInicio > $fechaFin) {
+                        throw new Exception("La fecha de inicio no puede ser mayor a la fecha fin.");
+                    }
+
+                    $stmt = $conn->prepare("UPDATE periodos_evaluacion
+                                            SET esta_activo = ?, fecha_inicio = ?, fecha_fin = ?
+                                            WHERE id_periodo_evaluacion = ?");
+                    $stmt->execute([$estaActivo, $fechaInicio, $fechaFin, $idPeriodo]);
+                }
+                $success = 'Configuración de parciales actualizada correctamente';
             }
 
-            $stmt = $conn->prepare("UPDATE periodos_evaluacion
-                                    SET esta_activo = ?, fecha_inicio = ?, fecha_fin = ?
-                                    WHERE id_periodo_evaluacion = ?");
-            $stmt->execute([$estaActivo, $fechaInicio, $fechaFin, $idPeriodo]);
+            $conn->commit();
         }
-
-        $conn->commit();
-        $success = "Configuración de parciales actualizada correctamente";
     } catch (Exception $e) {
         if ($conn->inTransaction()) {
             $conn->rollBack();
@@ -51,18 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$sqlPeriodos = "SELECT id_periodo_evaluacion, gestion, trimestre, parcial, nombre, fecha_inicio, fecha_fin, esta_activo
-                FROM periodos_evaluacion
-                WHERE gestion = ?";
-$paramsPeriodos = [$gestionActual];
-if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
-    $sqlPeriodos .= " OR gestion = ?";
-    $paramsPeriodos[] = $gestionAlternativa;
-}
-$sqlPeriodos .= " ORDER BY trimestre, parcial";
-$stmt = $conn->prepare($sqlPeriodos);
-$stmt->execute($paramsPeriodos);
-$periodos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$periodos = cargarPeriodosGestion($conn, $gestionActual, $gestionAlternativa);
 
 if (!empty($periodos) && $gestionAlternativa !== null) {
     $gestionActual = $periodos[0]['gestion'];
@@ -82,9 +266,11 @@ foreach ($periodos as $periodo) {
 $primerTrimestre = !empty($periodosPorTrimestre) ? array_key_first($periodosPorTrimestre) : null;
 
 $resumenTrimestres = [];
+$resumenModoTrimestres = [];
 foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
     $activos = 0;
     $enRango = 0;
+    $periodoBase = $periodosTrimestre[0] ?? null;
     foreach ($periodosTrimestre as $periodo) {
         if ((int)$periodo['esta_activo'] === 1) {
             $activos++;
@@ -99,6 +285,13 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
         'total' => count($periodosTrimestre),
         'activos' => $activos,
         'en_rango' => $enRango
+    ];
+
+    $resumenModoTrimestres[$trimestre] = [
+        'esta_activo' => $periodoBase ? (int)$periodoBase['esta_activo'] : 0,
+        'fecha_inicio' => $periodoBase['fecha_inicio'] ?? null,
+        'fecha_fin' => $periodoBase['fecha_fin'] ?? null,
+        'en_rango' => $enRango > 0
     ];
 }
 ?>
@@ -208,6 +401,53 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
             padding: 0.45rem 0.85rem;
             font-size: 0.82rem;
             font-weight: 600;
+        }
+        .mode-selector-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #ffffff, #f8fbff);
+            margin-bottom: 1rem;
+        }
+        .mode-selector-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.35rem;
+        }
+        .mode-selector-text {
+            margin: 0;
+            color: #475569;
+            font-size: 0.92rem;
+        }
+        .mode-selector-form {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            align-items: flex-end;
+        }
+        .mode-selector-actions {
+            min-width: 280px;
+        }
+        .mode-help {
+            margin-top: 0.5rem;
+            color: #64748b;
+            font-size: 0.82rem;
+        }
+        .mode-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #075985;
+            font-size: 0.8rem;
+            font-weight: 700;
         }
         .summary-title {
             color: #11305e;
@@ -485,6 +725,14 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
             .cards-container {
                 flex-direction: column;
             }
+            .mode-selector-card {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .mode-selector-form,
+            .mode-selector-actions {
+                width: 100%;
+            }
             .page-intro {
                 flex-direction: column;
                 align-items: flex-start;
@@ -539,14 +787,48 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
                 <div class="content-wrapper">
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
-                        <h1 class="main-title">Control de Parciales</h1>
+                        <h1 class="main-title">Control de Carga de Notas</h1>
+                    </div>
+
+                    <div class="mode-selector-card">
+                        <div>
+                            <div class="mode-selector-title">Modalidad general de carga</div>
+                            <p class="mode-selector-text">
+                                Elige si durante toda la gestión escolar la carga de notas se realizará por trimestre o por parciales.
+                            </p>
+                            <div class="mode-help">
+                                Si se intenta cambiar esta opción cuando el año ya tiene notas registradas, por ahora se mostrará el mensaje: <strong>"opcion aun se encuentre en mantenimiento"</strong>.
+                            </div>
+                        </div>
+                        <div class="mode-selector-actions">
+                            <form method="post" class="mode-selector-form">
+                                <input type="hidden" name="accion" value="guardar_modalidad">
+                                <div class="flex-grow-1">
+                                    <label class="form-label">Tipo de carga</label>
+                                    <select name="modalidad_carga_notas" class="form-select">
+                                        <option value="parciales" <?php echo $modalidadCarga === 'parciales' ? 'selected' : ''; ?>>Por parciales</option>
+                                        <option value="trimestres" <?php echo $modalidadCarga === 'trimestres' ? 'selected' : ''; ?>>Por trimestre</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Guardar modalidad</button>
+                            </form>
+                            <div class="mt-2">
+                                <span class="mode-badge">Actual: <?php echo $modalidadCarga === 'trimestres' ? 'Por trimestre' : 'Por parciales'; ?></span>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="page-intro">
                         <div>
-                            <div class="page-intro-title">Administra la habilitación de carga por trimestre y parcial</div>
+                            <div class="page-intro-title">
+                                <?php echo $modalidadCarga === 'trimestres' ? 'Administra la habilitación de carga por trimestre' : 'Administra la habilitación de carga por trimestre y parcial'; ?>
+                            </div>
                             <p class="page-intro-text">
-                                Activa solo los parciales que corresponden al periodo vigente y define con claridad su rango de fechas para evitar bloqueos en la carga de notas.
+                                <?php if ($modalidadCarga === 'trimestres'): ?>
+                                    Activa cada trimestre como una sola etapa de carga y define un único rango de fechas para todo el trimestre.
+                                <?php else: ?>
+                                    Activa solo los parciales que corresponden al periodo vigente y define con claridad su rango de fechas para evitar bloqueos en la carga de notas.
+                                <?php endif; ?>
                             </p>
                         </div>
                         <div class="page-intro-badge">Gestión <?php echo htmlspecialchars($gestionActual); ?></div>
@@ -563,11 +845,22 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                             <?php foreach ($resumenTrimestres as $trimestre => $resumen): ?>
                                 <div class="summary-card">
                                     <div class="summary-title">Trimestre <?php echo $trimestre; ?></div>
-                                    <div class="summary-value"><?php echo $resumen['activos']; ?>/<?php echo $resumen['total']; ?> parciales activos</div>
+                                    <div class="summary-value">
+                                        <?php if ($modalidadCarga === 'trimestres'): ?>
+                                            <?php echo ($resumenModoTrimestres[$trimestre]['esta_activo'] ?? 0) === 1 ? 'Habilitado' : 'Deshabilitado'; ?>
+                                        <?php else: ?>
+                                            <?php echo $resumen['activos']; ?>/<?php echo $resumen['total']; ?> parciales activos
+                                        <?php endif; ?>
+                                    </div>
                                     <div class="summary-meta mt-2">
-                                        <span class="badge bg-success">Activos: <?php echo $resumen['activos']; ?></span>
-                                        <span class="badge bg-primary">En rango: <?php echo $resumen['en_rango']; ?></span>
-                                        <span class="badge bg-secondary">Total: <?php echo $resumen['total']; ?></span>
+                                        <?php if ($modalidadCarga === 'trimestres'): ?>
+                                            <span class="badge bg-success">Estado: <?php echo ($resumenModoTrimestres[$trimestre]['esta_activo'] ?? 0) === 1 ? 'Activo' : 'Inactivo'; ?></span>
+                                            <span class="badge bg-primary"><?php echo !empty($resumenModoTrimestres[$trimestre]['en_rango']) ? 'En rango hoy' : 'Fuera de rango hoy'; ?></span>
+                                        <?php else: ?>
+                                            <span class="badge bg-success">Activos: <?php echo $resumen['activos']; ?></span>
+                                            <span class="badge bg-primary">En rango: <?php echo $resumen['en_rango']; ?></span>
+                                            <span class="badge bg-secondary">Total: <?php echo $resumen['total']; ?></span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -577,12 +870,17 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                     <div class="cards-container">
                         <div class="card card-config">
                             <div class="card-header">
-                                Configuración de Parciales - Gestión <?php echo htmlspecialchars($gestionActual); ?>
+                                <?php echo $modalidadCarga === 'trimestres' ? 'Configuración de Trimestres' : 'Configuración de Parciales'; ?> - Gestión <?php echo htmlspecialchars($gestionActual); ?>
                             </div>
                             <form method="post" action="" class="d-flex flex-column flex-grow-1">
+                                <input type="hidden" name="accion" value="guardar_periodos">
                                 <div class="card-body-scroll">
                                     <div class="config-helper">
-                                        Selecciona un trimestre, revisa sus parciales y ajusta su habilitación junto con el rango de fechas de carga.
+                                        <?php if ($modalidadCarga === 'trimestres'): ?>
+                                            Selecciona un trimestre y ajusta una sola habilitación con un único rango de fechas para toda la carga trimestral.
+                                        <?php else: ?>
+                                            Selecciona un trimestre, revisa sus parciales y ajusta su habilitación junto con el rango de fechas de carga.
+                                        <?php endif; ?>
                                     </div>
                                     <?php if (empty($periodosPorTrimestre)): ?>
                                         <div class="empty-state">
@@ -596,15 +894,26 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                                                         <button class="accordion-button <?php echo $trimestre !== $primerTrimestre ? 'collapsed' : ''; ?>" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTrimestre<?php echo $trimestre; ?>" aria-expanded="<?php echo $trimestre === $primerTrimestre ? 'true' : 'false'; ?>" aria-controls="collapseTrimestre<?php echo $trimestre; ?>">
                                                             <span class="accordion-title-block">
                                                                 <span>Trimestre <?php echo $trimestre; ?></span>
-                                                                <span class="accordion-subtitle">Gestiona aquí los parciales y sus fechas de carga</span>
+                                                                <span class="accordion-subtitle">
+                                                                    <?php echo $modalidadCarga === 'trimestres' ? 'Gestiona aquí la carga única del trimestre' : 'Gestiona aquí los parciales y sus fechas de carga'; ?>
+                                                                </span>
                                                             </span>
                                                             <div class="trimestre-badges">
-                                                                <span class="badge bg-success">
-                                                                    Activos: <?php echo $resumenTrimestres[$trimestre]['activos'] ?? 0; ?>
-                                                                </span>
-                                                                <span class="badge bg-primary">
-                                                                    En rango: <?php echo $resumenTrimestres[$trimestre]['en_rango'] ?? 0; ?>
-                                                                </span>
+                                                                <?php if ($modalidadCarga === 'trimestres'): ?>
+                                                                    <span class="badge bg-success">
+                                                                        <?php echo ($resumenModoTrimestres[$trimestre]['esta_activo'] ?? 0) === 1 ? 'Activo' : 'Inactivo'; ?>
+                                                                    </span>
+                                                                    <span class="badge bg-primary">
+                                                                        <?php echo !empty($resumenModoTrimestres[$trimestre]['en_rango']) ? 'En rango hoy' : 'Fuera de rango'; ?>
+                                                                    </span>
+                                                                <?php else: ?>
+                                                                    <span class="badge bg-success">
+                                                                        Activos: <?php echo $resumenTrimestres[$trimestre]['activos'] ?? 0; ?>
+                                                                    </span>
+                                                                    <span class="badge bg-primary">
+                                                                        En rango: <?php echo $resumenTrimestres[$trimestre]['en_rango'] ?? 0; ?>
+                                                                    </span>
+                                                                <?php endif; ?>
                                                             </div>
                                                         </button>
                                                     </h2>
@@ -613,76 +922,73 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                                                             <table class="periodo-table">
                                                                 <thead>
                                                                     <tr>
-                                                                        <th>Parcial</th>
+                                                                        <th><?php echo $modalidadCarga === 'trimestres' ? 'Trimestre' : 'Parcial'; ?></th>
                                                                         <th>Habilitación</th>
                                                                         <th>Fechas de carga</th>
                                                                         <th>Estado actual</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
-                                                                    <?php foreach ($periodosTrimestre as $periodo): ?>
+                                                                    <?php if ($modalidadCarga === 'trimestres'): ?>
                                                                         <?php
-                                                                        $editableAhora = (int)$periodo['esta_activo'] === 1 &&
-                                                                            (empty($periodo['fecha_inicio']) || $hoy >= $periodo['fecha_inicio']) &&
-                                                                            (empty($periodo['fecha_fin']) || $hoy <= $periodo['fecha_fin']);
+                                                                        $configTrimestre = $resumenModoTrimestres[$trimestre] ?? ['esta_activo' => 0, 'fecha_inicio' => null, 'fecha_fin' => null, 'en_rango' => false];
                                                                         ?>
-                                                                        <tr class="periodo-row <?php echo (int)$periodo['esta_activo'] === 1 ? 'periodo-active' : ''; ?>">
+                                                                        <tr class="periodo-row <?php echo (int)$configTrimestre['esta_activo'] === 1 ? 'periodo-active' : ''; ?>">
                                                                             <td>
-                                                                                <div class="periodo-nombre">Parcial <?php echo (int)$periodo['parcial']; ?></div>
-                                                                                <div class="periodo-subtitulo"><?php echo htmlspecialchars($periodo['nombre']); ?></div>
+                                                                                <div class="periodo-nombre">Trimestre <?php echo (int)$trimestre; ?></div>
+                                                                                <div class="periodo-subtitulo">Carga única para todo el trimestre</div>
                                                                                 <div class="periodo-meta">
-                                                                                    <span class="meta-chip">Trimestre <?php echo (int)$periodo['trimestre']; ?></span>
-                                                                                    <span class="meta-chip">Parcial <?php echo (int)$periodo['parcial']; ?></span>
+                                                                                    <span class="meta-chip">Incluye la nota trimestral completa</span>
                                                                                 </div>
                                                                             </td>
                                                                             <td class="toggle-cell">
                                                                                 <div class="form-check form-switch">
                                                                                     <input class="form-check-input" type="checkbox"
-                                                                                        name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][esta_activo]"
-                                                                                        id="periodo<?php echo $periodo['id_periodo_evaluacion']; ?>"
-                                                                                        <?php echo (int)$periodo['esta_activo'] === 1 ? 'checked' : ''; ?>>
-                                                                                    <label class="form-check-label" for="periodo<?php echo $periodo['id_periodo_evaluacion']; ?>">
-                                                                                        <?php echo (int)$periodo['esta_activo'] === 1 ? 'Habilitado' : 'Deshabilitado'; ?>
+                                                                                        name="trimestres[<?php echo (int)$trimestre; ?>][esta_activo]"
+                                                                                        id="trimestre<?php echo (int)$trimestre; ?>"
+                                                                                        <?php echo (int)$configTrimestre['esta_activo'] === 1 ? 'checked' : ''; ?>>
+                                                                                    <label class="form-check-label" for="trimestre<?php echo (int)$trimestre; ?>">
+                                                                                        <?php echo (int)$configTrimestre['esta_activo'] === 1 ? 'Habilitado' : 'Deshabilitado'; ?>
                                                                                     </label>
                                                                                 </div>
-                                                                                <div class="helper-text">Usa este control para permitir o bloquear la carga de notas.</div>
+                                                                                <div class="helper-text">Usa este control para permitir o bloquear la carga de la nota trimestral.</div>
                                                                             </td>
                                                                             <td class="fechas-cell">
                                                                                 <div class="fecha-container">
                                                                                     <div class="flex-fill">
                                                                                         <label class="form-label">Inicio</label>
                                                                                         <input type="date" class="form-control"
-                                                                                            name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][fecha_inicio]"
-                                                                                            value="<?php echo htmlspecialchars((string)$periodo['fecha_inicio']); ?>">
+                                                                                            name="trimestres[<?php echo (int)$trimestre; ?>][fecha_inicio]"
+                                                                                            value="<?php echo htmlspecialchars((string)($configTrimestre['fecha_inicio'] ?? '')); ?>">
                                                                                     </div>
                                                                                     <div class="flex-fill">
                                                                                         <label class="form-label">Fin</label>
                                                                                         <input type="date" class="form-control"
-                                                                                            name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][fecha_fin]"
-                                                                                            value="<?php echo htmlspecialchars((string)$periodo['fecha_fin']); ?>">
+                                                                                            name="trimestres[<?php echo (int)$trimestre; ?>][fecha_fin]"
+                                                                                            value="<?php echo htmlspecialchars((string)($configTrimestre['fecha_fin'] ?? '')); ?>">
                                                                                     </div>
                                                                                 </div>
                                                                                 <div class="helper-text">
-                                                                                    <?php if (!empty($periodo['fecha_inicio']) || !empty($periodo['fecha_fin'])): ?>
+                                                                                    <?php if (!empty($configTrimestre['fecha_inicio']) || !empty($configTrimestre['fecha_fin'])): ?>
                                                                                         Ventana actual:
-                                                                                        <?php echo !empty($periodo['fecha_inicio']) ? date('d/m/Y', strtotime($periodo['fecha_inicio'])) : 'Sin inicio'; ?>
+                                                                                        <?php echo !empty($configTrimestre['fecha_inicio']) ? date('d/m/Y', strtotime($configTrimestre['fecha_inicio'])) : 'Sin inicio'; ?>
                                                                                         -
-                                                                                        <?php echo !empty($periodo['fecha_fin']) ? date('d/m/Y', strtotime($periodo['fecha_fin'])) : 'Sin fin'; ?>
+                                                                                        <?php echo !empty($configTrimestre['fecha_fin']) ? date('d/m/Y', strtotime($configTrimestre['fecha_fin'])) : 'Sin fin'; ?>
                                                                                     <?php else: ?>
-                                                                                        Define fechas para controlar exactamente cuándo se podrá cargar este parcial.
+                                                                                        Define fechas para controlar exactamente cuándo se podrá cargar la nota de este trimestre.
                                                                                     <?php endif; ?>
                                                                                 </div>
                                                                             </td>
                                                                             <td>
                                                                                 <div class="d-flex flex-column gap-2">
-                                                                                    <span class="status-pill <?php echo (int)$periodo['esta_activo'] === 1 ? 'status-pill-active' : 'status-pill-inactive'; ?>">
-                                                                                        <?php echo (int)$periodo['esta_activo'] === 1 ? 'Activo' : 'Inactivo'; ?>
+                                                                                    <span class="status-pill <?php echo (int)$configTrimestre['esta_activo'] === 1 ? 'status-pill-active' : 'status-pill-inactive'; ?>">
+                                                                                        <?php echo (int)$configTrimestre['esta_activo'] === 1 ? 'Activo' : 'Inactivo'; ?>
                                                                                     </span>
-                                                                                    <?php if ($editableAhora): ?>
+                                                                                    <?php if (!empty($configTrimestre['en_rango'])): ?>
                                                                                         <span class="status-pill status-pill-range">En rango hoy</span>
                                                                                     <?php else: ?>
                                                                                         <span class="estado-fecha">
-                                                                                            <?php if (empty($periodo['fecha_inicio']) && empty($periodo['fecha_fin'])): ?>
+                                                                                            <?php if (empty($configTrimestre['fecha_inicio']) && empty($configTrimestre['fecha_fin'])): ?>
                                                                                                 Sin rango definido
                                                                                             <?php else: ?>
                                                                                                 Fuera de rango hoy
@@ -692,7 +998,81 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                                                                                 </div>
                                                                             </td>
                                                                         </tr>
-                                                                    <?php endforeach; ?>
+                                                                    <?php else: ?>
+                                                                        <?php foreach ($periodosTrimestre as $periodo): ?>
+                                                                            <?php
+                                                                            $editableAhora = (int)$periodo['esta_activo'] === 1 &&
+                                                                                (empty($periodo['fecha_inicio']) || $hoy >= $periodo['fecha_inicio']) &&
+                                                                                (empty($periodo['fecha_fin']) || $hoy <= $periodo['fecha_fin']);
+                                                                            ?>
+                                                                            <tr class="periodo-row <?php echo (int)$periodo['esta_activo'] === 1 ? 'periodo-active' : ''; ?>">
+                                                                                <td>
+                                                                                    <div class="periodo-nombre">Parcial <?php echo (int)$periodo['parcial']; ?></div>
+                                                                                    <div class="periodo-subtitulo"><?php echo htmlspecialchars($periodo['nombre']); ?></div>
+                                                                                    <div class="periodo-meta">
+                                                                                        <span class="meta-chip">Trimestre <?php echo (int)$periodo['trimestre']; ?></span>
+                                                                                        <span class="meta-chip">Parcial <?php echo (int)$periodo['parcial']; ?></span>
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td class="toggle-cell">
+                                                                                    <div class="form-check form-switch">
+                                                                                        <input class="form-check-input" type="checkbox"
+                                                                                            name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][esta_activo]"
+                                                                                            id="periodo<?php echo $periodo['id_periodo_evaluacion']; ?>"
+                                                                                            <?php echo (int)$periodo['esta_activo'] === 1 ? 'checked' : ''; ?>>
+                                                                                        <label class="form-check-label" for="periodo<?php echo $periodo['id_periodo_evaluacion']; ?>">
+                                                                                            <?php echo (int)$periodo['esta_activo'] === 1 ? 'Habilitado' : 'Deshabilitado'; ?>
+                                                                                        </label>
+                                                                                    </div>
+                                                                                    <div class="helper-text">Usa este control para permitir o bloquear la carga de notas.</div>
+                                                                                </td>
+                                                                                <td class="fechas-cell">
+                                                                                    <div class="fecha-container">
+                                                                                        <div class="flex-fill">
+                                                                                            <label class="form-label">Inicio</label>
+                                                                                            <input type="date" class="form-control"
+                                                                                                name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][fecha_inicio]"
+                                                                                                value="<?php echo htmlspecialchars((string)$periodo['fecha_inicio']); ?>">
+                                                                                        </div>
+                                                                                        <div class="flex-fill">
+                                                                                            <label class="form-label">Fin</label>
+                                                                                            <input type="date" class="form-control"
+                                                                                                name="periodos[<?php echo $periodo['id_periodo_evaluacion']; ?>][fecha_fin]"
+                                                                                                value="<?php echo htmlspecialchars((string)$periodo['fecha_fin']); ?>">
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="helper-text">
+                                                                                        <?php if (!empty($periodo['fecha_inicio']) || !empty($periodo['fecha_fin'])): ?>
+                                                                                            Ventana actual:
+                                                                                            <?php echo !empty($periodo['fecha_inicio']) ? date('d/m/Y', strtotime($periodo['fecha_inicio'])) : 'Sin inicio'; ?>
+                                                                                            -
+                                                                                            <?php echo !empty($periodo['fecha_fin']) ? date('d/m/Y', strtotime($periodo['fecha_fin'])) : 'Sin fin'; ?>
+                                                                                        <?php else: ?>
+                                                                                            Define fechas para controlar exactamente cuándo se podrá cargar este parcial.
+                                                                                        <?php endif; ?>
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td>
+                                                                                    <div class="d-flex flex-column gap-2">
+                                                                                        <span class="status-pill <?php echo (int)$periodo['esta_activo'] === 1 ? 'status-pill-active' : 'status-pill-inactive'; ?>">
+                                                                                            <?php echo (int)$periodo['esta_activo'] === 1 ? 'Activo' : 'Inactivo'; ?>
+                                                                                        </span>
+                                                                                        <?php if ($editableAhora): ?>
+                                                                                            <span class="status-pill status-pill-range">En rango hoy</span>
+                                                                                        <?php else: ?>
+                                                                                            <span class="estado-fecha">
+                                                                                                <?php if (empty($periodo['fecha_inicio']) && empty($periodo['fecha_fin'])): ?>
+                                                                                                    Sin rango definido
+                                                                                                <?php else: ?>
+                                                                                                    Fuera de rango hoy
+                                                                                                <?php endif; ?>
+                                                                                            </span>
+                                                                                        <?php endif; ?>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        <?php endforeach; ?>
+                                                                    <?php endif; ?>
                                                                 </tbody>
                                                             </table>
                                                         </div>
@@ -718,26 +1098,42 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
                                 <div class="status-summary">
                                     <div class="status-summary-card">
                                         <strong><?php echo count($periodosActivos); ?></strong>
-                                        <span>Parciales activos en rango hoy</span>
+                                        <span><?php echo $modalidadCarga === 'trimestres' ? 'Periodos internos activos en rango hoy' : 'Parciales activos en rango hoy'; ?></span>
                                     </div>
                                     <div class="status-summary-card">
-                                        <strong><?php echo count($periodos); ?></strong>
-                                        <span>Parciales configurados</span>
+                                        <strong><?php echo $modalidadCarga === 'trimestres' ? count($periodosPorTrimestre) : count($periodos); ?></strong>
+                                        <span><?php echo $modalidadCarga === 'trimestres' ? 'Trimestres configurados' : 'Parciales configurados'; ?></span>
                                     </div>
                                 </div>
-                                <h6 class="status-list-title">Parciales habilitados en este momento</h6>
+                                <h6 class="status-list-title"><?php echo $modalidadCarga === 'trimestres' ? 'Trimestres habilitados en este momento' : 'Parciales habilitados en este momento'; ?></h6>
                                 <ul class="list-group">
-                                    <?php if (!empty($periodosActivos)): ?>
-                                        <?php foreach ($periodosActivos as $periodoActivo): ?>
-                                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                                Trimestre <?php echo (int)$periodoActivo['trimestre']; ?> - Parcial <?php echo (int)$periodoActivo['parcial']; ?>
-                                                <span class="badge bg-success rounded-pill">Activo</span>
+                                    <?php if ($modalidadCarga === 'trimestres'): ?>
+                                        <?php $trimestresActivosAhora = array_filter($resumenModoTrimestres, function ($item) { return (int)$item['esta_activo'] === 1 && !empty($item['en_rango']); }); ?>
+                                        <?php if (!empty($trimestresActivosAhora)): ?>
+                                            <?php foreach ($trimestresActivosAhora as $numeroTrimestre => $configTrimestre): ?>
+                                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                    Trimestre <?php echo (int)$numeroTrimestre; ?>
+                                                    <span class="badge bg-success rounded-pill">Activo</span>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <li class="list-group-item text-danger">
+                                                No hay trimestres activos en rango. Los profesores no podrán cargar notas.
                                             </li>
-                                        <?php endforeach; ?>
+                                        <?php endif; ?>
                                     <?php else: ?>
-                                        <li class="list-group-item text-danger">
-                                            No hay parciales activos en rango. Los profesores no podrán cargar notas.
-                                        </li>
+                                        <?php if (!empty($periodosActivos)): ?>
+                                            <?php foreach ($periodosActivos as $periodoActivo): ?>
+                                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                    Trimestre <?php echo (int)$periodoActivo['trimestre']; ?> - Parcial <?php echo (int)$periodoActivo['parcial']; ?>
+                                                    <span class="badge bg-success rounded-pill">Activo</span>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <li class="list-group-item text-danger">
+                                                No hay parciales activos en rango. Los profesores no podrán cargar notas.
+                                            </li>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </ul>
                             </div>

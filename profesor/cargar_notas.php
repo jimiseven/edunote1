@@ -30,6 +30,10 @@ function construirUrlPeriodo($idCursoMateria, $trimestre, $parcial, $extra = [])
     return 'cargar_notas.php?' . http_build_query($params);
 }
 
+function obtenerModalidadCargaValida($valor) {
+    return $valor === 'trimestres' ? 'trimestres' : 'parciales';
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     header('Location: ../index.php');
     exit();
@@ -44,10 +48,11 @@ if ($id_curso_materia <= 0) {
 
 $conn = (new Database())->connect();
 
-$stmt = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
-$gestionConfigurada = $stmt->fetchColumn();
-$gestionConfigurada = $gestionConfigurada ? trim((string)$gestionConfigurada) : '';
+$stmt = $conn->query("SELECT anio_escolar, modalidad_carga_notas FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$configuracionSistema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$gestionConfigurada = isset($configuracionSistema['anio_escolar']) ? trim((string)$configuracionSistema['anio_escolar']) : '';
 $gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$modalidadCarga = obtenerModalidadCargaValida($configuracionSistema['modalidad_carga_notas'] ?? 'parciales');
 $gestionAlternativa = null;
 if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
     $gestionAlternativa = $matches[1];
@@ -141,16 +146,27 @@ $trimestreSeleccionado = isset($_REQUEST['trimestre']) ? (int)$_REQUEST['trimest
 $parcialSeleccionado = isset($_REQUEST['parcial']) ? (int)$_REQUEST['parcial'] : 0;
 $periodoConfirmado = isset($_GET['confirmar']) && $_GET['confirmar'] === '1';
 
+if ($modalidadCarga === 'trimestres') {
+    $parcialSeleccionado = 1;
+}
+
 if ($trimestreSeleccionado <= 0 || $parcialSeleccionado <= 0 || !isset($periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado])) {
     if (!empty($periodosActivos)) {
         $trimestreSeleccionado = (int)$periodosActivos[0]['trimestre'];
-        $parcialSeleccionado = (int)$periodosActivos[0]['parcial'];
+        $parcialSeleccionado = $modalidadCarga === 'trimestres' ? 1 : (int)$periodosActivos[0]['parcial'];
     } else {
         $primerPeriodo = $periodos[0];
         $trimestreSeleccionado = (int)$primerPeriodo['trimestre'];
-        $parcialSeleccionado = (int)$primerPeriodo['parcial'];
+        $parcialSeleccionado = $modalidadCarga === 'trimestres' ? 1 : (int)$primerPeriodo['parcial'];
     }
     $periodoConfirmado = false;
+}
+
+if ($modalidadCarga === 'trimestres' && !isset($periodosPorTrimestre[$trimestreSeleccionado][1])) {
+    $primerParcialDisponible = array_key_first($periodosPorTrimestre[$trimestreSeleccionado] ?? []);
+    if ($primerParcialDisponible !== null) {
+        $parcialSeleccionado = (int)$primerParcialDisponible;
+    }
 }
 
 $periodoSeleccionado = $periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado];
@@ -191,6 +207,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            (empty($periodoValidado['fecha_fin']) || $hoy <= $periodoValidado['fecha_fin']);
 
         if (!$periodoEditable) {
+            if ($modalidadCarga === 'trimestres') {
+                throw new Exception("El trimestre $trimestreSeleccionado no está habilitado para carga de notas");
+            }
             throw new Exception("El trimestre $trimestreSeleccionado - parcial $parcialSeleccionado no está habilitado para carga de notas");
         }
 
@@ -654,9 +673,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <div class="intro-block">
-                        <div class="intro-title">Carga de notas por parcial</div>
+                        <div class="intro-title"><?php echo $modalidadCarga === 'trimestres' ? 'Carga de notas por trimestre' : 'Carga de notas por parcial'; ?></div>
                         <p class="intro-text">
-                            Selecciona el trimestre y parcial correspondiente, verifica que el periodo esté habilitado y procede a cargar las notas de tus estudiantes.
+                            <?php if ($modalidadCarga === 'trimestres'): ?>
+                                Selecciona el trimestre correspondiente, verifica que el periodo esté habilitado y procede a cargar la nota final trimestral de tus estudiantes.
+                            <?php else: ?>
+                                Selecciona el trimestre y parcial correspondiente, verifica que el periodo esté habilitado y procede a cargar las notas de tus estudiantes.
+                            <?php endif; ?>
                         </p>
                     </div>
 
@@ -670,6 +693,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <form method="get" class="row g-3 align-items-end">
                             <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
                             <input type="hidden" name="confirmar" value="1">
+                            <?php if ($modalidadCarga === 'trimestres'): ?>
+                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                            <?php endif; ?>
                             <div class="col-md-3">
                                 <label class="form-label">Trimestre</label>
                                 <select name="trimestre" class="form-select">
@@ -680,16 +706,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label">Parcial</label>
-                                <select name="parcial" class="form-select">
-                                    <?php foreach (($periodosPorTrimestre[$trimestreSeleccionado] ?? []) as $parcial => $periodo): ?>
-                                        <option value="<?php echo $parcial; ?>" <?php echo $parcial == $parcialSeleccionado ? 'selected' : ''; ?>>
-                                            Parcial <?php echo $parcial; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+                            <?php if ($modalidadCarga === 'parciales'): ?>
+                                <div class="col-md-3">
+                                    <label class="form-label">Parcial</label>
+                                    <select name="parcial" class="form-select">
+                                        <?php foreach (($periodosPorTrimestre[$trimestreSeleccionado] ?? []) as $parcial => $periodo): ?>
+                                            <option value="<?php echo $parcial; ?>" <?php echo $parcial == $parcialSeleccionado ? 'selected' : ''; ?>>
+                                                Parcial <?php echo $parcial; ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            <?php endif; ?>
                             <div class="col-md-3">
                                 <button type="submit" class="btn btn-primary w-100">
                                     <?php echo $periodoConfirmado ? 'Cambiar periodo' : 'Cargar periodo'; ?>
@@ -704,7 +732,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 Gestión <?php echo htmlspecialchars($gestionActual); ?>
                             </span>
                             <span class="badge bg-light text-dark border periodo-badge">
-                                T<?php echo $trimestreSeleccionado; ?> - P<?php echo $parcialSeleccionado; ?>
+                                <?php echo $modalidadCarga === 'trimestres' ? 'Trimestre ' . $trimestreSeleccionado : 'T' . $trimestreSeleccionado . ' - P' . $parcialSeleccionado; ?>
                             </span>
                             <?php if ($periodoSeleccionado['fecha_inicio'] || $periodoSeleccionado['fecha_fin']): ?>
                                 <span class="badge bg-light text-dark border periodo-badge">
@@ -733,7 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
                                             <div class="modal-body">
                                                 <div class="alert alert-info">
-                                                    Cargará notas para <strong>Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?></strong>.
+                                                    Cargará notas para <strong><?php echo $modalidadCarga === 'trimestres' ? 'Trimestre ' . $trimestreSeleccionado : 'Trimestre ' . $trimestreSeleccionado . ' - Parcial ' . $parcialSeleccionado; ?></strong>.
                                                 </div>
                                                 <div class="mb-3">
                                                     <label>Pegue aquí la columna de notas:</label>
@@ -752,11 +780,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <form method="post">
                             <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                             <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                            
                             <div class="helper-alert">
                                 <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
                             </div>
-                            
                             <?php if (!$periodoEditable): ?>
                                 <div class="alert alert-warning">
                                     <strong>Modo consulta:</strong> Este periodo no está habilitado para edición. Contacta al administrador si necesitas cargar o modificar notas.
@@ -769,7 +795,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <th>#</th>
                                             <th>Estudiante</th>
                                             <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
-                                                Parcial actual
+                                                <?php echo $modalidadCarga === 'trimestres' ? 'Nota trimestral' : 'Parcial actual'; ?>
                                             </th>
                                             <th class="text-center">P1</th>
                                             <th class="text-center">P2</th>
@@ -792,7 +818,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <textarea
                                                         name="notas[<?php echo $est['id_estudiante']; ?>]"
                                                         class="coment-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
-                                                        placeholder="<?php echo $periodoEditable ? 'Comentario parcial '.$parcialSeleccionado : 'No habilitado'; ?>"
+                                                        placeholder="<?php echo $periodoEditable ? ($modalidadCarga === 'trimestres' ? 'Comentario trimestral' : 'Comentario parcial ' . $parcialSeleccionado) : 'No habilitado'; ?>"
                                                         <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
                                                     ><?php echo htmlspecialchars($notaActual); ?></textarea>
                                                 <?php else: ?>
@@ -847,7 +873,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </div>
                             <h5 class="preview-title">Periodo seleccionado</h5>
                             <p class="preview-text">
-                                Has seleccionado <strong>Trimestre <?php echo $trimestreSeleccionado; ?> - Parcial <?php echo $parcialSeleccionado; ?></strong>.
+                                Has seleccionado <strong><?php echo $modalidadCarga === 'trimestres' ? 'Trimestre ' . $trimestreSeleccionado : 'Trimestre ' . $trimestreSeleccionado . ' - Parcial ' . $parcialSeleccionado; ?></strong>.
                             </p>
                             <div class="preview-status">
                                 <?php if ($periodoEditable): ?>
@@ -922,6 +948,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
             const trimestreSelect = document.querySelector('select[name="trimestre"]');
             const parcialSelect = document.querySelector('select[name="parcial"]');
+            const modalidadCarga = <?php echo json_encode($modalidadCarga); ?>;
             const parcialesPorTrimestre = <?php echo json_encode(array_map(function ($parciales) {
                 return array_map(function ($periodo) {
                     return [
@@ -930,7 +957,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ];
                 }, array_values($parciales));
             }, $periodosPorTrimestre)); ?>;
-            if (trimestreSelect && parcialSelect) {
+            if (modalidadCarga === 'parciales' && trimestreSelect && parcialSelect) {
                 trimestreSelect.addEventListener('change', function() {
                     const trimestre = this.value;
                     const opciones = parcialesPorTrimestre[trimestre] || [];
