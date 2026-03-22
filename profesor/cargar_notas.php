@@ -413,6 +413,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #11305e;
             margin-bottom: 1rem;
         }
+        .periodo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .trimestre-group {
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            background: #f8fbff;
+            padding: 1rem;
+        }
+        .trimestre-group-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.85rem;
+        }
+        .trimestre-group-buttons {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+        }
+        .periodo-card-button {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.3rem;
+            width: 100%;
+            padding: 0.95rem 1rem;
+            border-radius: 10px;
+            border: 1px solid #dbeafe;
+            background: #ffffff;
+            color: #11305e;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+        .periodo-card-button:hover {
+            border-color: #93c5fd;
+            background: #f8fbff;
+        }
+        .periodo-card-button.active {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: inset 0 0 0 1px #93c5fd;
+        }
+        .periodo-card-button.periodo-disabled {
+            border-color: #fecaca;
+            background: #fff7f7;
+        }
+        .periodo-card-button.periodo-enabled {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+        }
+        .periodo-card-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+        .periodo-card-meta {
+            font-size: 0.82rem;
+            color: #64748b;
+        }
+        .periodo-card-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .periodo-card-status.enabled {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .periodo-card-status.disabled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
         .periodo-info {
             display: flex;
             flex-wrap: wrap;
@@ -690,40 +767,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php endif; ?>
                     <div class="periodo-toolbar">
                         <div class="periodo-toolbar-title">Selección de periodo</div>
-                        <form method="get" class="row g-3 align-items-end">
-                            <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
-                            <input type="hidden" name="confirmar" value="1">
-                            <?php if ($modalidadCarga === 'trimestres'): ?>
-                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                            <?php endif; ?>
-                            <div class="col-md-3">
-                                <label class="form-label">Trimestre</label>
-                                <select name="trimestre" class="form-select">
-                                    <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
-                                        <option value="<?php echo $trimestre; ?>" <?php echo $trimestre == $trimestreSeleccionado ? 'selected' : ''; ?>>
-                                            Trimestre <?php echo $trimestre; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                        <?php if ($modalidadCarga === 'parciales'): ?>
+                            <div class="periodo-grid">
+                                <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
+                                    <div class="trimestre-group">
+                                        <div class="trimestre-group-title">Trimestre <?php echo (int)$trimestre; ?></div>
+                                        <div class="trimestre-group-buttons">
+                                            <?php foreach ($parciales as $parcial => $periodoBoton): ?>
+                                                <?php
+                                                $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
+                                                    (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
+                                                    (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
+                                                $esPeriodoActual = (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado;
+                                                ?>
+                                                <form method="get" class="m-0">
+                                                    <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
+                                                    <input type="hidden" name="confirmar" value="1">
+                                                    <input type="hidden" name="trimestre" value="<?php echo (int)$trimestre; ?>">
+                                                    <input type="hidden" name="parcial" value="<?php echo (int)$parcial; ?>">
+                                                    <button type="submit" class="periodo-card-button <?php echo $esPeriodoActual ? 'active' : ''; ?> <?php echo $periodoBotonEditable ? 'periodo-enabled' : 'periodo-disabled'; ?>">
+                                                        <span class="periodo-card-title">Parcial <?php echo (int)$parcial; ?></span>
+                                                        <span class="periodo-card-meta"><?php echo htmlspecialchars($periodoBoton['nombre']); ?></span>
+                                                        <span class="periodo-card-status <?php echo $periodoBotonEditable ? 'enabled' : 'disabled'; ?>">
+                                                            <?php echo $periodoBotonEditable ? 'Habilitado' : 'No habilitado'; ?>
+                                                        </span>
+                                                    </button>
+                                                </form>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
-                            <?php if ($modalidadCarga === 'parciales'): ?>
+                        <?php else: ?>
+                            <form method="get" class="row g-3 align-items-end">
+                                <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
+                                <input type="hidden" name="confirmar" value="1">
+                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
                                 <div class="col-md-3">
-                                    <label class="form-label">Parcial</label>
-                                    <select name="parcial" class="form-select">
-                                        <?php foreach (($periodosPorTrimestre[$trimestreSeleccionado] ?? []) as $parcial => $periodo): ?>
-                                            <option value="<?php echo $parcial; ?>" <?php echo $parcial == $parcialSeleccionado ? 'selected' : ''; ?>>
-                                                Parcial <?php echo $parcial; ?>
+                                    <label class="form-label">Trimestre</label>
+                                    <select name="trimestre" class="form-select">
+                                        <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
+                                            <option value="<?php echo $trimestre; ?>" <?php echo $trimestre == $trimestreSeleccionado ? 'selected' : ''; ?>>
+                                                Trimestre <?php echo $trimestre; ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                            <?php endif; ?>
-                            <div class="col-md-3">
-                                <button type="submit" class="btn btn-primary w-100">
-                                    <?php echo $periodoConfirmado ? 'Cambiar periodo' : 'Cargar periodo'; ?>
-                                </button>
-                            </div>
-                        </form>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <?php echo $periodoConfirmado ? 'Cambiar periodo' : 'Cargar periodo'; ?>
+                                    </button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+
                         <div class="periodo-info">
                             <span class="badge periodo-badge <?php echo $periodoEditable ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
                                 <?php echo $periodoEditable ? '✓ Habilitado para carga' : '✗ No habilitado'; ?>
