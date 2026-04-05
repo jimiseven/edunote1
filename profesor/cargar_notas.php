@@ -145,6 +145,7 @@ foreach ($periodos as $periodo) {
 $trimestreSeleccionado = isset($_REQUEST['trimestre']) ? (int)$_REQUEST['trimestre'] : 0;
 $parcialSeleccionado = isset($_REQUEST['parcial']) ? (int)$_REQUEST['parcial'] : 0;
 $periodoConfirmado = isset($_GET['confirmar']) && $_GET['confirmar'] === '1';
+$vistaActual = isset($_REQUEST['vista']) && $_REQUEST['vista'] === 'trimestral' ? 'trimestral' : 'parcial';
 
 if ($modalidadCarga === 'trimestres') {
     $parcialSeleccionado = 1;
@@ -185,6 +186,33 @@ $stmt->execute([$curso['id_materia'], $gestionActual]);
 $notas = [];
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $notas[$row['id_estudiante']][(int)$row['trimestre']][(int)$row['parcial']] = $row['valor'];
+}
+
+$notasTrimestrales = [];
+try {
+    $stmt = $conn->prepare("SELECT id_estudiante, trimestre, autoevaluacion, nota_extra
+                            FROM calificaciones_trimestrales
+                            WHERE id_materia = ? AND gestion = ?");
+    $stmt->execute([$curso['id_materia'], $gestionActual]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $notasTrimestrales[(int)$row['id_estudiante']][(int)$row['trimestre']] = [
+            'autoevaluacion' => $row['autoevaluacion'],
+            'nota_extra' => $row['nota_extra']
+        ];
+    }
+} catch (PDOException $e) {
+    // Table may not exist yet — ignore
+}
+
+$trimestreEditableParaVistaTrimestral = false;
+if ($vistaActual === 'trimestral') {
+    $parcialesTrim = $periodosPorTrimestre[$trimestreSeleccionado] ?? [];
+    foreach ($parcialesTrim as $p) {
+        $activo = (int)$p['esta_activo'] === 1 &&
+                  (empty($p['fecha_inicio']) || $hoy >= $p['fecha_inicio']) &&
+                  (empty($p['fecha_fin']) || $hoy <= $p['fecha_fin']);
+        if ($activo) { $trimestreEditableParaVistaTrimestral = true; break; }
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -311,8 +339,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if (isset($_POST['guardar_trimestral'])) {
+            foreach ($estudiantes as $estudiante) {
+                $idEst = (int)$estudiante['id_estudiante'];
+                $autoVal = isset($_POST['auto'][$idEst]) ? trim($_POST['auto'][$idEst]) : '';
+                $extraVal = isset($_POST['extra'][$idEst]) ? trim($_POST['extra'][$idEst]) : '';
+
+                $autoNum = ($autoVal !== '' && is_numeric(str_replace(',', '.', $autoVal)))
+                    ? (float)str_replace(',', '.', $autoVal) : null;
+                $extraNum = ($extraVal !== '' && is_numeric(str_replace(',', '.', $extraVal)))
+                    ? (float)str_replace(',', '.', $extraVal) : null;
+
+                if ($autoNum === null && $extraNum === null) {
+                    $conn->prepare("DELETE FROM calificaciones_trimestrales
+                                    WHERE id_estudiante = ? AND id_materia = ? AND gestion = ? AND trimestre = ?")
+                         ->execute([$idEst, $curso['id_materia'], $gestionActual, $trimestreSeleccionado]);
+                } else {
+                    $conn->prepare("INSERT INTO calificaciones_trimestrales
+                                    (id_estudiante, id_materia, gestion, trimestre, autoevaluacion, nota_extra, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE autoevaluacion = VALUES(autoevaluacion),
+                                                            nota_extra = VALUES(nota_extra),
+                                                            id_profesor = VALUES(id_profesor)")
+                         ->execute([$idEst, $curso['id_materia'], $gestionActual, $trimestreSeleccionado, $autoNum, $extraNum, $profesor_id]);
+                }
+            }
+        }
+
         $conn->commit();
-        header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, ['success' => 1]));
+        $redirectExtra = ['success' => 1];
+        if ($vistaActual === 'trimestral') $redirectExtra['vista'] = 'trimestral';
+        header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra));
         exit();
     } catch (Exception $e) {
         if ($conn->inTransaction()) {
@@ -360,16 +417,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: white;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            padding: 30px;
-            margin: 20px 0;
+            padding: 18px 20px;
+            margin: 10px 0;
         }
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 1rem;
+            padding-bottom: 0.5rem;
             border-bottom: 2px solid #e5e7eb;
-            margin-bottom: 1.5rem;
+            margin-bottom: 0.75rem;
         }
         .page-header h3 {
             color: #11305e;
@@ -381,137 +438,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
             margin: 0;
         }
+        .top-row {
+            display: flex; gap: 0.75rem; margin-bottom: 0.75rem; align-items: stretch;
+        }
         .intro-block {
             background: linear-gradient(135deg, #ffffff, #f8fbff);
             border: 1px solid #dbeafe;
             border-radius: 10px;
-            padding: 1.2rem;
-            margin-bottom: 1.5rem;
+            padding: 0.85rem 1rem;
+            flex: 0 0 220px;
+            display: flex; flex-direction: column; justify-content: center;
         }
         .intro-title {
-            font-size: 1rem;
+            font-size: 0.88rem;
             font-weight: 700;
             color: #11305e;
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.3rem;
         }
         .intro-text {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: #475569;
             margin: 0;
+            line-height: 1.35;
         }
         .periodo-toolbar {
             background: #ffffff;
             border: 1px solid #dbeafe;
             border-radius: 10px;
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            padding: 0.85rem 1rem;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+            flex: 1 1 0%;
+            min-width: 0;
         }
         .periodo-toolbar-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #11305e;
-            margin-bottom: 1rem;
-        }
-        .periodo-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1rem;
-        }
-        .trimestre-group {
-            border: 1px solid #dbeafe;
-            border-radius: 12px;
-            background: #f8fbff;
-            padding: 1rem;
-        }
-        .trimestre-group-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #11305e;
-            margin-bottom: 0.85rem;
-        }
-        .trimestre-group-buttons {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 0.75rem;
-        }
-        .periodo-card-button {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.3rem;
-            width: 100%;
-            padding: 0.95rem 1rem;
-            border-radius: 10px;
-            border: 1px solid #dbeafe;
-            background: #ffffff;
-            color: #11305e;
-            text-align: left;
-            transition: all 0.2s ease;
-        }
-        .periodo-card-button:hover {
-            border-color: #93c5fd;
-            background: #f8fbff;
-        }
-        .periodo-card-button.active {
-            border-color: #2563eb;
-            background: #eff6ff;
-            box-shadow: inset 0 0 0 1px #93c5fd;
-        }
-        .periodo-card-button.periodo-disabled {
-            border-color: #fecaca;
-            background: #fff7f7;
-        }
-        .periodo-card-button.periodo-enabled {
-            border-color: #bbf7d0;
-            background: #f0fdf4;
-        }
-        .periodo-card-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-        }
-        .periodo-card-meta {
             font-size: 0.82rem;
-            color: #64748b;
-        }
-        .periodo-card-status {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.2rem 0.55rem;
-            border-radius: 999px;
-            font-size: 0.72rem;
             font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.6rem;
         }
-        .periodo-card-status.enabled {
-            background: #dcfce7;
-            color: #166534;
+        .periodo-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+        .trim-row {
+            display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
         }
-        .periodo-card-status.disabled {
-            background: #fee2e2;
-            color: #991b1b;
+        .trim-label {
+            font-size: 0.78rem; font-weight: 700; color: #11305e;
+            min-width: 22px; text-align: center;
         }
+        .pill-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 0.25rem 0.55rem; border-radius: 6px; font-size: 0.74rem;
+            font-weight: 600; border: 1px solid #cbd5e1; background: #fff;
+            color: #475569; cursor: pointer; transition: all 0.15s ease;
+            text-decoration: none; line-height: 1.2;
+        }
+        .pill-btn:hover { border-color: #93c5fd; background: #f0f7ff; color: #1e40af; }
+        .pill-btn.active { border-color: #2563eb; background: #dbeafe; color: #1e40af; font-weight: 700; }
+        .pill-btn.pill-enabled { border-color: #86efac; }
+        .pill-btn.pill-enabled::before {
+            content: ''; display: inline-block; width: 5px; height: 5px;
+            border-radius: 50%; background: #22c55e; margin-right: 4px;
+        }
+        .pill-btn.pill-disabled { border-color: #fca5a5; color: #94a3b8; }
+        .pill-btn.pill-disabled::before {
+            content: ''; display: inline-block; width: 5px; height: 5px;
+            border-radius: 50%; background: #ef4444; margin-right: 4px;
+        }
+        .pill-sep {
+            width: 1px; height: 18px; background: #e2e8f0; margin: 0 2px;
+        }
+        .pill-btn.pill-trim {
+            background: #faf5ff; border-color: #c4b5fd; color: #7c3aed;
+        }
+        .pill-btn.pill-trim:hover { background: #ede9fe; border-color: #a78bfa; }
+        .pill-btn.pill-trim.active { background: #ddd6fe; border-color: #8b5cf6; font-weight: 700; }
         .periodo-info {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.6rem;
-            margin-top: 1rem;
-            padding-top: 1rem;
+            display: flex; flex-wrap: wrap; gap: 0.4rem;
+            margin-top: 0.6rem; padding-top: 0.6rem;
             border-top: 1px solid #e5e7eb;
         }
         .periodo-badge {
-            font-size: 0.85rem;
-            padding: 0.4rem 0.75rem;
-            font-weight: 600;
+            font-size: 0.78rem; padding: 0.25rem 0.55rem; font-weight: 600;
         }
         .status-badge-enabled {
-            background: #dcfce7;
-            color: #166534;
-            border: 1px solid #bbf7d0;
+            background: #dcfce7; color: #166534; border: 1px solid #bbf7d0;
         }
         .status-badge-disabled {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
+            background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;
         }
         .form-select, .btn {
             border-radius: 8px;
@@ -523,16 +535,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 0.4rem;
         }
         .nota-input {
-            width: 85px;
+            width: 38px;
+            height: 24px;
+            padding: 1px 2px;
             text-align: center;
             font-weight: 600;
-            border-radius: 6px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            border: 1px solid #cbd5e1;
+        }
+        .nota-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,.18);
+            outline: none;
+        }
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
         }
         .nota-disabled,
         .coment-disabled {
-            background: #f8f9fa !important;
-            border-color: #d1d5db !important;
-            color: #888 !important;
+            background: #f1f5f9 !important;
+            border-color: #e2e8f0 !important;
+            color: #94a3b8 !important;
             cursor: not-allowed;
         }
         .periodo-inactivo-th {
@@ -544,14 +574,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #dbeafe !important;
             color: #1d4ed8 !important;
             font-weight: 700;
-            border: 2px solid #93c5fd !important;
-        }
-        .modal-body textarea {
-            width: 100%;
-            height: 150px;
-            resize: none;
-            font-family: monospace;
-            border-radius: 8px;
         }
         .coment-textarea {
             width: 100%;
@@ -560,55 +582,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 6px;
             font-size: 0.9rem;
         }
+        /* ---- Tabla ultra-compacta ---- */
         .table-container {
-            max-height: 70vh;
+            max-height: 74vh;
             overflow: auto;
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            margin-bottom: 14px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
         }
         .table-container table {
             margin-bottom: 0;
+            border-collapse: collapse;
+            font-size: 0.78rem;
         }
         .table-container thead th {
             position: sticky;
             top: 0;
-            background-color: #f8f9fa;
             z-index: 10;
-            font-size: 0.85rem;
+            font-size: 0.72rem;
             text-transform: uppercase;
-            letter-spacing: 0.02em;
-            padding: 0.85rem 0.75rem;
+            letter-spacing: 0.03em;
+            padding: 4px 3px;
+            text-align: center;
+            vertical-align: middle;
+            border-bottom: 2px solid #94a3b8;
+        }
+        .table-container thead tr:first-child th { top: 0; }
+        .table-container thead tr:nth-child(2) th { top: 28px; }
+        .table-container thead th,
+        .table-container tbody td {
+            padding: 3px 2px;
+            white-space: nowrap;
         }
         .table-container tbody td {
             vertical-align: middle;
+            text-align: center;
+        }
+        .col-num {
+            width: 28px; min-width: 28px; max-width: 28px;
+            text-align: center; font-size: 0.72rem; color: #94a3b8;
+        }
+        .col-nombre {
+            min-width: 140px; max-width: 180px;
+            text-align: left !important;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-weight: 500; font-size: 0.76rem; padding-left: 6px !important;
         }
         .table-container tbody td:first-child,
         .table-container thead th:first-child {
-            position: sticky;
-            left: 0;
-            background-color: white;
-            z-index: 5;
+            position: sticky; left: 0; background-color: #fff; z-index: 5;
         }
         .table-container tbody td:nth-child(2),
         .table-container thead th:nth-child(2) {
-            position: sticky;
-            left: 40px;
-            background-color: white;
-            z-index: 5;
+            position: sticky; left: 28px; background-color: #fff; z-index: 5;
+            border-right: 2px solid #cbd5e1;
         }
         .table-container thead th:first-child,
         .table-container thead th:nth-child(2) {
-            z-index: 15;
+            z-index: 15; background-color: #f1f5f9;
         }
+        /* Bandas de color por area */
+        .th-ser   { background: #dcfce7 !important; color: #166534 !important; }
+        .th-saber { background: #dbeafe !important; color: #1e40af !important; }
+        .th-hacer { background: #ffedd5 !important; color: #9a3412 !important; }
+        .th-total { background: #f3e8ff !important; color: #6b21a8 !important; }
+        .th-sub-ser   { background: #f0fdf4 !important; font-size: 0.7rem; }
+        .th-sub-saber { background: #eff6ff !important; font-size: 0.7rem; }
+        .th-sub-hacer { background: #fff7ed !important; font-size: 0.7rem; }
+        .th-sub-total { background: #faf5ff !important; font-size: 0.7rem; font-weight: 700; }
+        /* Celdas de promedio */
         .nota-ref {
-            font-weight: 600;
-            text-align: center;
-            color: #475569;
+            font-weight: 700; text-align: center; font-size: 0.76rem; min-width: 40px;
         }
-        .table-primary {
-            background-color: #eff6ff !important;
+        .ser-total   { background: #f0fdf4; color: #15803d; }
+        .saber-total { background: #eff6ff; color: #1d4ed8; }
+        .hacer-total { background: #fff7ed; color: #c2410c; }
+        .total-95    { background: #faf5ff; color: #7c3aed; font-weight: 800; font-size: 0.82rem; }
+        /* Filas zebra y hover */
+        .table-container tbody tr:nth-child(even) td { background-color: #fafbfc; }
+        .table-container tbody tr:nth-child(even) td:first-child,
+        .table-container tbody tr:nth-child(even) td:nth-child(2) { background-color: #fafbfc; }
+        .table-container tbody tr:hover td { background-color: #eef2ff !important; }
+        body.sidebar-collapsed main.content-panel {
+            flex: 0 0 calc(100% - 60px) !important;
+            max-width: calc(100% - 60px) !important;
         }
         .helper-alert {
             background: #f8fbff;
@@ -735,6 +793,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 width: 64px;
                 height: 64px;
             }
+            .top-row {
+                flex-direction: column;
+            }
+            .intro-block {
+                flex: none;
+            }
         }
     </style>
 </head>
@@ -749,217 +813,314 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <h4><?php echo $curso['nombre_materia']; ?></h4>
                     </div>
 
-                    <div class="intro-block">
-                        <div class="intro-title"><?php echo $modalidadCarga === 'trimestres' ? 'Carga de notas por trimestre' : 'Carga de notas por parcial'; ?></div>
-                        <p class="intro-text">
-                            <?php if ($modalidadCarga === 'trimestres'): ?>
-                                Selecciona el trimestre correspondiente, verifica que el periodo esté habilitado y procede a cargar la nota final trimestral de tus estudiantes.
-                            <?php else: ?>
-                                Selecciona el trimestre y parcial correspondiente, verifica que el periodo esté habilitado y procede a cargar las notas de tus estudiantes.
-                            <?php endif; ?>
-                        </p>
-                    </div>
-
                     <?php if (isset($error)): ?>
-                        <div class="alert alert-danger"><?php echo $error; ?></div>
-                    <?php elseif (isset($_GET['success'])): ?>
-                        <div class="alert alert-success">¡Notas cargadas correctamente!</div>
-                    <?php endif; ?>
-                    <div class="periodo-toolbar">
-                        <div class="periodo-toolbar-title">Selección de periodo</div>
-                        <?php if ($modalidadCarga === 'parciales'): ?>
-                            <div class="periodo-grid">
-                                <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
-                                    <div class="trimestre-group">
-                                        <div class="trimestre-group-title">Trimestre <?php echo (int)$trimestre; ?></div>
-                                        <div class="trimestre-group-buttons">
+                            <div class="alert alert-danger mb-2"><?php echo $error; ?></div>
+                        <?php elseif (isset($_GET['success'])): ?>
+                            <div class="alert alert-success mb-2">¡Notas cargadas correctamente!</div>
+                        <?php endif; ?>
+                        <div class="top-row">
+                            <div class="intro-block">
+                                <div class="intro-title"><?php echo $modalidadCarga === 'trimestres' ? 'Carga por trimestre' : 'Carga por parcial'; ?></div>
+                                <p class="intro-text">
+                                    <?php if ($modalidadCarga === 'trimestres'): ?>
+                                        Selecciona el trimestre, verifica que esté habilitado y carga las notas.
+                                    <?php else: ?>
+                                        Selecciona trimestre y parcial, verifica que esté habilitado y carga las notas.
+                                    <?php endif; ?>
+                                </p>
+                            </div>
+                            <div class="periodo-toolbar">
+                                <div class="periodo-toolbar-title">Selección de periodo</div>
+                                <div class="periodo-rows">
+                                    <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
+                                        <div class="trim-row">
+                                            <span class="trim-label">T<?php echo (int)$trimestre; ?></span>
                                             <?php foreach ($parciales as $parcial => $periodoBoton): ?>
                                                 <?php
                                                 $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
                                                     (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
                                                     (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
-                                                $esPeriodoActual = (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado;
+                                                $esPeriodoActual = $vistaActual === 'parcial' && (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado && $periodoConfirmado;
+                                                $pillClasses = 'pill-btn' . ($esPeriodoActual ? ' active' : '') . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
                                                 ?>
-                                                <form method="get" class="m-0">
-                                                    <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
-                                                    <input type="hidden" name="confirmar" value="1">
-                                                    <input type="hidden" name="trimestre" value="<?php echo (int)$trimestre; ?>">
-                                                    <input type="hidden" name="parcial" value="<?php echo (int)$parcial; ?>">
-                                                    <button type="submit" class="periodo-card-button <?php echo $esPeriodoActual ? 'active' : ''; ?> <?php echo $periodoBotonEditable ? 'periodo-enabled' : 'periodo-disabled'; ?>">
-                                                        <span class="periodo-card-title">Parcial <?php echo (int)$parcial; ?></span>
-                                                        <span class="periodo-card-meta"><?php echo htmlspecialchars($periodoBoton['nombre']); ?></span>
-                                                        <span class="periodo-card-status <?php echo $periodoBotonEditable ? 'enabled' : 'disabled'; ?>">
-                                                            <?php echo $periodoBotonEditable ? 'Habilitado' : 'No habilitado'; ?>
-                                                        </span>
-                                                    </button>
-                                                </form>
+                                                <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$parcial, ['confirmar' => 1])); ?>"
+                                                   class="<?php echo $pillClasses; ?>"
+                                                   title="<?php echo htmlspecialchars($periodoBoton['nombre']); ?>">
+                                                    P<?php echo (int)$parcial; ?>
+                                                </a>
                                             <?php endforeach; ?>
+                                            <?php if (!$es_inicial): ?>
+                                                <div class="pill-sep"></div>
+                                                <?php
+                                                $esTrimActual = $vistaActual === 'trimestral' && (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
+                                                $primerParcialTrim = array_key_first($parciales);
+                                                ?>
+                                                <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialTrim, ['confirmar' => 1, 'vista' => 'trimestral'])); ?>"
+                                                   class="pill-btn pill-trim<?php echo $esTrimActual ? ' active' : ''; ?>"
+                                                   title="Vista trimestral: autoevaluación y nota extra">
+                                                    Trim
+                                                </a>
+                                            <?php endif; ?>
                                         </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php else: ?>
-                            <form method="get" class="row g-3 align-items-end">
-                                <input type="hidden" name="curso_materia" value="<?php echo $id_curso_materia; ?>">
-                                <input type="hidden" name="confirmar" value="1">
-                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                                <div class="col-md-3">
-                                    <label class="form-label">Trimestre</label>
-                                    <select name="trimestre" class="form-select">
-                                        <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
-                                            <option value="<?php echo $trimestre; ?>" <?php echo $trimestre == $trimestreSeleccionado ? 'selected' : ''; ?>>
-                                                Trimestre <?php echo $trimestre; ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                    <?php endforeach; ?>
                                 </div>
-                                <div class="col-md-3">
-                                    <button type="submit" class="btn btn-primary w-100">
-                                        <?php echo $periodoConfirmado ? 'Cambiar periodo' : 'Cargar periodo'; ?>
+                                <div class="periodo-info">
+                                    <?php if ($vistaActual === 'trimestral'): ?>
+                                        <span class="badge periodo-badge <?php echo $trimestreEditableParaVistaTrimestral ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
+                                            <?php echo $trimestreEditableParaVistaTrimestral ? '✓ Habilitado' : '✗ No habilitado'; ?>
+                                        </span>
+                                        <span class="badge bg-light text-dark border periodo-badge">Vista trimestral — T<?php echo $trimestreSeleccionado; ?></span>
+                                    <?php else: ?>
+                                        <span class="badge periodo-badge <?php echo $periodoEditable ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
+                                            <?php echo $periodoEditable ? '✓ Habilitado' : '✗ No habilitado'; ?>
+                                        </span>
+                                        <span class="badge bg-light text-dark border periodo-badge">
+                                            T<?php echo $trimestreSeleccionado; ?> - P<?php echo $parcialSeleccionado; ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <span class="badge bg-light text-dark border periodo-badge">
+                                        Gestión <?php echo htmlspecialchars($gestionActual); ?>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                    <?php if ($periodoConfirmado): ?>
+                        <?php if ($vistaActual === 'trimestral' && !$es_inicial): ?>
+                            <form method="post">
+                                <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
+                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                                <input type="hidden" name="vista" value="trimestral">
+                                <?php if (!$trimestreEditableParaVistaTrimestral): ?>
+                                    <div class="alert alert-warning">
+                                        <strong>Modo consulta:</strong> Ningún parcial de este trimestre está habilitado.
+                                    </div>
+                                <?php endif; ?>
+                                <div class="table-container">
+                                    <table class="table table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="col-num">#</th>
+                                                <th class="col-nombre">Estudiante</th>
+                                                <th class="th-sub-total" style="min-width:50px">P1</th>
+                                                <th class="th-sub-total" style="min-width:50px">P2</th>
+                                                <th class="th-sub-total" style="min-width:50px">P3</th>
+                                                <th class="th-total" style="min-width:55px">Prom 95</th>
+                                                <th style="background:#fef3c7!important;color:#92400e!important;min-width:55px">Auto (5)</th>
+                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Extra</th>
+                                                <th class="th-total" style="min-width:55px">TOTAL</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php $contador = 1; ?>
+                                            <?php foreach ($estudiantes as $est): ?>
+                                                <?php
+                                                $idEst = (int)$est['id_estudiante'];
+                                                $trimData = $notasTrimestrales[$idEst][$trimestreSeleccionado] ?? [];
+                                                $autoVal = $trimData['autoevaluacion'] ?? '';
+                                                $extraVal = $trimData['nota_extra'] ?? '';
+                                                $parciales95 = [];
+                                                for ($px = 1; $px <= 3; $px++) {
+                                                    $parciales95[$px] = isset($notas[$idEst][$trimestreSeleccionado][$px]) && is_numeric($notas[$idEst][$trimestreSeleccionado][$px])
+                                                        ? (float)$notas[$idEst][$trimestreSeleccionado][$px] : null;
+                                                }
+                                                $vals95 = array_filter($parciales95, fn($v) => $v !== null);
+                                                $prom95 = count($vals95) ? array_sum($vals95) / count($vals95) : null;
+                                                $autoNum = ($autoVal !== '' && $autoVal !== null) ? (float)$autoVal : null;
+                                                $extraNum = ($extraVal !== '' && $extraVal !== null) ? (float)$extraVal : null;
+                                                $totalFinal = ($prom95 !== null ? $prom95 : 0) + ($autoNum ?? 0) + ($extraNum ?? 0);
+                                                ?>
+                                                <tr>
+                                                    <td class="col-num"><?php echo $contador++; ?></td>
+                                                    <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
+                                                    <?php for ($px = 1; $px <= 3; $px++): ?>
+                                                        <td class="nota-ref"><?php echo $parciales95[$px] !== null ? number_format($parciales95[$px], 2) : '--'; ?></td>
+                                                    <?php endfor; ?>
+                                                    <td class="nota-ref total-95"><?php echo $prom95 !== null ? number_format($prom95, 2) : '--'; ?></td>
+                                                    <td>
+                                                        <input type="number" name="auto[<?php echo $idEst; ?>]"
+                                                               class="form-control nota-input area-auto <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
+                                                               value="<?php echo htmlspecialchars($autoVal === null ? '' : $autoVal); ?>"
+                                                               step="0.01" min="0" max="5"
+                                                               <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" name="extra[<?php echo $idEst; ?>]"
+                                                               class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
+                                                               value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
+                                                               step="0.01" min="0" max="100"
+                                                               <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
+                                                    </td>
+                                                    <td class="nota-ref total-final" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>">
+                                                        <?php echo number_format($totalFinal, 2); ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="action-buttons">
+                                    <a href="dashboard.php" class="btn btn-outline-secondary">← Volver al panel</a>
+                                    <div class="d-flex gap-2">
+                                        <a href="exportar_registro.php?curso_materia=<?php echo $id_curso_materia; ?>&trimestre=<?php echo $trimestreSeleccionado; ?>"
+                                           class="btn btn-outline-primary px-3" title="Registro: desglose por parcial + resumen trimestral">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Registro
+                                        </a>
+                                        <a href="exportar_notas_excel.php?curso_materia=<?php echo $id_curso_materia; ?>"
+                                           class="btn btn-outline-success px-3" title="Exportar todas las notas a Excel">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Excel Todo
+                                        </a>
+                                        <button type="submit" name="guardar_trimestral" class="btn btn-primary px-4" <?php echo !$trimestreEditableParaVistaTrimestral ? 'disabled' : ''; ?>>
+                                            <?php echo $trimestreEditableParaVistaTrimestral ? 'Guardar trimestral' : 'No disponible'; ?>
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        <?php else: ?>
+                            <form method="post">
+                                <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
+                                <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                                <div class="helper-alert">
+                                    <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
+                                </div>
+                                <?php if (!$periodoEditable): ?>
+                                    <div class="alert alert-warning">
+                                        <strong>Modo consulta:</strong> Este periodo no está habilitado para edición. Contacta al administrador si necesitas cargar o modificar notas.
+                                    </div>
+                                <?php endif; ?>
+                                <div class="table-container">
+                                    <table class="table table-bordered">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="col-num">#</th>
+                                                <th class="col-nombre">Estudiante</th>
+                                                <?php if ($es_inicial): ?>
+                                                    <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
+                                                        <?php echo $modalidadCarga === 'trimestres' ? 'Comentario trimestral' : 'Comentario parcial'; ?>
+                                                    </th>
+                                                <?php else: ?>
+                                                    <th class="th-ser" colspan="5">SER (10)</th>
+                                                    <th class="th-saber" colspan="9">SABER (45)</th>
+                                                    <th class="th-hacer" colspan="9">HACER (40)</th>
+                                                    <th class="th-total">TOTAL</th>
+                                                <?php endif; ?>
+                                            </tr>
+                                            <?php if (!$es_inicial): ?>
+                                                <tr>
+                                                    <th class="col-num"></th><th class="col-nombre"></th>
+                                                    <th class="th-sub-ser">1</th>
+                                                    <th class="th-sub-ser">2</th>
+                                                    <th class="th-sub-ser">3</th>
+                                                    <th class="th-sub-ser">4</th>
+                                                    <th class="th-sub-ser" style="font-weight:700">Σ</th>
+                                                    <th class="th-sub-saber">1</th>
+                                                    <th class="th-sub-saber">2</th>
+                                                    <th class="th-sub-saber">3</th>
+                                                    <th class="th-sub-saber">4</th>
+                                                    <th class="th-sub-saber">5</th>
+                                                    <th class="th-sub-saber">6</th>
+                                                    <th class="th-sub-saber">7</th>
+                                                    <th class="th-sub-saber">8</th>
+                                                    <th class="th-sub-saber" style="font-weight:700">Σ</th>
+                                                    <th class="th-sub-hacer">1</th>
+                                                    <th class="th-sub-hacer">2</th>
+                                                    <th class="th-sub-hacer">3</th>
+                                                    <th class="th-sub-hacer">4</th>
+                                                    <th class="th-sub-hacer">5</th>
+                                                    <th class="th-sub-hacer">6</th>
+                                                    <th class="th-sub-hacer">7</th>
+                                                    <th class="th-sub-hacer">8</th>
+                                                    <th class="th-sub-hacer" style="font-weight:700">Σ</th>
+                                                    <th class="th-sub-total">95</th>
+                                                </tr>
+                                            <?php endif; ?>
+                                        </thead>
+                                        <tbody>
+                                            <?php $contador = 1; ?>
+                                            <?php foreach ($estudiantes as $est): ?>
+                                                <tr>
+                                                    <td class="col-num"><?php echo $contador++; ?></td>
+                                                    <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
+                                                    <?php
+                                                    $idEstudianteFila = (int)$est['id_estudiante'];
+                                                    $notaActual = $notas[$idEstudianteFila] ?? '';
+                                                    ?>
+                                                    <?php if ($es_inicial): ?>
+                                                        <td>
+                                                            <textarea
+                                                                name="notas[<?php echo $idEstudianteFila; ?>]"
+                                                                class="coment-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
+                                                                placeholder="<?php echo $periodoEditable ? ($modalidadCarga === 'trimestres' ? 'Comentario trimestral' : 'Comentario parcial ' . $parcialSeleccionado) : 'No habilitado'; ?>"
+                                                                <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                            ><?php echo htmlspecialchars($notaActual); ?></textarea>
+                                                        </td>
+                                                    <?php else: ?>
+                                                        <?php
+                                                        $detalleFila = $detalleNotas[$idEstudianteFila] ?? [];
+                                                        $totalesFila = $totalesAreasPorEstudiante[$idEstudianteFila] ?? ['ser_total' => 0, 'saber_total' => 0, 'hacer_total' => 0, 'calificacion' => 0];
+                                                        ?>
+                                                        <?php for ($i = 1; $i <= 4; $i++): ?>
+                                                            <?php $valor = $detalleFila['SER'][$i] ?? ''; ?>
+                                                            <td>
+                                                                <input type="number"
+                                                                       name="notas[<?php echo $idEstudianteFila; ?>][SER][<?php echo $i; ?>]"
+                                                                       class="form-control nota-input area-ser <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
+                                                                       step="0.01" min="0" max="10"
+                                                                       <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                                >
+                                                            </td>
+                                                        <?php endfor; ?>
+                                                        <td class="nota-ref ser-total" data-valor="<?php echo htmlspecialchars($totalesFila['ser_total']); ?>">
+                                                            <?php echo number_format((float)$totalesFila['ser_total'], 2); ?>
+                                                        </td>
+                                                        <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                            <?php $valor = $detalleFila['SABER'][$i] ?? ''; ?>
+                                                            <td>
+                                                                <input type="number"
+                                                                       name="notas[<?php echo $idEstudianteFila; ?>][SABER][<?php echo $i; ?>]"
+                                                                       class="form-control nota-input area-saber <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
+                                                                       step="0.01" min="0" max="10"
+                                                                       <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                                >
+                                                            </td>
+                                                        <?php endfor; ?>
+                                                        <td class="nota-ref saber-total" data-valor="<?php echo htmlspecialchars($totalesFila['saber_total']); ?>">
+                                                            <?php echo number_format((float)$totalesFila['saber_total'], 2); ?>
+                                                        </td>
+                                                        <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                            <?php $valor = $detalleFila['HACER'][$i] ?? ''; ?>
+                                                            <td>
+                                                                <input type="number"
+                                                                       name="notas[<?php echo $idEstudianteFila; ?>][HACER][<?php echo $i; ?>]"
+                                                                       class="form-control nota-input area-hacer <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
+                                                                       step="0.01" min="0" max="10"
+                                                                       <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                                                >
+                                                            </td>
+                                                        <?php endfor; ?>
+                                                        <td class="nota-ref hacer-total" data-valor="<?php echo htmlspecialchars($totalesFila['hacer_total']); ?>">
+                                                            <?php echo number_format((float)$totalesFila['hacer_total'], 2); ?>
+                                                        </td>
+                                                        <td class="nota-ref total-95" data-valor="<?php echo htmlspecialchars($totalesFila['calificacion']); ?>">
+                                                            <?php echo number_format((float)$totalesFila['calificacion'], 2); ?>
+                                                        </td>
+                                                    <?php endif; ?>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="action-buttons">
+                                    <a href="dashboard.php" class="btn btn-outline-secondary">← Volver al panel</a>
+                                    <button type="submit" name="guardar_notas" class="btn btn-primary px-4" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
+                                        <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
                                     </button>
                                 </div>
                             </form>
                         <?php endif; ?>
-
-                        <div class="periodo-info">
-                            <span class="badge periodo-badge <?php echo $periodoEditable ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
-                                <?php echo $periodoEditable ? '✓ Habilitado para carga' : '✗ No habilitado'; ?>
-                            </span>
-                            <span class="badge bg-light text-dark border periodo-badge">
-                                Gestión <?php echo htmlspecialchars($gestionActual); ?>
-                            </span>
-                            <span class="badge bg-light text-dark border periodo-badge">
-                                <?php echo $modalidadCarga === 'trimestres' ? 'Trimestre ' . $trimestreSeleccionado : 'T' . $trimestreSeleccionado . ' - P' . $parcialSeleccionado; ?>
-                            </span>
-                            <?php if ($periodoSeleccionado['fecha_inicio'] || $periodoSeleccionado['fecha_fin']): ?>
-                                <span class="badge bg-light text-dark border periodo-badge">
-                                    <?php echo $periodoSeleccionado['fecha_inicio'] ? date('d/m/Y', strtotime($periodoSeleccionado['fecha_inicio'])) : 'Sin inicio'; ?>
-                                    -
-                                    <?php echo $periodoSeleccionado['fecha_fin'] ? date('d/m/Y', strtotime($periodoSeleccionado['fecha_fin'])) : 'Sin fin'; ?>
-                                </span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <?php if ($periodoConfirmado): ?>
-                        <?php if (!$es_inicial): ?>
-                            <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalExcel" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
-                                Cargar desde Excel
-                            </button>
-                            <div class="modal fade" id="modalExcel" tabindex="-1" aria-labelledby="modalExcelLabel" aria-hidden="true">
-                                <div class="modal-dialog modal-lg">
-                                    <div class="modal-content">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title" id="modalExcelLabel">Cargar Notas desde Excel</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                        </div>
-                                        <form method="post">
-                                            <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
-                                            <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                                            <div class="modal-body">
-                                                <div class="alert alert-info">
-                                                    Cargará notas para <strong><?php echo $modalidadCarga === 'trimestres' ? 'Trimestre ' . $trimestreSeleccionado : 'Trimestre ' . $trimestreSeleccionado . ' - Parcial ' . $parcialSeleccionado; ?></strong>.
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label>Pegue aquí la columna de notas:</label>
-                                                    <textarea name="datos_excel" class="form-control" placeholder="Pegue aquí SOLO la columna de notas desde Excel"></textarea>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                                                <button type="submit" name="guardar_excel" class="btn btn-primary" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>Cargar Notas</button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                        <form method="post">
-                            <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
-                            <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
-                            <div class="helper-alert">
-                                <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
-                            </div>
-                            <?php if (!$periodoEditable): ?>
-                                <div class="alert alert-warning">
-                                    <strong>Modo consulta:</strong> Este periodo no está habilitado para edición. Contacta al administrador si necesitas cargar o modificar notas.
-                                </div>
-                            <?php endif; ?>
-                            <div class="table-container">
-                                <table class="table table-bordered">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Estudiante</th>
-                                            <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
-                                                <?php echo $modalidadCarga === 'trimestres' ? 'Nota trimestral' : 'Parcial actual'; ?>
-                                            </th>
-                                            <th class="text-center">P1</th>
-                                            <th class="text-center">P2</th>
-                                            <th class="text-center">P3</th>
-                                            <th>Promedio trimestre</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php $contador = 1; ?>
-                                        <?php foreach ($estudiantes as $est): ?>
-                                        <tr>
-                                            <td><?php echo $contador++; ?></td>
-                                            <td><?php echo htmlspecialchars($est['nombre']); ?></td>
-                                            <?php
-                                            $notaActual = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialSeleccionado] ?? '';
-                                            $notasTrimestre = $notas[$est['id_estudiante']][$trimestreSeleccionado] ?? [];
-                                            ?>
-                                            <td>
-                                                <?php if ($es_inicial): ?>
-                                                    <textarea
-                                                        name="notas[<?php echo $est['id_estudiante']; ?>]"
-                                                        class="coment-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
-                                                        placeholder="<?php echo $periodoEditable ? ($modalidadCarga === 'trimestres' ? 'Comentario trimestral' : 'Comentario parcial ' . $parcialSeleccionado) : 'No habilitado'; ?>"
-                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
-                                                    ><?php echo htmlspecialchars($notaActual); ?></textarea>
-                                                <?php else: ?>
-                                                    <?php
-                                                    $notaStyle = '';
-                                                    if ($notaActual !== '' && is_numeric($notaActual) && $notaActual < 51) {
-                                                        $notaStyle = 'color: #dc3545;';
-                                                    }
-                                                    ?>
-                                                    <input
-                                                        type="number"
-                                                        name="notas[<?php echo $est['id_estudiante']; ?>]"
-                                                        class="form-control nota-input <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
-                                                        value="<?php echo htmlspecialchars($notaActual); ?>"
-                                                        step="0.01"
-                                                        min="0"
-                                                        max="100"
-                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
-                                                        oninput="highlightLowGrades(this)"
-                                                        style="<?php echo $notaStyle; ?>"
-                                                    >
-                                                <?php endif; ?>
-                                            </td>
-                                            <?php for ($parcialRef = 1; $parcialRef <= 3; $parcialRef++): ?>
-                                                <?php $valorReferencia = $notas[$est['id_estudiante']][$trimestreSeleccionado][$parcialRef] ?? ''; ?>
-                                                <td class="nota-ref <?php echo ($parcialRef === $parcialSeleccionado) ? 'table-primary' : ''; ?>">
-                                                    <?php echo $valorReferencia !== '' ? htmlspecialchars($valorReferencia) : '--'; ?>
-                                                </td>
-                                            <?php endfor; ?>
-                                            <td class="align-middle">
-                                                <span class="promedio"><?php echo calcularPromedioTrimestre($notasTrimestre, $es_inicial); ?></span>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="action-buttons">
-                                <a href="dashboard.php" class="btn btn-outline-secondary">← Volver al panel</a>
-                                <button type="submit" name="guardar_notas" class="btn btn-primary px-4" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
-                                    <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
-                                </button>
-                            </div>
-                        </form>
                     <?php else: ?>
                         <div class="preview-card">
                             <div class="preview-icon">
@@ -1034,39 +1195,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
-        function highlightLowGrades(input) {
-            input.style.color = input.value && parseFloat(input.value) < 51 ? '#dc3545' : '';
+        function parseNumber(value) {
+            if (value === null || value === undefined) return null;
+            const v = String(value).trim().replace(',', '.');
+            if (v === '') return null;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
         }
+
+        function avg(values) {
+            const nums = values.filter(v => v !== null && Number.isFinite(v));
+            if (!nums.length) return null;
+            return nums.reduce((a, b) => a + b, 0) / nums.length;
+        }
+
+        function updateRowTotals(row) {
+            const serInputs = Array.from(row.querySelectorAll('input.area-ser'));
+            const saberInputs = Array.from(row.querySelectorAll('input.area-saber'));
+            const hacerInputs = Array.from(row.querySelectorAll('input.area-hacer'));
+
+            if (!serInputs.length && !saberInputs.length && !hacerInputs.length) return;
+
+            const serAvg = avg(serInputs.map(i => parseNumber(i.value)));
+            const saberAvg = avg(saberInputs.map(i => parseNumber(i.value)));
+            const hacerAvg = avg(hacerInputs.map(i => parseNumber(i.value)));
+
+            const serTotal = serAvg === null ? 0 : +(serAvg * 1.0).toFixed(2);
+            const saberTotal = saberAvg === null ? 0 : +(saberAvg * 4.5).toFixed(2);
+            const hacerTotal = hacerAvg === null ? 0 : +(hacerAvg * 4.0).toFixed(2);
+            const total95 = +(serTotal + saberTotal + hacerTotal).toFixed(2);
+
+            const serCell = row.querySelector('.ser-total');
+            const saberCell = row.querySelector('.saber-total');
+            const hacerCell = row.querySelector('.hacer-total');
+            const totalCell = row.querySelector('.total-95');
+
+            if (serCell) serCell.textContent = serTotal.toFixed(2);
+            if (saberCell) saberCell.textContent = saberTotal.toFixed(2);
+            if (hacerCell) hacerCell.textContent = hacerTotal.toFixed(2);
+            if (totalCell) totalCell.textContent = total95.toFixed(2);
+        }
+
+        function updateTrimestralRow(row) {
+            const autoInput = row.querySelector('input.area-auto');
+            const extraInput = row.querySelector('input.area-extra');
+            const totalCell = row.querySelector('.total-final');
+            if (!totalCell) return;
+            const prom95 = parseFloat(totalCell.dataset.prom95) || 0;
+            const autoVal = autoInput ? (parseNumber(autoInput.value) ?? 0) : 0;
+            const extraVal = extraInput ? (parseNumber(extraInput.value) ?? 0) : 0;
+            totalCell.textContent = (prom95 + autoVal + extraVal).toFixed(2);
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.nota-input').forEach(input => {
-                if (input.value && parseFloat(input.value) < 51) {
-                    input.style.color = '#dc3545';
-                }
+            document.querySelectorAll('tbody tr').forEach(tr => {
+                updateRowTotals(tr);
+                updateTrimestralRow(tr);
             });
-            const trimestreSelect = document.querySelector('select[name="trimestre"]');
-            const parcialSelect = document.querySelector('select[name="parcial"]');
-            const modalidadCarga = <?php echo json_encode($modalidadCarga); ?>;
-            const parcialesPorTrimestre = <?php echo json_encode(array_map(function ($parciales) {
-                return array_map(function ($periodo) {
-                    return [
-                        'parcial' => (int)$periodo['parcial'],
-                        'label' => 'Parcial ' . (int)$periodo['parcial']
-                    ];
-                }, array_values($parciales));
-            }, $periodosPorTrimestre)); ?>;
-            if (modalidadCarga === 'parciales' && trimestreSelect && parcialSelect) {
-                trimestreSelect.addEventListener('change', function() {
-                    const trimestre = this.value;
-                    const opciones = parcialesPorTrimestre[trimestre] || [];
-                    parcialSelect.innerHTML = '';
-                    opciones.forEach(opcion => {
-                        const option = document.createElement('option');
-                        option.value = opcion.parcial;
-                        option.textContent = opcion.label;
-                        parcialSelect.appendChild(option);
-                    });
+            document.querySelectorAll('input.area-ser, input.area-saber, input.area-hacer').forEach(input => {
+                input.addEventListener('input', function() {
+                    updateRowTotals(this.closest('tr'));
                 });
-            }
+            });
+            document.querySelectorAll('input.area-auto, input.area-extra').forEach(input => {
+                input.addEventListener('input', function() {
+                    updateTrimestralRow(this.closest('tr'));
+                });
+            });
         });
     </script>
 </body>

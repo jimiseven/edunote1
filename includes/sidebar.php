@@ -20,6 +20,43 @@ function active($str, $current)
             flex-direction: column;
         }
 
+        .sidebar-toggle {
+            margin-left: auto;
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 1px solid #2a3547;
+            background: #1e2638;
+            color: #cfd6ee;
+            font-weight: 600;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .sidebar-toggle:hover {
+            background: #242f49;
+            color: #ffffff;
+        }
+
+        body.sidebar-collapsed #sidebarMenu {
+            flex: 0 0 60px !important;
+            max-width: 60px !important;
+            width: 60px !important;
+            overflow: hidden;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .sidebar-brand span,
+        body.sidebar-collapsed #sidebarMenu .sidebar-section-title,
+        body.sidebar-collapsed #sidebarMenu .nav-link,
+        body.sidebar-collapsed #sidebarMenu .sidebar-search-box,
+        body.sidebar-collapsed #sidebarMenu .sidebar-user,
+        body.sidebar-collapsed #sidebarMenu .sidebar-logout {
+            display: none !important;
+        }
+
         /* Tamaños de fuente reducidos */
         .sidebar-brand {
             font-size: 0.95rem;
@@ -192,6 +229,7 @@ function active($str, $current)
         <div class="sidebar-brand">
             <span class="logo-icon">E</span>
             <span>EDUNOTE</span>
+            <button type="button" class="sidebar-toggle" id="sidebarToggleGlobal" aria-label="Contraer/expandir menú">☰</button>
         </div>
 
         <!-- Contenido principal del sidebar -->
@@ -340,6 +378,24 @@ function active($str, $current)
         </div>
     </div>
     <script>
+        (function() {
+            try {
+                const collapsed = localStorage.getItem('edunote_sidebar_collapsed') === '1';
+                if (collapsed) {
+                    document.body.classList.add('sidebar-collapsed');
+                }
+            } catch (e) {}
+
+            const btn = document.getElementById('sidebarToggleGlobal');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    document.body.classList.toggle('sidebar-collapsed');
+                    try {
+                        localStorage.setItem('edunote_sidebar_collapsed', document.body.classList.contains('sidebar-collapsed') ? '1' : '0');
+                    } catch (e) {}
+                });
+            }
+        })();
         if (window.feather) feather.replace();
     </script>
 </nav>

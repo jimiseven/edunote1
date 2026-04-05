@@ -1,0 +1,634 @@
+<?php
+session_start();
+require_once '../config/database.php';
+
+function calcularPromedioTrimestre($notasTrimestre, $esInicial = false) {
+    if ($esInicial) {
+        return '--';
+    }
+    if (empty($notasTrimestre)) {
+        return 'N/A';
+    }
+    $valores = [];
+    foreach ($notasTrimestre as $valor) {
+        if ($valor !== null && $valor !== '' && is_numeric($valor)) {
+            $valores[] = (float)$valor;
+        }
+    }
+    if (empty($valores)) {
+        return 'N/A';
+    }
+    return number_format(array_sum($valores) / count($valores), 2);
+}
+
+function construirUrlPeriodo($idCursoMateria, $trimestre, $parcial, $extra = []) {
+    $params = array_merge([
+        'curso_materia' => $idCursoMateria,
+        'trimestre' => $trimestre,
+        'parcial' => $parcial
+    ], $extra);
+    return 'cargar_notas.php?' . http_build_query($params);
+}
+
+function obtenerModalidadCargaValida($valor) {
+    return $valor === 'trimestres' ? 'trimestres' : 'parciales';
+}
+
+function normalizarNotaCasilla($valor) {
+    if ($valor === null) {
+        return null;
+    }
+    $valor = trim((string)$valor);
+    if ($valor === '') {
+        return null;
+    }
+    $valor = str_replace(',', '.', $valor);
+    if (!is_numeric($valor)) {
+        return null;
+    }
+    return (float)$valor;
+}
+
+function calcularPromedioSimple($valores) {
+    $nums = [];
+    foreach ($valores as $v) {
+        if ($v !== null && $v !== '' && is_numeric($v)) {
+            $nums[] = (float)$v;
+        }
+    }
+    if (count($nums) === 0) {
+        return null;
+    }
+    return array_sum($nums) / count($nums);
+}
+
+function calcularTotalesAreas($detalle) {
+    $ser = calcularPromedioSimple($detalle['SER'] ?? []);
+    $saber = calcularPromedioSimple($detalle['SABER'] ?? []);
+    $hacer = calcularPromedioSimple($detalle['HACER'] ?? []);
+
+    $serTotal = $ser === null ? 0.0 : round($ser * 1.0, 2);
+    $saberTotal = $saber === null ? 0.0 : round($saber * 4.5, 2);
+    $hacerTotal = $hacer === null ? 0.0 : round($hacer * 4.0, 2);
+    $total = round($serTotal + $saberTotal + $hacerTotal, 2);
+
+    return [
+        'ser_total' => $serTotal,
+        'saber_total' => $saberTotal,
+        'hacer_total' => $hacerTotal,
+        'calificacion' => $total,
+        'ser_promedio' => $ser,
+        'saber_promedio' => $saber,
+        'hacer_promedio' => $hacer
+    ];
+}
+
+if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
+    header('Location: ../index.php');
+    exit();
+}
+
+$profesor_id = $_SESSION['user_id'];
+$id_curso_materia = isset($_GET['curso_materia']) ? (int)$_GET['curso_materia'] : 0;
+if ($id_curso_materia <= 0) {
+    header('Location: dashboard.php?error=params');
+    exit();
+}
+
+$conn = (new Database())->connect();
+
+$stmt = $conn->query("SELECT anio_escolar, modalidad_carga_notas FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$configuracionSistema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$gestionConfigurada = isset($configuracionSistema['anio_escolar']) ? trim((string)$configuracionSistema['anio_escolar']) : '';
+$gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$modalidadCarga = obtenerModalidadCargaValida($configuracionSistema['modalidad_carga_notas'] ?? 'parciales');
+$gestionAlternativa = null;
+if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
+    $gestionAlternativa = $matches[1];
+}
+
+$stmt = $conn->prepare("SELECT c.id_curso, c.nivel, m.id_materia,
+                        CONCAT(c.nivel, ' ', c.curso, ' \"', c.paralelo, '\"') AS curso_nombre,
+                        m.nombre_materia
+                        FROM cursos_materias cm
+                        JOIN cursos c ON cm.id_curso = c.id_curso
+                        JOIN materias m ON cm.id_materia = m.id_materia
+                        WHERE cm.id_curso_materia = ?");
+$stmt->execute([$id_curso_materia]);
+$curso = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$curso) {
+    header('Location: dashboard.php?error=notfound');
+    exit();
+}
+
+$es_inicial = ($curso['nivel'] == 'Inicial');
+$campo = $es_inicial ? 'comentario' : 'calificacion';
+
+$stmt = $conn->prepare("SELECT id_estudiante,
+                        CASE
+                            WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '')
+                            THEN CONCAT(apellido_materno, ' ', nombres)
+                            ELSE CONCAT(apellido_paterno, ' ', apellido_materno, ' ', nombres)
+                        END AS nombre
+                        FROM estudiantes
+                        WHERE id_curso = ?
+                        ORDER BY
+                        CASE
+                            WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN 0
+                            ELSE 1
+                        END,
+                        CASE
+                            WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN apellido_materno
+                            ELSE apellido_paterno
+                        END,
+                        apellido_materno,
+                        nombres");
+$stmt->execute([$curso['id_curso']]);
+$estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$estudiantesPorId = [];
+foreach ($estudiantes as $estudiante) {
+    $estudiantesPorId[$estudiante['id_estudiante']] = $estudiante;
+}
+
+$sqlPeriodos = "SELECT id_periodo_evaluacion, gestion, trimestre, parcial, nombre, fecha_inicio, fecha_fin, esta_activo
+                FROM periodos_evaluacion
+                WHERE gestion = ?";
+$paramsPeriodos = [$gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $sqlPeriodos .= " OR gestion = ?";
+    $paramsPeriodos[] = $gestionAlternativa;
+}
+$sqlPeriodos .= " ORDER BY trimestre, parcial";
+$stmt = $conn->prepare($sqlPeriodos);
+$stmt->execute($paramsPeriodos);
+$periodos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+if (empty($periodos)) {
+    die('No existen periodos de evaluación configurados para la gestión actual (' . htmlspecialchars($gestionActual) . ').');
+}
+
+if ($gestionAlternativa !== null) {
+    foreach ($periodos as $periodoEncontrado) {
+        $gestionActual = $periodoEncontrado['gestion'];
+        break;
+    }
+}
+
+$periodosPorTrimestre = [];
+$periodosActivos = [];
+foreach ($periodos as $periodo) {
+    $trimestre = (int)$periodo['trimestre'];
+    $parcial = (int)$periodo['parcial'];
+    $periodosPorTrimestre[$trimestre][$parcial] = $periodo;
+
+    $hoy = date('Y-m-d');
+    $dentroRango = (empty($periodo['fecha_inicio']) || $hoy >= $periodo['fecha_inicio']) &&
+                   (empty($periodo['fecha_fin']) || $hoy <= $periodo['fecha_fin']);
+    if ((int)$periodo['esta_activo'] === 1 && $dentroRango) {
+        $periodosActivos[] = $periodo;
+    }
+}
+
+$trimestreSeleccionado = isset($_REQUEST['trimestre']) ? (int)$_REQUEST['trimestre'] : 0;
+$parcialSeleccionado = isset($_REQUEST['parcial']) ? (int)$_REQUEST['parcial'] : 0;
+$periodoConfirmado = isset($_GET['confirmar']) && $_GET['confirmar'] === '1';
+
+if ($modalidadCarga === 'trimestres') {
+    $parcialSeleccionado = 1;
+}
+
+if ($trimestreSeleccionado <= 0 || $parcialSeleccionado <= 0 || !isset($periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado])) {
+    if (!empty($periodosActivos)) {
+        $trimestreSeleccionado = (int)$periodosActivos[0]['trimestre'];
+        $parcialSeleccionado = $modalidadCarga === 'trimestres' ? 1 : (int)$periodosActivos[0]['parcial'];
+    } else {
+        $primerPeriodo = $periodos[0];
+        $trimestreSeleccionado = (int)$primerPeriodo['trimestre'];
+        $parcialSeleccionado = $modalidadCarga === 'trimestres' ? 1 : (int)$primerPeriodo['parcial'];
+    }
+    $periodoConfirmado = false;
+}
+
+if ($modalidadCarga === 'trimestres' && !isset($periodosPorTrimestre[$trimestreSeleccionado][1])) {
+    $primerParcialDisponible = array_key_first($periodosPorTrimestre[$trimestreSeleccionado] ?? []);
+    if ($primerParcialDisponible !== null) {
+        $parcialSeleccionado = (int)$primerParcialDisponible;
+    }
+}
+
+$periodoSeleccionado = $periodosPorTrimestre[$trimestreSeleccionado][$parcialSeleccionado];
+$idPeriodoSeleccionado = (int)$periodoSeleccionado['id_periodo_evaluacion'];
+$hoy = date('Y-m-d');
+$periodoEditable = (int)$periodoSeleccionado['esta_activo'] === 1 &&
+                   (empty($periodoSeleccionado['fecha_inicio']) || $hoy >= $periodoSeleccionado['fecha_inicio']) &&
+                   (empty($periodoSeleccionado['fecha_fin']) || $hoy <= $periodoSeleccionado['fecha_fin']);
+
+$stmt = $conn->prepare("SELECT cp.id_estudiante, pe.trimestre, pe.parcial, cp.$campo AS valor
+                        FROM calificaciones_parciales cp
+                        INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                        WHERE cp.id_materia = ?
+                          AND pe.gestion = ?");
+$stmt->execute([$curso['id_materia'], $gestionActual]);
+$notas = [];
+foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $notas[$row['id_estudiante']][(int)$row['trimestre']][(int)$row['parcial']] = $row['valor'];
+}
+
+$detalleNotas = [];
+$totalesAreasPorEstudiante = [];
+if (!$es_inicial) {
+    $stmt = $conn->prepare("SELECT cp.id_estudiante, cpd.area, cpd.indice, cpd.nota, cp.ser_total, cp.saber_total, cp.hacer_total, cp.calificacion
+                            FROM calificaciones_parciales cp
+                            LEFT JOIN calificaciones_parciales_detalle cpd
+                              ON cpd.id_calificacion_parcial = cp.id_calificacion_parcial
+                            WHERE cp.id_materia = ?
+                              AND cp.id_periodo_evaluacion = ?");
+    $stmt->execute([$curso['id_materia'], $idPeriodoSeleccionado]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $idEst = (int)$row['id_estudiante'];
+        if ($row['area'] !== null) {
+            $detalleNotas[$idEst][$row['area']][(int)$row['indice']] = $row['nota'] !== null ? (float)$row['nota'] : null;
+        }
+        if (!isset($totalesAreasPorEstudiante[$idEst])) {
+            $totalesAreasPorEstudiante[$idEst] = [
+                'ser_total' => (float)($row['ser_total'] ?? 0),
+                'saber_total' => (float)($row['saber_total'] ?? 0),
+                'hacer_total' => (float)($row['hacer_total'] ?? 0),
+                'calificacion' => (float)($row['calificacion'] ?? 0)
+            ];
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $stmt = $conn->prepare("SELECT id_periodo_evaluacion, fecha_inicio, fecha_fin, esta_activo
+                                FROM periodos_evaluacion
+                                WHERE gestion = ?
+                                  AND trimestre = ?
+                                  AND parcial = ?
+                                LIMIT 1");
+        $stmt->execute([$gestionActual, $trimestreSeleccionado, $parcialSeleccionado]);
+        $periodoValidado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$periodoValidado) {
+            throw new Exception("El periodo seleccionado no existe.");
+        }
+
+        $periodoEditable = (int)$periodoValidado['esta_activo'] === 1 &&
+                           (empty($periodoValidado['fecha_inicio']) || $hoy >= $periodoValidado['fecha_inicio']) &&
+                           (empty($periodoValidado['fecha_fin']) || $hoy <= $periodoValidado['fecha_fin']);
+
+        if (!$periodoEditable) {
+            if ($modalidadCarga === 'trimestres') {
+                throw new Exception("El trimestre $trimestreSeleccionado no está habilitado para carga de notas");
+            }
+            throw new Exception("El trimestre $trimestreSeleccionado - parcial $parcialSeleccionado no está habilitado para carga de notas");
+        }
+
+        $idPeriodoSeleccionado = (int)$periodoValidado['id_periodo_evaluacion'];
+        $conn->beginTransaction();
+
+        if (isset($_POST['guardar_notas'])) {
+            $notasPost = $_POST['notas'] ?? [];
+
+            $stmtUpsertCabecera = $conn->prepare("INSERT INTO calificaciones_parciales
+                (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, ser_total, saber_total, hacer_total, autoevaluacion, puntaje_extra, id_profesor)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+                ON DUPLICATE KEY UPDATE
+                    calificacion = VALUES(calificacion),
+                    ser_total = VALUES(ser_total),
+                    saber_total = VALUES(saber_total),
+                    hacer_total = VALUES(hacer_total),
+                    id_profesor = VALUES(id_profesor)");
+
+            $stmtGetCabeceraId = $conn->prepare("SELECT id_calificacion_parcial
+                FROM calificaciones_parciales
+                WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ?
+                LIMIT 1");
+
+            $stmtUpsertDetalle = $conn->prepare("INSERT INTO calificaciones_parciales_detalle
+                (id_calificacion_parcial, area, indice, nota, creado_por)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    nota = VALUES(nota),
+                    creado_por = VALUES(creado_por)");
+
+            $stmtDeleteDetalle = $conn->prepare("DELETE FROM calificaciones_parciales_detalle
+                WHERE id_calificacion_parcial = ? AND area = ? AND indice = ?");
+
+            foreach ($estudiantes as $estudiante) {
+                $idEstudiante = (int)$estudiante['id_estudiante'];
+
+                if ($es_inicial) {
+                    $valor = isset($notasPost[$idEstudiante]) ? trim((string)$notasPost[$idEstudiante]) : '';
+                    if ($valor === '') {
+                        $conn->prepare("DELETE FROM calificaciones_parciales
+                                        WHERE id_estudiante = ?
+                                          AND id_materia = ?
+                                          AND id_periodo_evaluacion = ?")
+                             ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
+                        continue;
+                    }
+                    $conn->prepare("INSERT INTO calificaciones_parciales
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, comentario, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE comentario = VALUES(comentario), id_profesor = VALUES(id_profesor)")
+                         ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado, $valor, $profesor_id]);
+                    continue;
+                }
+
+                $detalleEst = $notasPost[$idEstudiante] ?? [];
+                $detalleNormalizado = [
+                    'SER' => [],
+                    'SABER' => [],
+                    'HACER' => []
+                ];
+
+                foreach (['SER' => 4, 'SABER' => 8, 'HACER' => 8] as $area => $maxCasillas) {
+                    for ($i = 1; $i <= $maxCasillas; $i++) {
+                        $nota = null;
+                        if (isset($detalleEst[$area]) && array_key_exists((string)$i, $detalleEst[$area])) {
+                            $nota = normalizarNotaCasilla($detalleEst[$area][(string)$i]);
+                        }
+                        if ($nota !== null && ($nota < 0 || $nota > 10)) {
+                            throw new Exception("Nota inválida para: " . $estudiante['nombre'] . " ($area-$i)");
+                        }
+                        $detalleNormalizado[$area][$i] = $nota;
+                    }
+                }
+
+                $totales = calcularTotalesAreas($detalleNormalizado);
+                $stmtUpsertCabecera->execute([
+                    $idEstudiante,
+                    $curso['id_materia'],
+                    $idPeriodoSeleccionado,
+                    $totales['calificacion'],
+                    $totales['ser_total'],
+                    $totales['saber_total'],
+                    $totales['hacer_total'],
+                    $profesor_id
+                ]);
+
+                $stmtGetCabeceraId->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
+                $cabecera = $stmtGetCabeceraId->fetch(PDO::FETCH_ASSOC);
+                if (!$cabecera) {
+                    throw new Exception("No se pudo obtener el registro de calificación para: " . $estudiante['nombre']);
+                }
+                $idCalificacionParcial = (int)$cabecera['id_calificacion_parcial'];
+
+                foreach (['SER' => 4, 'SABER' => 8, 'HACER' => 8] as $area => $maxCasillas) {
+                    for ($i = 1; $i <= $maxCasillas; $i++) {
+                        $nota = $detalleNormalizado[$area][$i];
+                        if ($nota === null) {
+                            $stmtDeleteDetalle->execute([$idCalificacionParcial, $area, $i]);
+                        } else {
+                            $stmtUpsertDetalle->execute([$idCalificacionParcial, $area, $i, $nota, $profesor_id]);
+                        }
+                    }
+                }
+            }
+        }
+
+        $conn->commit();
+        header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, ['success' => 1]));
+        exit();
+    } catch (Exception $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        $error = $e->getMessage();
+        if (strpos($error, 'no está habilitado') !== false) {
+            $error .= ". Contacte al administrador del sistema.";
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EduNote - Cargar Notas</title>
+    <link rel="stylesheet" href="../css/bootstrap.min.css">
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            background: #f4f8fa;
+            overflow: hidden;
+        }
+        .page-shell {
+            height: 100vh;
+            overflow: hidden;
+        }
+        .page-shell > .row {
+            height: 100%;
+        }
+        .content-panel {
+            height: 100vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-top: 0.5rem;
+            padding-bottom: 1.5rem;
+            scroll-behavior: smooth;
+        }
+        .container-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 30px;
+            margin: 20px 0;
+        }
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 1.5rem;
+        }
+        .page-header h3 {
+            color: #11305e;
+            font-weight: 700;
+            margin: 0;
+        }
+        .page-header h4 {
+            color: #4682B4;
+            font-weight: 600;
+            margin: 0;
+        }
+        .intro-block {
+            background: linear-gradient(135deg, #ffffff, #f8fbff);
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .intro-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.4rem;
+        }
+        .intro-text {
+            font-size: 0.9rem;
+            color: #475569;
+            margin: 0;
+        }
+        .periodo-toolbar {
+            background: #ffffff;
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        .periodo-toolbar-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 1rem;
+        }
+        .periodo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .trimestre-group {
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            background: #f8fbff;
+            padding: 1rem;
+        }
+        .trimestre-group-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.85rem;
+        }
+        .trimestre-group-buttons {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+        }
+        .periodo-card-button {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.3rem;
+            width: 100%;
+            padding: 0.95rem 1rem;
+            border-radius: 10px;
+            border: 1px solid #dbeafe;
+            background: #ffffff;
+            color: #11305e;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+        .periodo-card-button:hover {
+            border-color: #93c5fd;
+            background: #f8fbff;
+        }
+        .periodo-card-button.active {
+            border-color: #2563eb;
+            background: #eff6ff;
+            box-shadow: inset 0 0 0 1px #93c5fd;
+        }
+        .periodo-card-button.periodo-disabled {
+            border-color: #fecaca;
+            background: #fff7f7;
+        }
+        .periodo-card-button.periodo-enabled {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+        }
+        .periodo-card-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+        .periodo-card-meta {
+            font-size: 0.82rem;
+            color: #64748b;
+        }
+        .periodo-card-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .periodo-card-status.enabled {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .periodo-card-status.disabled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .periodo-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        .periodo-badge {
+            font-size: 0.85rem;
+            padding: 0.4rem 0.75rem;
+            font-weight: 600;
+        }
+        .status-badge-enabled {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .status-badge-disabled {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .form-select, .btn {
+            border-radius: 8px;
+        }
+        .form-label {
+            }
+        }
+            });
+
+            const trimestreSelect = document.querySelector('select[name="trimestre"]');
+            const parcialSelect = document.querySelector('select[name="parcial"]');
+            const modalidadCarga = <?php echo json_encode($modalidadCarga); ?>;
+            const parcialesPorTrimestre = <?php echo json_encode(array_map(function ($parciales) {
+                return array_map(function ($periodo) {
+                    return [
+                        'parcial' => (int)$periodo['parcial'],
+                        'label' => 'Parcial ' . (int)$periodo['parcial']
+                    ];
+                }, array_values($parciales));
+            }, $periodosPorTrimestre)); ?>;
+
+            if (modalidadCarga === 'parciales' && trimestreSelect && parcialSelect) {
+                trimestreSelect.addEventListener('change', function() {
+                    const trimestre = this.value;
+                    const opciones = parcialesPorTrimestre[trimestre] || [];
+                    parcialSelect.innerHTML = '';
+                    opciones.forEach(opcion => {
+                        const option = document.createElement('option');
+                        option.value = opcion.parcial;
+                        option.textContent = opcion.label;
+                        parcialSelect.appendChild(option);
+                    });
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>
