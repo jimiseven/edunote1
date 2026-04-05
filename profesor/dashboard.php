@@ -14,9 +14,21 @@ $conn = $database->connect();
 // Obtener datos del profesor y sus materias/cursos asignados
 $profesor_id = $_SESSION['user_id'];
 
-// Obtener cantidad de bimestres configurados
-$stmt = $conn->query("SELECT cantidad_bimestres FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
-$cantidad_bimestres = $stmt->fetchColumn() ?: 3;
+// Obtener configuración del sistema
+$stmt = $conn->query("SELECT cantidad_bimestres, anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$confRow = $stmt->fetch(PDO::FETCH_ASSOC);
+$cantidad_bimestres = $confRow ? (int)$confRow['cantidad_bimestres'] : 3;
+$gestionActual = ($confRow && trim($confRow['anio_escolar']) !== '') ? trim($confRow['anio_escolar']) : date('Y');
+
+// Determinar qué trimestres tienen al menos un parcial habilitado
+$hoy = date('Y-m-d');
+$stmtPeriodos = $conn->prepare("SELECT DISTINCT trimestre FROM periodos_evaluacion
+    WHERE gestion = ? AND esta_activo = 1
+    AND (fecha_inicio IS NULL OR fecha_inicio <= ?)
+    AND (fecha_fin IS NULL OR fecha_fin >= ?)");
+$stmtPeriodos->execute([$gestionActual, $hoy, $hoy]);
+$trimestresHabilitados = array_column($stmtPeriodos->fetchAll(PDO::FETCH_ASSOC), 'trimestre');
+$trimestresHabilitados = array_map('intval', $trimestresHabilitados);
 
 $query = "
     SELECT
@@ -344,11 +356,9 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                     </td>
                                                     <td class="text-center">
                                                         <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                                            <?php
-                                                            $bimestres_cargados = $curso['bimestres_cargados'] ? explode(',', $curso['bimestres_cargados']) : [];
-                                                            for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
-                                                                <span class="badge <?= in_array($i, $bimestres_cargados) ? 'bg-success' : 'bg-secondary' ?> status-badge">
-                                                                    B<?= $i ?>
+                                                            <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
+                                                                <span class="badge <?= in_array($i, $trimestresHabilitados) ? 'bg-success' : 'bg-secondary' ?> status-badge">
+                                                                    T<?= $i ?>
                                                                 </span>
                                                             <?php endfor; ?>
                                                         </div>
