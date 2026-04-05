@@ -538,6 +538,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             width: 38px;
             height: 24px;
             padding: 1px 2px;
+            margin: 0 auto;
             text-align: center;
             font-weight: 600;
             border-radius: 4px;
