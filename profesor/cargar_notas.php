@@ -34,93 +34,12 @@ function obtenerModalidadCargaValida($valor) {
     return $valor === 'trimestres' ? 'trimestres' : 'parciales';
 }
 
-/**
- * Tabla de detalle por casilla (SER/SABER/HACER). Si no existe, intenta crearla.
- */
-function asegurarTablaDetalleCalificaciones(PDO $conn) {
-    static $estado = null;
-    if ($estado !== null) {
-        return $estado;
-    }
+function tablaDetalleCalificacionesDisponible(PDO $conn) {
     try {
         $conn->query('SELECT 1 FROM calificaciones_parciales_detalle LIMIT 0');
-        $estado = true;
         return true;
     } catch (PDOException $e) {
-        // tabla ausente
-    }
-    $sqlConFk = "CREATE TABLE IF NOT EXISTS calificaciones_parciales_detalle (
-        id_detalle int(11) NOT NULL AUTO_INCREMENT,
-        id_calificacion_parcial int(11) NOT NULL,
-        area varchar(10) NOT NULL,
-        indice tinyint(4) NOT NULL,
-        nota decimal(8,2) DEFAULT NULL,
-        creado_por int(11) DEFAULT NULL,
-        PRIMARY KEY (id_detalle),
-        UNIQUE KEY uk_calif_area_idx (id_calificacion_parcial, area, indice),
-        KEY idx_calificacion (id_calificacion_parcial),
-        CONSTRAINT fk_cpd_calificacion FOREIGN KEY (id_calificacion_parcial)
-            REFERENCES calificaciones_parciales (id_calificacion_parcial) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
-    try {
-        $conn->exec($sqlConFk);
-        $estado = true;
-        return true;
-    } catch (PDOException $e) {
-        $sqlSinFk = "CREATE TABLE IF NOT EXISTS calificaciones_parciales_detalle (
-            id_detalle int(11) NOT NULL AUTO_INCREMENT,
-            id_calificacion_parcial int(11) NOT NULL,
-            area varchar(10) NOT NULL,
-            indice tinyint(4) NOT NULL,
-            nota decimal(8,2) DEFAULT NULL,
-            creado_por int(11) DEFAULT NULL,
-            PRIMARY KEY (id_detalle),
-            UNIQUE KEY uk_calif_area_idx (id_calificacion_parcial, area, indice),
-            KEY idx_calificacion (id_calificacion_parcial)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
-        try {
-            $conn->exec($sqlSinFk);
-            $estado = true;
-            return true;
-        } catch (PDOException $e2) {
-            $estado = false;
-            return false;
-        }
-    }
-}
-
-/**
- * Sustituye chk_cpd_nota si solo permitía 0–10: SABER y HACER usan rangos mayores en la app.
- */
-function repararCheckNotaDetalleCalificaciones(PDO $conn) {
-    static $hecho = false;
-    if ($hecho) {
-        return;
-    }
-    $hecho = true;
-    $drops = [
-        'ALTER TABLE calificaciones_parciales_detalle DROP CHECK chk_cpd_nota',
-        'ALTER TABLE calificaciones_parciales_detalle DROP CONSTRAINT chk_cpd_nota',
-    ];
-    foreach ($drops as $sql) {
-        try {
-            $conn->exec($sql);
-            break;
-        } catch (PDOException $e) {
-            continue;
-        }
-    }
-    $add = "ALTER TABLE calificaciones_parciales_detalle
-        ADD CONSTRAINT chk_cpd_nota CHECK (
-            (nota IS NULL) OR
-            (area = 'SER' AND nota >= 0 AND nota <= 10) OR
-            (area = 'SABER' AND nota >= 0 AND nota <= 45) OR
-            (area = 'HACER' AND nota >= 0 AND nota <= 40)
-        )";
-    try {
-        $conn->exec($add);
-    } catch (PDOException $e) {
-        // Ya existe una restricción válida, CHECK no soportado, o datos heredados incompatibles
+        return false;
     }
 }
 
@@ -137,10 +56,7 @@ if ($id_curso_materia <= 0) {
 }
 
 $conn = (new Database())->connect();
-$tieneDetalleCalificaciones = asegurarTablaDetalleCalificaciones($conn);
-if ($tieneDetalleCalificaciones) {
-    repararCheckNotaDetalleCalificaciones($conn);
-}
+$tieneDetalleCalificaciones = tablaDetalleCalificacionesDisponible($conn);
 
 $stmt = $conn->query("SELECT anio_escolar, modalidad_carga_notas FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
 $configuracionSistema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
