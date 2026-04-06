@@ -34,6 +34,96 @@ function obtenerModalidadCargaValida($valor) {
     return $valor === 'trimestres' ? 'trimestres' : 'parciales';
 }
 
+/**
+ * Tabla de detalle por casilla (SER/SABER/HACER). Si no existe, intenta crearla.
+ */
+function asegurarTablaDetalleCalificaciones(PDO $conn) {
+    static $estado = null;
+    if ($estado !== null) {
+        return $estado;
+    }
+    try {
+        $conn->query('SELECT 1 FROM calificaciones_parciales_detalle LIMIT 0');
+        $estado = true;
+        return true;
+    } catch (PDOException $e) {
+        // tabla ausente
+    }
+    $sqlConFk = "CREATE TABLE IF NOT EXISTS calificaciones_parciales_detalle (
+        id_detalle int(11) NOT NULL AUTO_INCREMENT,
+        id_calificacion_parcial int(11) NOT NULL,
+        area varchar(10) NOT NULL,
+        indice tinyint(4) NOT NULL,
+        nota decimal(8,2) DEFAULT NULL,
+        creado_por int(11) DEFAULT NULL,
+        PRIMARY KEY (id_detalle),
+        UNIQUE KEY uk_calif_area_idx (id_calificacion_parcial, area, indice),
+        KEY idx_calificacion (id_calificacion_parcial),
+        CONSTRAINT fk_cpd_calificacion FOREIGN KEY (id_calificacion_parcial)
+            REFERENCES calificaciones_parciales (id_calificacion_parcial) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+    try {
+        $conn->exec($sqlConFk);
+        $estado = true;
+        return true;
+    } catch (PDOException $e) {
+        $sqlSinFk = "CREATE TABLE IF NOT EXISTS calificaciones_parciales_detalle (
+            id_detalle int(11) NOT NULL AUTO_INCREMENT,
+            id_calificacion_parcial int(11) NOT NULL,
+            area varchar(10) NOT NULL,
+            indice tinyint(4) NOT NULL,
+            nota decimal(8,2) DEFAULT NULL,
+            creado_por int(11) DEFAULT NULL,
+            PRIMARY KEY (id_detalle),
+            UNIQUE KEY uk_calif_area_idx (id_calificacion_parcial, area, indice),
+            KEY idx_calificacion (id_calificacion_parcial)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci";
+        try {
+            $conn->exec($sqlSinFk);
+            $estado = true;
+            return true;
+        } catch (PDOException $e2) {
+            $estado = false;
+            return false;
+        }
+    }
+}
+
+/**
+ * Sustituye chk_cpd_nota si solo permitía 0–10: SABER y HACER usan rangos mayores en la app.
+ */
+function repararCheckNotaDetalleCalificaciones(PDO $conn) {
+    static $hecho = false;
+    if ($hecho) {
+        return;
+    }
+    $hecho = true;
+    $drops = [
+        'ALTER TABLE calificaciones_parciales_detalle DROP CHECK chk_cpd_nota',
+        'ALTER TABLE calificaciones_parciales_detalle DROP CONSTRAINT chk_cpd_nota',
+    ];
+    foreach ($drops as $sql) {
+        try {
+            $conn->exec($sql);
+            break;
+        } catch (PDOException $e) {
+            continue;
+        }
+    }
+    $add = "ALTER TABLE calificaciones_parciales_detalle
+        ADD CONSTRAINT chk_cpd_nota CHECK (
+            (nota IS NULL) OR
+            (area = 'SER' AND nota >= 0 AND nota <= 10) OR
+            (area = 'SABER' AND nota >= 0 AND nota <= 45) OR
+            (area = 'HACER' AND nota >= 0 AND nota <= 40)
+        )";
+    try {
+        $conn->exec($add);
+    } catch (PDOException $e) {
+        // Ya existe una restricción válida, CHECK no soportado, o datos heredados incompatibles
+    }
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     header('Location: ../index.php');
     exit();
@@ -47,6 +137,10 @@ if ($id_curso_materia <= 0) {
 }
 
 $conn = (new Database())->connect();
+$tieneDetalleCalificaciones = asegurarTablaDetalleCalificaciones($conn);
+if ($tieneDetalleCalificaciones) {
+    repararCheckNotaDetalleCalificaciones($conn);
+}
 
 $stmt = $conn->query("SELECT anio_escolar, modalidad_carga_notas FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
 $configuracionSistema = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -188,6 +282,55 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $notas[$row['id_estudiante']][(int)$row['trimestre']][(int)$row['parcial']] = $row['valor'];
 }
 
+$detalleNotas = [];
+$totalesAreasPorEstudiante = [];
+if (!$es_inicial) {
+    $hasAreaCols = false;
+    try {
+        $conn->query('SELECT ser_total FROM calificaciones_parciales LIMIT 0');
+        $hasAreaCols = true;
+    } catch (PDOException $e) {
+        $hasAreaCols = false;
+    }
+    if ($hasAreaCols && $tieneDetalleCalificaciones) {
+        $stmt = $conn->prepare("SELECT cp.id_estudiante, cp.ser_total, cp.saber_total, cp.hacer_total, cp.calificacion,
+                                       cpd.area, cpd.indice, cpd.nota
+                                FROM calificaciones_parciales cp
+                                LEFT JOIN calificaciones_parciales_detalle cpd
+                                    ON cpd.id_calificacion_parcial = cp.id_calificacion_parcial
+                                WHERE cp.id_materia = ? AND cp.id_periodo_evaluacion = ?");
+        $stmt->execute([$curso['id_materia'], $idPeriodoSeleccionado]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $idEst = (int)$row['id_estudiante'];
+            if (!isset($totalesAreasPorEstudiante[$idEst])) {
+                $totalesAreasPorEstudiante[$idEst] = [
+                    'ser_total' => (float)($row['ser_total'] ?? 0),
+                    'saber_total' => (float)($row['saber_total'] ?? 0),
+                    'hacer_total' => (float)($row['hacer_total'] ?? 0),
+                    'calificacion' => (float)($row['calificacion'] ?? 0)
+                ];
+            }
+            if ($row['area'] !== null && $row['area'] !== '' && $row['indice'] !== null && $row['nota'] !== null) {
+                $detalleNotas[$idEst][$row['area']][(int)$row['indice']] = (float)$row['nota'];
+            }
+        }
+    } elseif ($hasAreaCols) {
+        $stmt = $conn->prepare("SELECT id_estudiante, ser_total, saber_total, hacer_total, calificacion
+                                FROM calificaciones_parciales
+                                WHERE id_materia = ? AND id_periodo_evaluacion = ?");
+        $stmt->execute([$curso['id_materia'], $idPeriodoSeleccionado]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $idEst = (int)$row['id_estudiante'];
+            $totalesAreasPorEstudiante[$idEst] = [
+                'ser_total' => (float)($row['ser_total'] ?? 0),
+                'saber_total' => (float)($row['saber_total'] ?? 0),
+                'hacer_total' => (float)($row['hacer_total'] ?? 0),
+                'calificacion' => (float)($row['calificacion'] ?? 0)
+            ];
+        }
+    }
+}
+
 $notasTrimestrales = [];
 try {
     $stmt = $conn->prepare("SELECT id_estudiante, trimestre, autoevaluacion, nota_extra
@@ -246,11 +389,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (isset($_POST['guardar_notas'])) {
             $notasPost = $_POST['notas'] ?? [];
+            if (is_array($notasPost)) {
+                $notasNorm = [];
+                foreach ($notasPost as $claveEst => $bloque) {
+                    if (is_numeric($claveEst)) {
+                        $notasNorm[(int)$claveEst] = $bloque;
+                    }
+                }
+                $notasPost = $notasNorm;
+            }
+
+            $stmtPrevCalif = $conn->prepare("SELECT ser_total, saber_total, hacer_total
+                                             FROM calificaciones_parciales
+                                             WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ?
+                                             LIMIT 1");
+
+            $stmtGetCalifId = null;
+            $stmtUpsertDetalle = null;
+            $stmtDeleteDetalle = null;
+            $stmtPurgeDetalleCalif = null;
+            if ($tieneDetalleCalificaciones) {
+                $stmtGetCalifId = $conn->prepare('SELECT id_calificacion_parcial FROM calificaciones_parciales
+                    WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ? LIMIT 1');
+                $stmtUpsertDetalle = $conn->prepare('INSERT INTO calificaciones_parciales_detalle
+                    (id_calificacion_parcial, area, indice, nota, creado_por) VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE nota = VALUES(nota), creado_por = VALUES(creado_por)');
+                $stmtDeleteDetalle = $conn->prepare('DELETE FROM calificaciones_parciales_detalle
+                    WHERE id_calificacion_parcial = ? AND area = ? AND indice = ?');
+                $stmtPurgeDetalleCalif = $conn->prepare('DELETE FROM calificaciones_parciales_detalle WHERE id_calificacion_parcial = ?');
+            }
+
             foreach ($estudiantes as $estudiante) {
                 $idEstudiante = (int)$estudiante['id_estudiante'];
-                $valor = isset($notasPost[$idEstudiante]) ? trim($notasPost[$idEstudiante]) : '';
+                $datosEstudiante = $notasPost[$idEstudiante] ?? null;
 
                 if ($es_inicial) {
+                    $valor = is_string($datosEstudiante) ? trim($datosEstudiante) : '';
                     if ($valor === '') {
                         $conn->prepare("DELETE FROM calificaciones_parciales
                                         WHERE id_estudiante = ?
@@ -266,7 +440,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     ON DUPLICATE KEY UPDATE comentario = VALUES(comentario)")
                          ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado, $valor]);
                 } else {
-                    if ($valor === '') {
+                    if (!is_array($datosEstudiante)) {
+                        continue;
+                    }
+
+                    $parseNota = function($v) {
+                        if ($v === null || $v === '') return null;
+                        $v = str_replace(',', '.', trim($v));
+                        return is_numeric($v) ? (float)$v : null;
+                    };
+
+                    $serVals = [];
+                    for ($i = 1; $i <= 4; $i++) {
+                        $n = $parseNota($datosEstudiante['SER'][$i] ?? '');
+                        if ($n !== null) {
+                            if ($n < 0 || $n > 10) {
+                                throw new Exception('Nota SER fuera de rango (0–10): ' . $estudiante['nombre'] . " (casilla $i)");
+                            }
+                            $serVals[] = $n;
+                        }
+                    }
+                    $saberVals = [];
+                    for ($i = 1; $i <= 8; $i++) {
+                        $n = $parseNota($datosEstudiante['SABER'][$i] ?? '');
+                        if ($n !== null) {
+                            if ($n < 0 || $n > 45) {
+                                throw new Exception('Nota SABER fuera de rango (0–45): ' . $estudiante['nombre'] . " (casilla $i)");
+                            }
+                            $saberVals[] = $n;
+                        }
+                    }
+                    $hacerVals = [];
+                    for ($i = 1; $i <= 8; $i++) {
+                        $n = $parseNota($datosEstudiante['HACER'][$i] ?? '');
+                        if ($n !== null) {
+                            if ($n < 0 || $n > 40) {
+                                throw new Exception('Nota HACER fuera de rango (0–40): ' . $estudiante['nombre'] . " (casilla $i)");
+                            }
+                            $hacerVals[] = $n;
+                        }
+                    }
+
+                    if (empty($serVals) && empty($saberVals) && empty($hacerVals)) {
+                        if ($tieneDetalleCalificaciones && $stmtGetCalifId && $stmtPurgeDetalleCalif) {
+                            $stmtGetCalifId->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
+                            $idPurge = (int)$stmtGetCalifId->fetchColumn();
+                            if ($idPurge > 0) {
+                                $stmtPurgeDetalleCalif->execute([$idPurge]);
+                            }
+                        }
                         $conn->prepare("DELETE FROM calificaciones_parciales
                                         WHERE id_estudiante = ?
                                           AND id_materia = ?
@@ -275,16 +497,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         continue;
                     }
 
-                    if (!is_numeric(str_replace(',', '.', $valor))) {
-                        throw new Exception("Nota inválida para: " . $estudiante['nombre']);
-                    }
+                    $stmtPrevCalif->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
+                    $filaPrev = $stmtPrevCalif->fetch(PDO::FETCH_ASSOC) ?: null;
 
-                    $notaValor = (float)str_replace(',', '.', $valor);
+                    $serProm = !empty($serVals)
+                        ? array_sum($serVals) / count($serVals)
+                        : ($filaPrev !== null ? (float)$filaPrev['ser_total'] : 0);
+                    $saberProm = !empty($saberVals)
+                        ? array_sum($saberVals) / count($saberVals)
+                        : ($filaPrev !== null ? (float)$filaPrev['saber_total'] : 0);
+                    $hacerProm = !empty($hacerVals)
+                        ? array_sum($hacerVals) / count($hacerVals)
+                        : ($filaPrev !== null ? (float)$filaPrev['hacer_total'] : 0);
+
+                    // Por área: promedio de las notas cargadas (SER 0–10, SABER 0–45, HACER 0–40 por casilla). Total: suma de promedios (máx. 95).
+                    $serTotal = round($serProm, 2);
+                    $saberTotal = round($saberProm, 2);
+                    $hacerTotal = round($hacerProm, 2);
+                    $calificacion = round($serProm + $saberProm + $hacerProm, 2);
+
                     $conn->prepare("INSERT INTO calificaciones_parciales
-                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion)
-                                    VALUES (?, ?, ?, ?)
-                                    ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion)")
-                         ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado, $notaValor]);
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, ser_total, saber_total, hacer_total)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion),
+                                                            ser_total = VALUES(ser_total),
+                                                            saber_total = VALUES(saber_total),
+                                                            hacer_total = VALUES(hacer_total)")
+                         ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado,
+                                    $calificacion, $serTotal, $saberTotal, $hacerTotal]);
+
+                    if ($tieneDetalleCalificaciones && $stmtGetCalifId && $stmtUpsertDetalle && $stmtDeleteDetalle) {
+                        $stmtGetCalifId->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
+                        $idCalif = (int)$stmtGetCalifId->fetchColumn();
+                        if ($idCalif > 0) {
+                            if (!empty($serVals)) {
+                                for ($i = 1; $i <= 4; $i++) {
+                                    $n = $parseNota($datosEstudiante['SER'][$i] ?? '');
+                                    if ($n !== null) {
+                                        $stmtUpsertDetalle->execute([$idCalif, 'SER', $i, $n, $profesor_id]);
+                                    } else {
+                                        $stmtDeleteDetalle->execute([$idCalif, 'SER', $i]);
+                                    }
+                                }
+                            } elseif ($filaPrev === null) {
+                                for ($i = 1; $i <= 4; $i++) {
+                                    $stmtDeleteDetalle->execute([$idCalif, 'SER', $i]);
+                                }
+                            }
+
+                            if (!empty($saberVals)) {
+                                for ($i = 1; $i <= 8; $i++) {
+                                    $n = $parseNota($datosEstudiante['SABER'][$i] ?? '');
+                                    if ($n !== null) {
+                                        $stmtUpsertDetalle->execute([$idCalif, 'SABER', $i, $n, $profesor_id]);
+                                    } else {
+                                        $stmtDeleteDetalle->execute([$idCalif, 'SABER', $i]);
+                                    }
+                                }
+                            } elseif ($filaPrev === null) {
+                                for ($i = 1; $i <= 8; $i++) {
+                                    $stmtDeleteDetalle->execute([$idCalif, 'SABER', $i]);
+                                }
+                            }
+
+                            if (!empty($hacerVals)) {
+                                for ($i = 1; $i <= 8; $i++) {
+                                    $n = $parseNota($datosEstudiante['HACER'][$i] ?? '');
+                                    if ($n !== null) {
+                                        $stmtUpsertDetalle->execute([$idCalif, 'HACER', $i, $n, $profesor_id]);
+                                    } else {
+                                        $stmtDeleteDetalle->execute([$idCalif, 'HACER', $i]);
+                                    }
+                                }
+                            } elseif ($filaPrev === null) {
+                                for ($i = 1; $i <= 8; $i++) {
+                                    $stmtDeleteDetalle->execute([$idCalif, 'HACER', $i]);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -367,8 +658,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $conn->commit();
-        $redirectExtra = ['success' => 1];
-        if ($vistaActual === 'trimestral') $redirectExtra['vista'] = 'trimestral';
+        $redirectExtra = ['success' => 1, 'confirmar' => 1];
+        if ($vistaActual === 'trimestral') {
+            $redirectExtra['vista'] = 'trimestral';
+        }
         header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra));
         exit();
     } catch (Exception $e) {
@@ -906,7 +1199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <th class="th-sub-total" style="min-width:50px">P1</th>
                                                 <th class="th-sub-total" style="min-width:50px">P2</th>
                                                 <th class="th-sub-total" style="min-width:50px">P3</th>
-                                                <th class="th-total" style="min-width:55px">Prom 95</th>
+                                                <th class="th-total" style="min-width:55px">Promedio</th>
                                                 <th style="background:#fef3c7!important;color:#92400e!important;min-width:55px">Auto (5)</th>
                                                 <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Extra</th>
                                                 <th class="th-total" style="min-width:55px">TOTAL</th>
@@ -965,7 +1258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <div class="d-flex gap-2">
                                         <a href="exportar_registro.php?curso_materia=<?php echo $id_curso_materia; ?>&trimestre=<?php echo $trimestreSeleccionado; ?>"
                                            class="btn btn-outline-primary px-3" title="Registro: desglose por parcial + resumen trimestral">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Registro
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>Registro
                                         </a>
                                         <a href="exportar_notas_excel.php?curso_materia=<?php echo $id_curso_materia; ?>"
                                            class="btn btn-outline-success px-3" title="Exportar todas las notas a Excel">
@@ -983,6 +1276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
                                 <div class="helper-alert">
                                     <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
+                                    <span class="d-block mt-1" style="font-size:0.85rem;">Rangos por casilla: <strong>SER</strong> 0–10, <strong>SABER</strong> 0–45, <strong>HACER</strong> 0–40. Puedes guardar solo algunos alumnos o todos; las áreas que dejes vacías en el formulario conservan el valor ya guardado en el periodo (si existía).</span>
                                 </div>
                                 <?php if (!$periodoEditable): ?>
                                     <div class="alert alert-warning">
@@ -1013,7 +1307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <th class="th-sub-ser">2</th>
                                                     <th class="th-sub-ser">3</th>
                                                     <th class="th-sub-ser">4</th>
-                                                    <th class="th-sub-ser" style="font-weight:700">Σ</th>
+                                                    <th class="th-sub-ser" style="font-weight:700">Prom</th>
                                                     <th class="th-sub-saber">1</th>
                                                     <th class="th-sub-saber">2</th>
                                                     <th class="th-sub-saber">3</th>
@@ -1022,7 +1316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <th class="th-sub-saber">6</th>
                                                     <th class="th-sub-saber">7</th>
                                                     <th class="th-sub-saber">8</th>
-                                                    <th class="th-sub-saber" style="font-weight:700">Σ</th>
+                                                    <th class="th-sub-saber" style="font-weight:700">Prom</th>
                                                     <th class="th-sub-hacer">1</th>
                                                     <th class="th-sub-hacer">2</th>
                                                     <th class="th-sub-hacer">3</th>
@@ -1031,8 +1325,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     <th class="th-sub-hacer">6</th>
                                                     <th class="th-sub-hacer">7</th>
                                                     <th class="th-sub-hacer">8</th>
-                                                    <th class="th-sub-hacer" style="font-weight:700">Σ</th>
-                                                    <th class="th-sub-total">95</th>
+                                                    <th class="th-sub-hacer" style="font-weight:700">Prom</th>
+                                                    <th class="th-sub-total" title="Suma de promedios (máx. 95)">95</th>
                                                 </tr>
                                             <?php endif; ?>
                                         </thead>
@@ -1067,7 +1361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][SER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-ser <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
-                                                                       step="0.01" min="0" max="10"
+                                                                       step="0.01" min="0" max="10" title="SER: 0 a 10"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
                                                                 >
                                                             </td>
@@ -1082,7 +1376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][SABER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-saber <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
-                                                                       step="0.01" min="0" max="10"
+                                                                       step="0.01" min="0" max="45" title="SABER: 0 a 45"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
                                                                 >
                                                             </td>
@@ -1097,7 +1391,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][HACER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-hacer <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
-                                                                       step="0.01" min="0" max="10"
+                                                                       step="0.01" min="0" max="40" title="HACER: 0 a 40"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
                                                                 >
                                                             </td>
@@ -1120,6 +1414,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
                                     </button>
                                 </div>
+
                             </form>
                         <?php endif; ?>
                     <?php else: ?>
@@ -1210,6 +1505,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             return nums.reduce((a, b) => a + b, 0) / nums.length;
         }
 
+        function clampNotaInput(input, min, max) {
+            if (input.readOnly || input.disabled) return;
+            const n = parseNumber(input.value);
+            if (n === null) return;
+            let v = n;
+            if (v < min) v = min;
+            if (v > max) v = max;
+            if (v !== n) input.value = String(v);
+        }
+
         function updateRowTotals(row) {
             const serInputs = Array.from(row.querySelectorAll('input.area-ser'));
             const saberInputs = Array.from(row.querySelectorAll('input.area-saber'));
@@ -1221,19 +1526,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const saberAvg = avg(saberInputs.map(i => parseNumber(i.value)));
             const hacerAvg = avg(hacerInputs.map(i => parseNumber(i.value)));
 
-            const serTotal = serAvg === null ? 0 : +(serAvg * 1.0).toFixed(2);
-            const saberTotal = saberAvg === null ? 0 : +(saberAvg * 4.5).toFixed(2);
-            const hacerTotal = hacerAvg === null ? 0 : +(hacerAvg * 4.0).toFixed(2);
-            const total95 = +(serTotal + saberTotal + hacerTotal).toFixed(2);
+            const serProm = serAvg === null ? 0 : +serAvg.toFixed(2);
+            const saberProm = saberAvg === null ? 0 : +saberAvg.toFixed(2);
+            const hacerProm = hacerAvg === null ? 0 : +hacerAvg.toFixed(2);
+            const total95 = +(serProm + saberProm + hacerProm).toFixed(2);
 
             const serCell = row.querySelector('.ser-total');
             const saberCell = row.querySelector('.saber-total');
             const hacerCell = row.querySelector('.hacer-total');
             const totalCell = row.querySelector('.total-95');
 
-            if (serCell) serCell.textContent = serTotal.toFixed(2);
-            if (saberCell) saberCell.textContent = saberTotal.toFixed(2);
-            if (hacerCell) hacerCell.textContent = hacerTotal.toFixed(2);
+            if (serCell) serCell.textContent = serProm.toFixed(2);
+            if (saberCell) saberCell.textContent = saberProm.toFixed(2);
+            if (hacerCell) hacerCell.textContent = hacerProm.toFixed(2);
             if (totalCell) totalCell.textContent = total95.toFixed(2);
         }
 
@@ -1255,6 +1560,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
             document.querySelectorAll('input.area-ser, input.area-saber, input.area-hacer').forEach(input => {
                 input.addEventListener('input', function() {
+                    updateRowTotals(this.closest('tr'));
+                });
+                input.addEventListener('blur', function() {
+                    if (this.classList.contains('area-ser')) clampNotaInput(this, 0, 10);
+                    else if (this.classList.contains('area-saber')) clampNotaInput(this, 0, 45);
+                    else if (this.classList.contains('area-hacer')) clampNotaInput(this, 0, 40);
                     updateRowTotals(this.closest('tr'));
                 });
             });
