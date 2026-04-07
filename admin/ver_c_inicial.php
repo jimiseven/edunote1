@@ -45,35 +45,28 @@ $stmt_materias = $conn->prepare("
 $stmt_materias->execute([$id_curso]);
 $materias = $stmt_materias->fetchAll(PDO::FETCH_ASSOC);
 
-// Obtener comentarios
+// Obtener gestión actual
+$stmtConf = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$confRow = $stmtConf->fetch(PDO::FETCH_ASSOC);
+$gestionActual = ($confRow && trim($confRow['anio_escolar']) !== '') ? trim($confRow['anio_escolar']) : date('Y');
+if (preg_match('/\b(20\d{2})\b/', $gestionActual, $m)) {
+    $gestionActual = $m[1];
+}
+
+// Obtener comentarios desde calificaciones_parciales (1 comentario por trimestre, parcial=1)
 $comentarios = [];
-foreach ($estudiantes as $est) {
-    foreach ($materias as $mat) {
-        if ($vista == 'anual') {
-            for ($bim=1; $bim<=3; $bim++) {
-                $stmt = $conn->prepare("
-                    SELECT comentario 
-                    FROM calificaciones 
-                    WHERE id_estudiante = ? 
-                    AND id_materia = ? 
-                    AND bimestre = ?
-                ");
-                $stmt->execute([$est['id_estudiante'], $mat['id_materia'], $bim]);
-                $comentarios[$est['id_estudiante']][$mat['id_materia']][$bim] = $stmt->fetchColumn() ?: '';
-            }
-        } else {
-            // Solo un trimestre para vista trimestral
-            $stmt = $conn->prepare("
-                SELECT comentario 
-                FROM calificaciones 
-                WHERE id_estudiante = ? 
-                AND id_materia = ? 
-                AND bimestre = ?
-            ");
-            $stmt->execute([$est['id_estudiante'], $mat['id_materia'], $trimestre]);
-            $comentarios[$est['id_estudiante']][$mat['id_materia']][$trimestre] = $stmt->fetchColumn() ?: '';
-        }
-    }
+$stmtCom = $conn->prepare("
+    SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, cp.comentario
+    FROM calificaciones_parciales cp
+    INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+    WHERE pe.gestion = ?
+      AND pe.parcial = 1
+      AND cp.id_materia IN (SELECT m.id_materia FROM cursos_materias cm JOIN materias m ON cm.id_materia = m.id_materia WHERE cm.id_curso = ?)
+      AND cp.id_estudiante IN (SELECT id_estudiante FROM estudiantes WHERE id_curso = ?)
+");
+$stmtCom->execute([$gestionActual, $id_curso, $id_curso]);
+foreach ($stmtCom->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $comentarios[(int)$row['id_estudiante']][(int)$row['id_materia']][(int)$row['trimestre']] = $row['comentario'] ?? '';
 }
 ?>
 <!DOCTYPE html>
@@ -223,12 +216,12 @@ foreach ($estudiantes as $est) {
                                             <?php if ($vista == 'anual'): ?>
                                                 <?php for ($bim=1; $bim<=3; $bim++): ?>
                                                     <td class="comentario-cell">
-                                                        <?php echo htmlspecialchars($comentarios[$est['id_estudiante']][$mat['id_materia']][$bim]); ?>
+                                                        <?php echo htmlspecialchars($comentarios[$est['id_estudiante']][$mat['id_materia']][$bim] ?? ''); ?>
                                                     </td>
                                                 <?php endfor; ?>
                                             <?php else: ?>
                                                 <td class="comentario-cell">
-                                                    <?php echo htmlspecialchars($comentarios[$est['id_estudiante']][$mat['id_materia']][$trimestre]); ?>
+                                                    <?php echo htmlspecialchars($comentarios[$est['id_estudiante']][$mat['id_materia']][$trimestre] ?? ''); ?>
                                                 </td>
                                             <?php endif; ?>
                                         <?php endforeach; ?>

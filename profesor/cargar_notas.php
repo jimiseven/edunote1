@@ -85,6 +85,9 @@ if (!$curso) {
 
 $es_inicial = ($curso['nivel'] == 'Inicial');
 $campo = $es_inicial ? 'comentario' : 'calificacion';
+if ($es_inicial) {
+    $modalidadCarga = 'trimestres';
+}
 
 $stmt = $conn->prepare("SELECT id_estudiante,
                         CASE
@@ -1101,21 +1104,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
                                         <div class="trim-row">
                                             <span class="trim-label">T<?php echo (int)$trimestre; ?></span>
-                                            <?php foreach ($parciales as $parcial => $periodoBoton): ?>
+                                            <?php if ($es_inicial): ?>
                                                 <?php
-                                                $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
-                                                    (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
-                                                    (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
-                                                $esPeriodoActual = $vistaActual === 'parcial' && (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado && $periodoConfirmado;
-                                                $pillClasses = 'pill-btn' . ($esPeriodoActual ? ' active' : '') . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
+                                                $primerParcialIni = array_key_first($parciales);
+                                                $periodoBotonIni = $parciales[$primerParcialIni];
+                                                $periodoBotonEditableIni = (int)$periodoBotonIni['esta_activo'] === 1 &&
+                                                    (empty($periodoBotonIni['fecha_inicio']) || $hoy >= $periodoBotonIni['fecha_inicio']) &&
+                                                    (empty($periodoBotonIni['fecha_fin']) || $hoy <= $periodoBotonIni['fecha_fin']);
+                                                $esTrimActualIni = (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
+                                                $pillClassesIni = 'pill-btn' . ($esTrimActualIni ? ' active' : '') . ($periodoBotonEditableIni ? ' pill-enabled' : ' pill-disabled');
                                                 ?>
-                                                <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$parcial, ['confirmar' => 1])); ?>"
-                                                   class="<?php echo $pillClasses; ?>"
-                                                   title="<?php echo htmlspecialchars($periodoBoton['nombre']); ?>">
-                                                    P<?php echo (int)$parcial; ?>
+                                                <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialIni, ['confirmar' => 1])); ?>"
+                                                   class="<?php echo $pillClassesIni; ?>"
+                                                   title="Trimestre <?php echo (int)$trimestre; ?> — Comentario">
+                                                    Trimestre <?php echo (int)$trimestre; ?>
                                                 </a>
-                                            <?php endforeach; ?>
-                                            <?php if (!$es_inicial): ?>
+                                            <?php else: ?>
+                                                <?php foreach ($parciales as $parcial => $periodoBoton): ?>
+                                                    <?php
+                                                    $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
+                                                        (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
+                                                        (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
+                                                    $esPeriodoActual = $vistaActual === 'parcial' && (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado && $periodoConfirmado;
+                                                    $pillClasses = 'pill-btn' . ($esPeriodoActual ? ' active' : '') . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
+                                                    ?>
+                                                    <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$parcial, ['confirmar' => 1])); ?>"
+                                                       class="<?php echo $pillClasses; ?>"
+                                                       title="<?php echo htmlspecialchars($periodoBoton['nombre']); ?>">
+                                                        P<?php echo (int)$parcial; ?>
+                                                    </a>
+                                                <?php endforeach; ?>
                                                 <div class="pill-sep"></div>
                                                 <?php
                                                 $esTrimActual = $vistaActual === 'trimestral' && (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
@@ -1141,7 +1159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             <?php echo $periodoEditable ? '✓ Habilitado' : '✗ No habilitado'; ?>
                                         </span>
                                         <span class="badge bg-light text-dark border periodo-badge">
-                                            T<?php echo $trimestreSeleccionado; ?> - P<?php echo $parcialSeleccionado; ?>
+                                            T<?php echo $trimestreSeleccionado; ?><?php echo !$es_inicial ? ' - P' . $parcialSeleccionado : ''; ?>
                                         </span>
                                     <?php endif; ?>
                                     <span class="badge bg-light text-dark border periodo-badge">
