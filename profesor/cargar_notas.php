@@ -315,6 +315,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $notasPost = $notasNorm;
             }
 
+            if ($es_inicial) {
+                $comentariosValidar = [];
+                foreach ($estudiantes as $estVal) {
+                    $idEstVal = (int)$estVal['id_estudiante'];
+                    $datosVal = $notasPost[$idEstVal] ?? null;
+                    $valorVal = is_string($datosVal) ? trim($datosVal) : '';
+                    if ($valorVal === '') continue;
+                    if (mb_strlen($valorVal) > 250) {
+                        throw new Exception("El comentario de " . $estVal['nombre'] . " excede los 250 caracteres (" . mb_strlen($valorVal) . " caracteres).");
+                    }
+                    $comentariosValidar[] = mb_strtolower(trim($valorVal));
+                }
+                $frecuenciasComentarios = array_count_values($comentariosValidar);
+                foreach ($frecuenciasComentarios as $comTexto => $comCuenta) {
+                    if ($comCuenta > 3) {
+                        $previewTexto = mb_substr($comTexto, 0, 50) . (mb_strlen($comTexto) > 50 ? '...' : '');
+                        throw new Exception("Un comentario se repite en $comCuenta estudiantes (máx. 3): \"" . htmlspecialchars($previewTexto) . "\"");
+                    }
+                }
+            }
+
             $stmtPrevCalif = $conn->prepare("SELECT ser_total, saber_total, hacer_total
                                              FROM calificaciones_parciales
                                              WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ?
@@ -792,6 +813,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 6px;
             font-size: 0.9rem;
         }
+        /* ---- Nivel Inicial: cards ---- */
+        .inicial-rules-bar{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-radius:10px;padding:10px 16px;font-size:.84rem;color:#1e40af;display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px}
+        .inicial-container{max-height:68vh;overflow-y:auto;padding-right:4px;margin-bottom:8px}
+        .inicial-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;transition:box-shadow .2s,border-color .2s}
+        .inicial-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.06)}
+        .inicial-card:focus-within{border-color:#93c5fd;box-shadow:0 0 0 3px rgba(59,130,246,.08)}
+        .inicial-card-header{display:flex;align-items:center;margin-bottom:8px}
+        .inicial-card-num{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#eff6ff;color:#2563eb;font-weight:700;font-size:.75rem;flex-shrink:0}
+        .inicial-card-name{font-weight:600;font-size:.88rem;color:#1e293b;margin-left:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .inicial-word-count{font-size:.72rem;font-weight:500;color:#94a3b8;flex-shrink:0;margin-left:8px}
+        .inicial-word-count.warn{color:#f59e0b;font-weight:600}
+        .inicial-word-count.over{color:#ef4444;font-weight:700}
+        .inicial-textarea{width:100%;min-height:80px;max-height:200px;resize:vertical;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:.85rem;line-height:1.55;color:#334155;transition:border-color .2s,box-shadow .2s}
+        .inicial-textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12);outline:none}
+        .inicial-textarea.coment-disabled{background:#f8fafc;color:#94a3b8;cursor:not-allowed}
+        .inicial-dup-badge{display:none;font-size:.7rem;padding:2px 8px;border-radius:12px;background:#fef3c7;color:#92400e;font-weight:600;margin-left:8px}
+        .inicial-dup-badge.visible{display:inline-block}
+        .inicial-dup-badge.over-limit{background:#fee2e2;color:#991b1b}
         /* ---- Tabla ultra-compacta ---- */
         .table-container {
             max-height: 74vh;
@@ -1207,6 +1246,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <form method="post">
                                 <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                                <?php if ($es_inicial): ?>
+                                <div class="inicial-rules-bar">
+                                    <span>&#128203; Máximo <strong>250 caracteres</strong> por comentario</span>
+                                    <span>&#128260; Un mismo comentario puede repetirse en máximo <strong>3 estudiantes</strong></span>
+                                </div>
+                                <?php if (!$periodoEditable): ?>
+                                    <div class="alert alert-warning mb-2">
+                                        <strong>Modo consulta:</strong> Este periodo no está habilitado para edición.
+                                    </div>
+                                <?php endif; ?>
+                                <div class="inicial-container" id="inicialContainer">
+                                    <?php $contadorIni = 1; ?>
+                                    <?php foreach ($estudiantes as $estIni): ?>
+                                        <?php
+                                        $idEstIni = (int)$estIni['id_estudiante'];
+                                        $notaIni = $notas[$idEstIni][$trimestreSeleccionado][$parcialSeleccionado] ?? '';
+                                        ?>
+                                        <div class="inicial-card">
+                                            <div class="inicial-card-header">
+                                                <span class="inicial-card-num"><?php echo $contadorIni++; ?></span>
+                                                <span class="inicial-card-name" title="<?php echo htmlspecialchars($estIni['nombre']); ?>"><?php echo htmlspecialchars($estIni['nombre']); ?></span>
+                                                <span class="inicial-dup-badge" id="dup-<?php echo $idEstIni; ?>"></span>
+                                                <span class="inicial-word-count" id="wc-<?php echo $idEstIni; ?>">0 / 250 car.</span>
+                                            </div>
+                                            <textarea
+                                                name="notas[<?php echo $idEstIni; ?>]"
+                                                class="inicial-textarea <?php echo !$periodoEditable ? 'coment-disabled' : ''; ?>"
+                                                data-student-id="<?php echo $idEstIni; ?>"
+                                                placeholder="<?php echo $periodoEditable ? 'Escribe el comentario (máx. 250 caracteres)...' : 'No habilitado'; ?>"
+                                                maxlength="250"
+                                                <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
+                                            ><?php echo htmlspecialchars($notaIni); ?></textarea>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="action-buttons">
+                                    <a href="dashboard.php" class="btn btn-outline-secondary">&larr; Volver al panel</a>
+                                    <div class="d-flex gap-2 align-items-center">
+                                        <span id="inicialDupSummary" class="text-muted" style="font-size:0.82rem;"></span>
+                                        <button type="submit" name="guardar_notas" class="btn btn-primary px-4" id="btnGuardarComentarios" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
+                                            <?php echo $periodoEditable ? 'Guardar comentarios' : 'No disponible'; ?>
+                                        </button>
+                                    </div>
+                                </div>
+                                <?php else: ?>
                                 <div class="helper-alert">
                                     <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
                                     <span class="d-block mt-1" style="font-size:0.85rem;">Rangos por casilla: <strong>SER</strong> 0–10, <strong>SABER</strong> 0–45, <strong>HACER</strong> 0–40. Puedes guardar solo algunos alumnos o todos; las áreas que dejes vacías en el formulario conservan el valor ya guardado en el periodo (si existía).</span>
@@ -1399,7 +1483,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
                                     </button>
                                 </div>
-
+                                <?php endif; ?>
                             </form>
                         <?php endif; ?>
                     <?php else: ?>
@@ -1584,6 +1668,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     updateTrimestralRow(this.closest('tr'));
                 });
             });
+
+            <?php if ($es_inicial && $periodoEditable): ?>
+            (function(){
+                var tas = document.querySelectorAll('.inicial-textarea');
+                if (!tas.length) return;
+                function cw(t){ return t.length; }
+                function uwc(ta){
+                    var id=ta.dataset.studentId, el=document.getElementById('wc-'+id);
+                    if(!el)return;
+                    var c=cw(ta.value);
+                    el.textContent=c+' / 250 car.';
+                    el.className='inicial-word-count'+(c>250?' over':c>200?' warn':'');
+                }
+                function chkDup(){
+                    var map={};
+                    tas.forEach(function(ta){
+                        var t=ta.value.trim().toLowerCase();
+                        if(!t)return;
+                        if(!map[t])map[t]=[];
+                        map[t].push(ta.dataset.studentId);
+                    });
+                    document.querySelectorAll('.inicial-dup-badge').forEach(function(b){
+                        b.className='inicial-dup-badge'; b.textContent='';
+                    });
+                    var td=0;
+                    for(var t in map){
+                        if(map[t].length>1){
+                            td+=map[t].length;
+                            var ov=map[t].length>3;
+                            map[t].forEach(function(sid){
+                                var b=document.getElementById('dup-'+sid);
+                                if(b){
+                                    b.textContent=map[t].length+'x repetido';
+                                    b.className='inicial-dup-badge visible'+(ov?' over-limit':'');
+                                }
+                            });
+                        }
+                    }
+                    var s=document.getElementById('inicialDupSummary');
+                    if(s) s.textContent=td>0?td+' comentarios duplicados':'';
+                }
+                tas.forEach(function(ta){
+                    uwc(ta);
+                    ta.addEventListener('input',function(){uwc(this);chkDup();});
+                });
+                chkDup();
+                var frm=document.querySelector('form[method="post"]');
+                if(frm){
+                    frm.addEventListener('submit',function(e){
+                        var err=false;
+                        tas.forEach(function(ta){
+                            if(cw(ta.value)>250){err=true;ta.style.borderColor='#ef4444';}
+                            else{ta.style.borderColor='';}
+                        });
+                        if(err){e.preventDefault();alert('Uno o más comentarios exceden los 250 caracteres. Corrige antes de guardar.');}
+                    });
+                }
+            })();
+            <?php endif; ?>
 
             <?php if (!$es_inicial && $periodoEditable): ?>
             const pasteModalEl = document.getElementById('pasteColumnModal');
