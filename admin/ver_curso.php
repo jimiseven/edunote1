@@ -280,6 +280,24 @@ if (!empty($notasTrimestralesPadres)) {
     $aplicarNotasTrimestrales($calificaciones, $notasTrimestralesPadres);
 }
 
+// Build data for modal: individual partial grades + trimester extras
+$detalleParciales = [];
+foreach ($parcialesPorTrimestre as $idEst => $materias_est) {
+    foreach ($materias_est as $idMat => $trimestres) {
+        foreach ($trimestres as $numTrim => $parciales) {
+            $detalleParciales[$idEst][$idMat][$numTrim] = [
+                'parciales' => array_values($parciales),
+                'autoevaluacion' => $notasTrimestralesExtras[$idEst][$idMat][$numTrim]['autoevaluacion']
+                    ?? $notasTrimestralesPadres[$idEst][$idMat][$numTrim]['autoevaluacion']
+                    ?? null,
+                'nota_extra' => $notasTrimestralesExtras[$idEst][$idMat][$numTrim]['nota_extra']
+                    ?? $notasTrimestralesPadres[$idEst][$idMat][$numTrim]['nota_extra']
+                    ?? null,
+            ];
+        }
+    }
+}
+
 // PROMEDIOS
 $promedios_materias = [];
 foreach ($estudiantes as $estudiante) {
@@ -457,6 +475,147 @@ $estudiantes_ordenados = $estudiantes;
             color: #0f172a !important;
         }
 
+        .centralizador-table td.nota-detail-trigger {
+            cursor: pointer;
+            position: relative;
+            transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .centralizador-table td.nota-detail-trigger:hover {
+            background: #dbeafe !important;
+            box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.4);
+        }
+
+        .centralizador-table td.nota-detail-trigger:focus-visible {
+            outline: 2px solid rgba(37, 99, 235, 0.6);
+            outline-offset: 1px;
+        }
+
+        /* Modal detalle parciales */
+        #notaDetalleModal .modal-content {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,.15);
+            overflow: hidden;
+        }
+        #notaDetalleModal .modal-header {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            border-bottom: none;
+            padding: 10px 16px;
+        }
+        #notaDetalleModal .modal-header .btn-close {
+            filter: brightness(0) invert(1);
+        }
+        #notaDetalleModal .modal-body {
+            padding: 16px;
+        }
+        #notaDetalleModal .detalle-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            margin-bottom: 12px;
+            font-size: .85rem;
+        }
+        #notaDetalleModal .detalle-info span {
+            color: #475569;
+        }
+        #notaDetalleModal .detalle-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            font-size: .85rem;
+        }
+        #notaDetalleModal .detalle-table th {
+            background: #f1f5f9;
+            color: #334155;
+            font-weight: 600;
+            padding: 7px 6px;
+            text-align: center;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+        }
+        #notaDetalleModal .detalle-table td {
+            padding: 8px 6px;
+            text-align: center;
+            color: #1e293b;
+            font-weight: 500;
+            border-right: 1px solid #f1f5f9;
+        }
+        #notaDetalleModal .detalle-table td:last-child { border-right: none; }
+        #notaDetalleModal .detalle-table th.col-prom {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        #notaDetalleModal .detalle-table td.col-prom {
+            background: #fffbeb;
+            color: #92400e;
+            font-weight: 700;
+        }
+        #notaDetalleModal .detalle-table th.col-auto {
+            background: #e0f2fe;
+            color: #075985;
+        }
+        #notaDetalleModal .detalle-table td.col-auto {
+            background: #f0f9ff;
+            color: #075985;
+        }
+        #notaDetalleModal .detalle-table th.col-extra {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+        #notaDetalleModal .detalle-table td.col-extra {
+            background: #f5f3ff;
+            color: #5b21b6;
+        }
+        #notaDetalleModal .detalle-table th.col-total {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        #notaDetalleModal .detalle-table td.col-total {
+            background: #ecfdf5;
+            color: #065f46;
+            font-weight: 700;
+            font-size: .9rem;
+        }
+        #notaDetalleModal .modal-footer {
+            border-top: 1px solid #f1f5f9;
+            padding: 8px 16px;
+        }
+        .dark-mode #notaDetalleModal .modal-content {
+            background: #1e293b;
+        }
+        .dark-mode #notaDetalleModal .modal-header {
+            background: linear-gradient(135deg, #1e40af, #1e3a8a);
+        }
+        .dark-mode #notaDetalleModal .detalle-info span {
+            color: #94a3b8;
+        }
+        .dark-mode #notaDetalleModal .detalle-table th {
+            background: #334155;
+            color: #e2e8f0;
+            border-bottom-color: #475569;
+        }
+        .dark-mode #notaDetalleModal .detalle-table td {
+            color: #e2e8f0;
+            border-right-color: #334155;
+        }
+        .dark-mode #notaDetalleModal .detalle-table {
+            border-color: #475569;
+        }
+        .dark-mode #notaDetalleModal .detalle-table th.col-prom { background: #422006; color: #fde68a; }
+        .dark-mode #notaDetalleModal .detalle-table td.col-prom { background: #451a03; color: #fde68a; }
+        .dark-mode #notaDetalleModal .detalle-table th.col-auto { background: #0c4a6e; color: #bae6fd; }
+        .dark-mode #notaDetalleModal .detalle-table td.col-auto { background: #082f49; color: #bae6fd; }
+        .dark-mode #notaDetalleModal .detalle-table th.col-extra { background: #4c1d95; color: #ddd6fe; }
+        .dark-mode #notaDetalleModal .detalle-table td.col-extra { background: #3b0764; color: #ddd6fe; }
+        .dark-mode #notaDetalleModal .detalle-table th.col-total { background: #064e3b; color: #a7f3d0; }
+        .dark-mode #notaDetalleModal .detalle-table td.col-total { background: #022c22; color: #a7f3d0; }
+        .dark-mode #notaDetalleModal .modal-footer { border-top-color: #334155; }
+
         .centralizador-table tbody tr.top-performer-row td {
             background: #dcfce7 !important;
             color: #14532d !important;
@@ -469,6 +628,12 @@ $estudiantes_ordenados = $estudiantes;
             background: #bbf7d0 !important;
             color: #14532d !important;
             box-shadow: 1px 0 0 rgba(34, 197, 94, 0.35);
+        }
+
+        .centralizador-table tbody tr.top-performer-row td.final-average,
+        .centralizador-table tbody tr.top-performer-row td.average-cell {
+            background: #bbf7d0 !important;
+            color: #14532d !important;
         }
 
         .centralizador-table tbody tr:hover td:nth-child(1),
@@ -739,10 +904,16 @@ $estudiantes_ordenados = $estudiantes;
 
         body.dark-mode .centralizador-table tbody tr.top-performer-row td.number-cell,
         body.dark-mode .centralizador-table tbody tr.top-performer-row td.position-cell,
-        body.dark-mode .centralizador-table tbody tr.top-performer-row td.student-name {
+        body-dark-mode .centralizador-table tbody tr.top-performer-row td.student-name {
             background: rgba(134, 239, 172, 0.55) !important;
             color: #064e3b !important;
             box-shadow: 1px 0 0 rgba(134, 239, 172, 0.4) !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.average-cell,
+        body-dark-mode .centralizador-table tbody tr.top-performer-row td.final-average {
+            background: rgba(134, 239, 172, 0.55) !important;
+            color: #064e3b !important;
         }
 
         body.dark-mode .centralizador-table tbody tr:hover td {
@@ -1122,12 +1293,13 @@ $estudiantes_ordenados = $estudiantes;
                                     <?php
                                     $posicionEst = $posiciones[$estudiante['id_estudiante']] ?? null;
                                     $esTopPerformer = $posicionEst !== null && $posicionEst <= 3;
+                                    $nombreEstudiante = strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}");
                                     ?>
                                     <tr class="<?= $esTopPerformer ? 'top-performer-row' : '' ?>">
                                         <td class="number-cell"><?= $contador++ ?></td>
                                         <td class="position-cell"><?= $posiciones[$estudiante['id_estudiante']] ?></td>
                                         <td class="student-name">
-                                            <?= htmlspecialchars(strtoupper("{$estudiante['apellido_paterno']} {$estudiante['apellido_materno']}, {$estudiante['nombres']}")) ?>
+                                            <?= htmlspecialchars($nombreEstudiante) ?>
                                         </td>
                                         <?php foreach ($materias as $materia): ?>
                                             <?php
@@ -1136,19 +1308,21 @@ $estudiantes_ordenados = $estudiantes;
                                             $n2 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][2] ?? '';
                                             $n3 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][3] ?? '';
                                             $pm = $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] ?? '';
+                                            $idEstJs = $estudiante['id_estudiante'];
+                                            $idMatJs = $materia['id_materia'];
+                                            $nomEstEsc = htmlspecialchars($nombreEstudiante, ENT_QUOTES, 'UTF-8');
+                                            $nomMatEsc = htmlspecialchars($materia['nombre_materia'], ENT_QUOTES, 'UTF-8');
                                             ?>
-                                            <td
-                                                class="<?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>">
-                                                <?= $n1 ?></td>
-                                            <td
-                                                class="<?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>">
-                                                <?= $n2 ?></td>
-                                            <td
-                                                class="<?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>">
-                                                <?= $n3 ?></td>
-                                            <td
-                                                class="average-cell <?= $clase_extra ?> <?= (is_numeric($pm) && $pm < 50) ? 'nota-baja' : '' ?>">
-                                                <?= $pm ?></td>
+                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>"
+                                                data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="1"
+                                                data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n1 ?></td>
+                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>"
+                                                data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="2"
+                                                data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n2 ?></td>
+                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>"
+                                                data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="3"
+                                                data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n3 ?></td>
+                                            <td class="average-cell <?= $clase_extra ?> <?= (is_numeric($pm) && $pm < 50) ? 'nota-baja' : '' ?>"><?= $pm ?></td>
                                         <?php endforeach; ?>
                                         <td class="final-average"><?= $promedios_generales[$estudiante['id_estudiante']] ?>
                                         </td>
@@ -1161,6 +1335,35 @@ $estudiantes_ordenados = $estudiantes;
             </main>
         </div>
     </div>
+
+    <div class="modal fade" id="notaDetalleModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title mb-0" id="notaDetalleTitulo">Detalle Trimestre</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="detalle-info">
+                        <div><strong>Estudiante:</strong> <span id="detalleEstudiante">—</span></div>
+                        <div><strong>Materia:</strong> <span id="detalleMateria">—</span></div>
+                    </div>
+                    <table class="detalle-table">
+                        <thead>
+                            <tr id="detalleParcialesHead"></tr>
+                        </thead>
+                        <tbody>
+                            <tr id="detalleParcialesBody"></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
@@ -1610,6 +1813,69 @@ $estudiantes_ordenados = $estudiantes;
             return container.innerHTML;
         }
 
+        // --- Modal detalle parciales al hacer clic en T1/T2/T3 ---
+        (function() {
+            var dataParciales = <?= json_encode($detalleParciales, JSON_UNESCAPED_UNICODE) ?>;
+            var modalEl = document.getElementById('notaDetalleModal');
+            if (!modalEl) return;
+            var bsModal = new bootstrap.Modal(modalEl);
+            var tableEl = document.querySelector('.centralizador-table');
+            if (!tableEl) return;
+
+            tableEl.addEventListener('click', function(e) {
+                var td = e.target.closest('td.nota-detail-trigger');
+                if (!td) return;
+
+                var estId  = td.getAttribute('data-estudiante-id');
+                var matId  = td.getAttribute('data-materia-id');
+                var trim   = td.getAttribute('data-trimestre');
+                var studentName = td.getAttribute('data-student') || '—';
+                var materiaName = td.getAttribute('data-materia-name') || '—';
+
+                document.getElementById('detalleEstudiante').textContent = studentName;
+                document.getElementById('detalleMateria').textContent   = materiaName;
+                document.getElementById('notaDetalleTitulo').textContent = 'Detalle Trimestre ' + trim;
+
+                var info = dataParciales[estId] && dataParciales[estId][matId] && dataParciales[estId][matId][trim]
+                         ? dataParciales[estId][matId][trim]
+                         : null;
+
+                var headRow   = document.getElementById('detalleParcialesHead');
+                var bodyRow   = document.getElementById('detalleParcialesBody');
+                headRow.innerHTML = '';
+                bodyRow.innerHTML = '';
+
+                if (info && info.parciales && info.parciales.length > 0) {
+                    for (var i = 0; i < info.parciales.length; i++) {
+                        headRow.innerHTML += '<th>P' + (i + 1) + '</th>';
+                        bodyRow.innerHTML += '<td>' + parseFloat(info.parciales[i]).toFixed(0) + '</td>';
+                    }
+                    var sum = 0;
+                    for (var j = 0; j < info.parciales.length; j++) sum += parseFloat(info.parciales[j]);
+                    var avg = sum / info.parciales.length;
+                    headRow.innerHTML += '<th class="col-prom">Prom</th>';
+                    bodyRow.innerHTML += '<td class="col-prom">' + avg.toFixed(2) + '</td>';
+
+                    var autoVal = (info.autoevaluacion !== null && info.autoevaluacion !== '' && info.autoevaluacion !== undefined) ? parseFloat(info.autoevaluacion) : 0;
+                    var extraVal = (info.nota_extra !== null && info.nota_extra !== '' && info.nota_extra !== undefined) ? parseFloat(info.nota_extra) : 0;
+
+                    headRow.innerHTML += '<th class="col-auto">Autoev</th>';
+                    bodyRow.innerHTML += '<td class="col-auto">' + (autoVal ? autoVal : '-') + '</td>';
+
+                    headRow.innerHTML += '<th class="col-extra">Extra</th>';
+                    bodyRow.innerHTML += '<td class="col-extra">' + (extraVal ? extraVal : '-') + '</td>';
+
+                    var total = avg + autoVal + extraVal;
+                    headRow.innerHTML += '<th class="col-total">Total</th>';
+                    bodyRow.innerHTML += '<td class="col-total">' + total.toFixed(2) + '</td>';
+                } else {
+                    headRow.innerHTML = '<th colspan="4">Sin datos</th>';
+                    bodyRow.innerHTML = '<td colspan="4">—</td>';
+                }
+
+                bsModal.show();
+            });
+        })();
     </script>
 
 </body>
