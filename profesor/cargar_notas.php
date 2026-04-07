@@ -861,6 +861,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .th-sub-saber { background: #eff6ff !important; font-size: 0.7rem; }
         .th-sub-hacer { background: #fff7ed !important; font-size: 0.7rem; }
         .th-sub-total { background: #faf5ff !important; font-size: 0.7rem; font-weight: 700; }
+        .paste-col-btn {
+            border: none;
+            background: transparent;
+            color: #2563eb;
+            padding: 0;
+            margin-left: 4px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .paste-col-btn:hover,
+        .paste-col-btn:focus {
+            color: #1d4ed8;
+            outline: none;
+        }
+        .paste-col-btn svg {
+            pointer-events: none;
+        }
         /* Celdas de promedio */
         .nota-ref {
             font-weight: 700; text-align: center; font-size: 0.76rem; min-width: 40px;
@@ -1217,46 +1234,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <?php endif; ?>
                                             </tr>
                                             <?php if (!$es_inicial): ?>
-                                                <tr>
-                                                    <th class="col-num"></th><th class="col-nombre"></th>
-                                                    <th class="th-sub-ser">1</th>
-                                                    <th class="th-sub-ser">2</th>
-                                                    <th class="th-sub-ser">3</th>
-                                                    <th class="th-sub-ser">4</th>
-                                                    <th class="th-sub-ser" style="font-weight:700">Prom</th>
-                                                    <th class="th-sub-saber">1</th>
-                                                    <th class="th-sub-saber">2</th>
-                                                    <th class="th-sub-saber">3</th>
-                                                    <th class="th-sub-saber">4</th>
-                                                    <th class="th-sub-saber">5</th>
-                                                    <th class="th-sub-saber">6</th>
-                                                    <th class="th-sub-saber">7</th>
-                                                    <th class="th-sub-saber">8</th>
-                                                    <th class="th-sub-saber" style="font-weight:700">Prom</th>
-                                                    <th class="th-sub-hacer">1</th>
-                                                    <th class="th-sub-hacer">2</th>
-                                                    <th class="th-sub-hacer">3</th>
-                                                    <th class="th-sub-hacer">4</th>
-                                                    <th class="th-sub-hacer">5</th>
-                                                    <th class="th-sub-hacer">6</th>
-                                                    <th class="th-sub-hacer">7</th>
-                                                    <th class="th-sub-hacer">8</th>
-                                                    <th class="th-sub-hacer" style="font-weight:700">Prom</th>
-                                                    <th class="th-sub-total" title="Suma de promedios (máx. 95)">95</th>
-                                                </tr>
+                                            <tr>
+                                                <th class="col-num"></th>
+                                                <th class="col-nombre"></th>
+                                                <?php for ($i = 1; $i <= 4; $i++): ?>
+                                                    <th class="th-sub-ser">
+                                                        <?php echo $i; ?>
+                                                        <?php if ($periodoEditable): ?>
+                                                            <button type="button"
+                                                                    class="paste-col-btn btn-paste-column"
+                                                                    data-area="SER"
+                                                                    data-index="<?php echo $i; ?>"
+                                                                    data-min="0"
+                                                                    data-max="10"
+                                                                    title="Pegar notas SER <?php echo $i; ?>">
+                                                                <span class="visually-hidden">Pegar notas SER columna <?php echo $i; ?></span>
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                    <rect x="7" y="3" width="10" height="14" rx="2" ry="2"></rect>
+                                                                    <path d="M9 3V2a1 1 0 011-1h4a1 1 0 011 1v1"></path>
+                                                                    <path d="M11 7h4"></path>
+                                                                </svg>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-sub-ser" style="font-weight:700">Prom</th>
+                                                <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                    <th class="th-sub-saber">
+                                                        <?php echo $i; ?>
+                                                        <?php if ($periodoEditable): ?>
+                                                            <button type="button"
+                                                                    class="paste-col-btn btn-paste-column"
+                                                                    data-area="SABER"
+                                                                    data-index="<?php echo $i; ?>"
+                                                                    data-min="0"
+                                                                    data-max="45"
+                                                                    title="Pegar notas SABER <?php echo $i; ?>">
+                                                                <span class="visually-hidden">Pegar notas SABER columna <?php echo $i; ?></span>
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                    <rect x="7" y="3" width="10" height="14" rx="2" ry="2"></rect>
+                                                                    <path d="M9 3V2a1 1 0 011-1h4a1 1 0 011 1v1"></path>
+                                                                    <path d="M11 7h4"></path>
+                                                                </svg>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-sub-saber" style="font-weight:700">Prom</th>
+                                                <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                    <th class="th-sub-hacer">
+                                                        <?php echo $i; ?>
+                                                        <?php if ($periodoEditable): ?>
+                                                            <button type="button"
+                                                                    class="paste-col-btn btn-paste-column"
+                                                                    data-area="HACER"
+                                                                    data-index="<?php echo $i; ?>"
+                                                                    data-min="0"
+                                                                    data-max="40"
+                                                                    title="Pegar notas HACER <?php echo $i; ?>">
+                                                                <span class="visually-hidden">Pegar notas HACER columna <?php echo $i; ?></span>
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                    <rect x="7" y="3" width="10" height="14" rx="2" ry="2"></rect>
+                                                                    <path d="M9 3V2a1 1 0 011-1h4a1 1 0 011 1v1"></path>
+                                                                    <path d="M11 7h4"></path>
+                                                                </svg>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-sub-hacer" style="font-weight:700">Prom</th>
+                                                <th class="th-sub-total" title="Suma de promedios (máx. 95)">95</th>
+                                            </tr>
                                             <?php endif; ?>
-                                        </thead>
-                                        <tbody>
                                             <?php $contador = 1; ?>
                                             <?php foreach ($estudiantes as $est): ?>
-                                                <tr>
-                                                    <td class="col-num"><?php echo $contador++; ?></td>
-                                                    <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
-                                                    <?php
-                                                    $idEstudianteFila = (int)$est['id_estudiante'];
-                                                    $notaActual = $notas[$idEstudianteFila] ?? '';
-                                                    ?>
-                                                    <?php if ($es_inicial): ?>
+                                                <?php
+                                                $idEstudianteFila = (int)$est['id_estudiante'];
+                                                $notaActual = $notas[$idEstudianteFila] ?? '';
+                                                ?>
+                                                <?php if ($es_inicial): ?>
+                                                    <tr>
+                                                        <td class="col-num"><?php echo $contador++; ?></td>
+                                                        <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
                                                         <td>
                                                             <textarea
                                                                 name="notas[<?php echo $idEstudianteFila; ?>]"
@@ -1265,7 +1324,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                 <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
                                                             ><?php echo htmlspecialchars($notaActual); ?></textarea>
                                                         </td>
-                                                    <?php else: ?>
+                                                    </tr>
+                                                <?php else: ?>
+                                                    <tr>
+                                                        <td class="col-num"><?php echo $contador++; ?></td>
+                                                        <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
                                                         <?php
                                                         $detalleFila = $detalleNotas[$idEstudianteFila] ?? [];
                                                         $totalesFila = $totalesAreasPorEstudiante[$idEstudianteFila] ?? ['ser_total' => 0, 'saber_total' => 0, 'hacer_total' => 0, 'calificacion' => 0];
@@ -1276,6 +1339,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                 <input type="number"
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][SER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-ser <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       data-area="SER"
+                                                                       data-index="<?php echo $i; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
                                                                        step="0.01" min="0" max="10" title="SER: 0 a 10"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
@@ -1291,6 +1356,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                 <input type="number"
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][SABER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-saber <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       data-area="SABER"
+                                                                       data-index="<?php echo $i; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
                                                                        step="0.01" min="0" max="45" title="SABER: 0 a 45"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
@@ -1306,6 +1373,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                 <input type="number"
                                                                        name="notas[<?php echo $idEstudianteFila; ?>][HACER][<?php echo $i; ?>]"
                                                                        class="form-control nota-input area-hacer <?php echo !$periodoEditable ? 'nota-disabled' : ''; ?>"
+                                                                       data-area="HACER"
+                                                                       data-index="<?php echo $i; ?>"
                                                                        value="<?php echo htmlspecialchars($valor === null ? '' : $valor); ?>"
                                                                        step="0.01" min="0" max="40" title="HACER: 0 a 40"
                                                                        <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>
@@ -1405,6 +1474,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </main>
         </div>
     </div>
+    <?php if (!$es_inicial && $periodoEditable): ?>
+    <div class="modal fade" id="pasteColumnModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="pasteColumnForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Pegar notas en <span id="pasteColumnTarget">—</span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2" style="font-size:0.9rem; color:#475569;">Pega la columna copiada desde Excel (una nota por fila). Las notas se asignarán en el orden actual de los estudiantes.</p>
+                        <textarea id="pasteColumnTextarea" class="form-control" rows="10" placeholder="Pega aquí las notas..." required></textarea>
+                        <input type="hidden" id="pasteColumnArea">
+                        <input type="hidden" id="pasteColumnIndex">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Pegar notas</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
         function parseNumber(value) {
@@ -1474,6 +1567,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 updateRowTotals(tr);
                 updateTrimestralRow(tr);
             });
+
             document.querySelectorAll('input.area-ser, input.area-saber, input.area-hacer').forEach(input => {
                 input.addEventListener('input', function() {
                     updateRowTotals(this.closest('tr'));
@@ -1490,6 +1584,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     updateTrimestralRow(this.closest('tr'));
                 });
             });
+
+            <?php if (!$es_inicial && $periodoEditable): ?>
+            const pasteModalEl = document.getElementById('pasteColumnModal');
+            const pasteTextarea = document.getElementById('pasteColumnTextarea');
+            const pasteTargetLabel = document.getElementById('pasteColumnTarget');
+            const pasteForm = document.getElementById('pasteColumnForm');
+            let pasteContext = null;
+
+            if (pasteModalEl && pasteTextarea && pasteForm) {
+                const pasteModal = new bootstrap.Modal(pasteModalEl);
+
+                document.querySelectorAll('.btn-paste-column').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const area = this.dataset.area;
+                        const index = this.dataset.index;
+                        pasteContext = {
+                            area,
+                            index,
+                            min: parseFloat(this.dataset.min),
+                            max: parseFloat(this.dataset.max),
+                            inputs: Array.from(document.querySelectorAll(`input[data-area="${area}"][data-index="${index}"]`))
+                        };
+
+                        pasteTargetLabel.textContent = `${area} ${index}`;
+                        pasteTextarea.value = '';
+                        pasteModal.show();
+                        setTimeout(() => pasteTextarea.focus(), 150);
+                    });
+                });
+
+                pasteForm.addEventListener('submit', function(event) {
+                    event.preventDefault();
+                    if (!pasteContext) {
+                        pasteModal.hide();
+                        return;
+                    }
+
+                    const rawLines = pasteTextarea.value.replace(/\r\n/g, '\n').split('\n');
+                    pasteContext.inputs.forEach((input, idx) => {
+                        const line = rawLines[idx] ?? '';
+                        let value = line.split('\t')[0] ?? '';
+                        value = value.trim();
+
+                        input.value = value;
+                        if (value !== '') {
+                            clampNotaInput(input, pasteContext.min, pasteContext.max);
+                        }
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+
+                    pasteModal.hide();
+                    pasteContext = null;
+                });
+
+                pasteModalEl.addEventListener('hidden.bs.modal', function() {
+                    pasteTextarea.value = '';
+                    pasteContext = null;
+                });
+            }
+            <?php endif; ?>
         });
     </script>
 </body>

@@ -108,18 +108,56 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     ];
 }
 
+// Agregados por trimestre para cálculo anual (solo numérico)
+$agregadoTrimestres = [];
+if (!$es_inicial) {
+    $sqlPromAnual = "SELECT cp.id_estudiante, pe.trimestre, cp.$campo AS valor
+                     FROM calificaciones_parciales cp
+                     INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                     WHERE cp.id_materia = ? AND (pe.gestion = ?";
+    $paramsPromAnual = [$curso['id_materia'], $gestionActual];
+    if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+        $sqlPromAnual .= " OR pe.gestion = ?";
+        $paramsPromAnual[] = $gestionAlternativa;
+    }
+    $sqlPromAnual .= ")";
+    $stmtPromAnual = $conn->prepare($sqlPromAnual);
+    $stmtPromAnual->execute($paramsPromAnual);
+    foreach ($stmtPromAnual->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $idEst = (int)$row['id_estudiante'];
+        $trim = (int)$row['trimestre'];
+        if (!isset($agregadoTrimestres[$idEst][$trim])) {
+            $agregadoTrimestres[$idEst][$trim] = ['suma' => 0.0, 'contador' => 0];
+        }
+        $valor = $row['valor'];
+        if ($valor !== null && $valor !== '' && is_numeric($valor)) {
+            $agregadoTrimestres[$idEst][$trim]['suma'] += (float)$valor;
+            $agregadoTrimestres[$idEst][$trim]['contador']++;
+        }
+    }
+}
+
 // Notas trimestrales (autoevaluación + extra)
 $notasTrimestrales = [];
+$notasTrimestralesPorTrimestre = [];
 try {
-    $stmt = $conn->prepare("SELECT id_estudiante, autoevaluacion, nota_extra
+    $stmt = $conn->prepare("SELECT id_estudiante, trimestre, autoevaluacion, nota_extra
                             FROM calificaciones_trimestrales
-                            WHERE id_materia = ? AND gestion = ? AND trimestre = ?");
-    $stmt->execute([$curso['id_materia'], $gestionActual, $trimestreExportar]);
+                            WHERE id_materia = ? AND gestion = ?");
+    $stmt->execute([$curso['id_materia'], $gestionActual]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $notasTrimestrales[(int)$row['id_estudiante']] = [
+        $idEst = (int)$row['id_estudiante'];
+        $trim = (int)$row['trimestre'];
+        $notasTrimestralesPorTrimestre[$idEst][$trim] = [
             'autoevaluacion' => $row['autoevaluacion'],
             'nota_extra' => $row['nota_extra']
         ];
+        if ($trim === $trimestreExportar) {
+            $notasTrimestrales[$idEst] = [
+                'autoevaluacion' => $row['autoevaluacion'],
+                'nota_extra' => $row['nota_extra']
+            ];
+        }
     }
 } catch (PDOException $e) {
     // Table may not exist yet
@@ -420,4 +458,93 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php endforeach; ?>
   </Table>
  </Worksheet>
+<?php if (!$es_inicial): ?>
+<?php
+    $trimestresAnualesMapa = [];
+    foreach ($agregadoTrimestres as $porTrim) {
+        foreach ($porTrim as $trim => $ign) {
+            $trimestresAnualesMapa[$trim] = true;
+        }
+    }
+    foreach ($notasTrimestralesPorTrimestre as $porTrim) {
+        foreach ($porTrim as $trim => $ign) {
+            $trimestresAnualesMapa[$trim] = true;
+        }
+    }
+    if (empty($trimestresAnualesMapa)) {
+        $trimestresAnualesMapa = [1 => true, 2 => true, 3 => true];
+    }
+    $trimestresAnuales = array_keys($trimestresAnualesMapa);
+    sort($trimestresAnuales);
+?>
+ <Worksheet ss:Name="Promedio Anual">
+  <Table>
+   <Column ss:Width="30"/>
+   <Column ss:Width="230"/>
+<?php foreach ($trimestresAnuales as $trim): ?>
+   <Column ss:Width="80"/>
+<?php endforeach; ?>
+   <Column ss:Width="90"/>
+   <Row>
+    <Cell ss:StyleID="titulo"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="subtitulo"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Promedio anual de calificaciones</Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="header"><Data ss:Type="String">#</Data></Cell>
+    <Cell ss:StyleID="header"><Data ss:Type="String">Estudiante</Data></Cell>
+<?php foreach ($trimestresAnuales as $trim): ?>
+    <Cell ss:StyleID="hTotal"><Data ss:Type="String">T<?php echo $trim; ?></Data></Cell>
+<?php endforeach; ?>
+    <Cell ss:StyleID="hAuto"><Data ss:Type="String">Promedio Anual</Data></Cell>
+   </Row>
+<?php $n = 1; ?>
+<?php foreach ($estudiantes as $est): ?>
+<?php
+    $idEst = (int)$est['id_estudiante'];
+    $totalesPorTrimestre = [];
+    foreach ($trimestresAnuales as $trim) {
+        $prom95 = null;
+        if (isset($agregadoTrimestres[$idEst][$trim])) {
+            $dataTrim = $agregadoTrimestres[$idEst][$trim];
+            if ($dataTrim['contador'] > 0) {
+                $prom95 = $dataTrim['suma'] / $dataTrim['contador'];
+            }
+        }
+        $autoData = $notasTrimestralesPorTrimestre[$idEst][$trim]['autoevaluacion'] ?? null;
+        $extraData = $notasTrimestralesPorTrimestre[$idEst][$trim]['nota_extra'] ?? null;
+        $autoVal = ($autoData !== null && $autoData !== '' && is_numeric($autoData)) ? (float)$autoData : null;
+        $extraVal = ($extraData !== null && $extraData !== '' && is_numeric($extraData)) ? (float)$extraData : null;
+        $totalTrim = null;
+        if ($prom95 !== null || $autoVal !== null || $extraVal !== null) {
+            $totalTrim = ($prom95 ?? 0) + ($autoVal ?? 0) + ($extraVal ?? 0);
+        }
+        $totalesPorTrimestre[$trim] = $totalTrim;
+    }
+    $totalesValidos = array_filter($totalesPorTrimestre, fn($v) => $v !== null);
+    $promAnual = count($totalesValidos) > 0 ? array_sum($totalesValidos) / count($totalesValidos) : null;
+?>
+   <Row>
+    <Cell ss:StyleID="num"><Data ss:Type="Number"><?php echo $n++; ?></Data></Cell>
+    <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEsc($est['nombre']); ?></Data></Cell>
+<?php foreach ($trimestresAnuales as $trim): ?>
+<?php $totalTrim = $totalesPorTrimestre[$trim]; ?>
+<?php if ($totalTrim !== null): ?>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo round($totalTrim, 2); ?></Data></Cell>
+<?php else: ?>
+    <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
+<?php endif; ?>
+<?php endforeach; ?>
+<?php if ($promAnual !== null): ?>
+    <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo round($promAnual, 2); ?></Data></Cell>
+<?php else: ?>
+    <Cell ss:StyleID="notaFinal"><Data ss:Type="String"></Data></Cell>
+<?php endif; ?>
+   </Row>
+<?php endforeach; ?>
+  </Table>
+ </Worksheet>
+<?php endif; ?>
 </Workbook>
