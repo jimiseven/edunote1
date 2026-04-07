@@ -457,6 +457,20 @@ $estudiantes_ordenados = $estudiantes;
             color: #0f172a !important;
         }
 
+        .centralizador-table tbody tr.top-performer-row td {
+            background: #dcfce7 !important;
+            color: #14532d !important;
+            box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+        }
+
+        .centralizador-table tbody tr.top-performer-row td.number-cell,
+        .centralizador-table tbody tr.top-performer-row td.position-cell,
+        .centralizador-table tbody tr.top-performer-row td.student-name {
+            background: #bbf7d0 !important;
+            color: #14532d !important;
+            box-shadow: 1px 0 0 rgba(34, 197, 94, 0.35);
+        }
+
         .centralizador-table tbody tr:hover td:nth-child(1),
         .centralizador-table tbody tr:hover td:nth-child(2),
         .centralizador-table tbody tr:hover td:nth-child(3) {
@@ -715,6 +729,20 @@ $estudiantes_ordenados = $estudiantes;
         body.dark-mode .centralizador-table tbody tr:nth-child(even) td:nth-child(3) {
             background: #131d31 !important;
             color: #dbeafe !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td {
+            background: rgba(34, 197, 94, 0.35) !important;
+            color: #ecfdf5 !important;
+            box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.5);
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.number-cell,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.position-cell,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.student-name {
+            background: rgba(134, 239, 172, 0.55) !important;
+            color: #064e3b !important;
+            box-shadow: 1px 0 0 rgba(134, 239, 172, 0.4) !important;
         }
 
         body.dark-mode .centralizador-table tbody tr:hover td {
@@ -1091,7 +1119,11 @@ $estudiantes_ordenados = $estudiantes;
                             <tbody>
                                 <?php $contador = 1; ?>
                                 <?php foreach ($estudiantes_ordenados as $estudiante): ?>
-                                    <tr>
+                                    <?php
+                                    $posicionEst = $posiciones[$estudiante['id_estudiante']] ?? null;
+                                    $esTopPerformer = $posicionEst !== null && $posicionEst <= 3;
+                                    ?>
+                                    <tr class="<?= $esTopPerformer ? 'top-performer-row' : '' ?>">
                                         <td class="number-cell"><?= $contador++ ?></td>
                                         <td class="position-cell"><?= $posiciones[$estudiante['id_estudiante']] ?></td>
                                         <td class="student-name">
