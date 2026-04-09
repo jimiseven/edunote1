@@ -43,6 +43,143 @@ function tablaDetalleCalificacionesDisponible(PDO $conn) {
     }
 }
 
+function buscarRelacionComplementaria(PDO $conn, int $materiaId, string $gestionActual, bool $comoPrincipal): ?array {
+    $columnaFiltro = $comoPrincipal ? 'id_materia_principal' : 'id_materia_complementaria';
+    $columnaRelacion = $comoPrincipal ? 'id_materia_complementaria' : 'id_materia_principal';
+    $sql = "SELECT $columnaRelacion AS materia_relacionada, porcentaje_transferencia, gestion
+            FROM materias_complementarias
+            WHERE $columnaFiltro = ?
+              AND (gestion = '' OR gestion = ?)
+            ORDER BY CASE WHEN gestion = ? THEN 2 WHEN gestion = '' THEN 1 ELSE 0 END DESC
+            LIMIT 1";
+    try {
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$materiaId, $gestionActual, $gestionActual]);
+        $fila = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$fila) {
+            return null;
+        }
+        $fila['materia_relacionada'] = (int)$fila['materia_relacionada'];
+        $fila['porcentaje_transferencia'] = (float)$fila['porcentaje_transferencia'];
+        return $fila;
+    } catch (PDOException $e) {
+        return null;
+    }
+}
+
+function aplicarBonusComplementario(
+    PDO $conn,
+    int $idCurso,
+    int $materiaPrincipalId,
+    int $materiaComplementariaId,
+    string $gestion,
+    int $trimestre,
+    float $porcentajeTransferencia
+): void {
+    if ($materiaPrincipalId <= 0 || $materiaComplementariaId <= 0 || $porcentajeTransferencia <= 0) {
+        return;
+    }
+
+    $stmtEst = $conn->prepare('SELECT id_estudiante FROM estudiantes WHERE id_curso = ?');
+    $stmtEst->execute([$idCurso]);
+    $listaEstudiantes = $stmtEst->fetchAll(PDO::FETCH_COLUMN, 0);
+    if (empty($listaEstudiantes)) {
+        return;
+    }
+
+    $stmtPromParciales = $conn->prepare(
+        "SELECT e.id_estudiante,
+                AVG(CASE WHEN pe.id_periodo_evaluacion IS NOT NULL THEN cp.calificacion END) AS promedio_parciales
+         FROM estudiantes e
+         LEFT JOIN calificaciones_parciales cp
+                ON cp.id_estudiante = e.id_estudiante
+               AND cp.id_materia = ?
+         LEFT JOIN periodos_evaluacion pe
+                ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+               AND pe.gestion = ?
+               AND pe.trimestre = ?
+         WHERE e.id_curso = ?
+         GROUP BY e.id_estudiante"
+    );
+    $stmtPromParciales->execute([$materiaComplementariaId, $gestion, $trimestre, $idCurso]);
+    $promParciales = [];
+    foreach ($stmtPromParciales->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $promParciales[(int)$row['id_estudiante']] = $row['promedio_parciales'] !== null ? (float)$row['promedio_parciales'] : null;
+    }
+
+    $stmtTrimestralComp = $conn->prepare(
+        "SELECT e.id_estudiante, ct.autoevaluacion, ct.nota_extra
+         FROM estudiantes e
+         LEFT JOIN calificaciones_trimestrales ct
+                ON ct.id_estudiante = e.id_estudiante
+               AND ct.id_materia = ?
+               AND ct.gestion = ?
+               AND ct.trimestre = ?
+         WHERE e.id_curso = ?"
+    );
+    $stmtTrimestralComp->execute([$materiaComplementariaId, $gestion, $trimestre, $idCurso]);
+    $trimestralComp = [];
+    foreach ($stmtTrimestralComp->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $trimestralComp[(int)$row['id_estudiante']] = [
+            'autoevaluacion' => $row['autoevaluacion'] !== null ? (float)$row['autoevaluacion'] : null,
+            'nota_extra' => $row['nota_extra'] !== null ? (float)$row['nota_extra'] : null,
+        ];
+    }
+
+    $stmtTrimestralPrincipal = $conn->prepare(
+        "SELECT id_estudiante, autoevaluacion, nota_extra, id_profesor
+         FROM calificaciones_trimestrales
+         WHERE id_materia = ? AND gestion = ? AND trimestre = ? AND id_estudiante IN (
+             SELECT id_estudiante FROM estudiantes WHERE id_curso = ?
+         )"
+    );
+    $stmtTrimestralPrincipal->execute([$materiaPrincipalId, $gestion, $trimestre, $idCurso]);
+    $principalExistente = [];
+    foreach ($stmtTrimestralPrincipal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $principalExistente[(int)$row['id_estudiante']] = $row;
+    }
+
+    $stmtUpdate = $conn->prepare(
+        'UPDATE calificaciones_trimestrales
+         SET nota_extra = ?
+         WHERE id_estudiante = ? AND id_materia = ? AND gestion = ? AND trimestre = ?'
+    );
+    $stmtInsert = $conn->prepare(
+        'INSERT INTO calificaciones_trimestrales
+            (id_estudiante, id_materia, gestion, trimestre, autoevaluacion, nota_extra, id_profesor)
+         VALUES (?, ?, ?, ?, NULL, ?, NULL)'
+    );
+
+    foreach ($listaEstudiantes as $idEst) {
+        $idEst = (int)$idEst;
+        $parcial = $promParciales[$idEst] ?? null;
+        $parcial = $parcial !== null ? min(max((float)$parcial, 0.0), 95.0) : 0.0;
+
+        $compData = $trimestralComp[$idEst] ?? ['autoevaluacion' => null, 'nota_extra' => null];
+        $autoComp = $compData['autoevaluacion'] !== null ? max(min((float)$compData['autoevaluacion'], 5.0), 0.0) : 0.0;
+        $extraComp = $compData['nota_extra'] !== null ? max((float)$compData['nota_extra'], 0.0) : 0.0;
+
+        $notaFinalComplementaria = $parcial + $autoComp + $extraComp;
+        if ($notaFinalComplementaria > 100) {
+            $notaFinalComplementaria = 100;
+        }
+
+        $bonus = round(($notaFinalComplementaria / 100.0) * $porcentajeTransferencia, 2);
+        if ($bonus > $porcentajeTransferencia) {
+            $bonus = $porcentajeTransferencia;
+        }
+        if ($bonus < 0) {
+            $bonus = 0.0;
+        }
+
+        if (isset($principalExistente[$idEst])) {
+            $stmtUpdate->execute([$bonus, $idEst, $materiaPrincipalId, $gestion, $trimestre]);
+        } elseif ($bonus > 0) {
+            $stmtInsert->execute([$idEst, $materiaPrincipalId, $gestion, $trimestre, $bonus]);
+        }
+    }
+}
+
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     header('Location: ../index.php');
     exit();
@@ -84,6 +221,15 @@ if (!$curso) {
 }
 
 $es_inicial = ($curso['nivel'] == 'Inicial');
+$es_primaria_basica = ($curso['nivel'] == 'Primaria' && isset($curso['curso']) && (int)$curso['curso'] >= 1 && (int)$curso['curso'] <= 6);
+$relacionComplementariaPrincipal = $es_primaria_basica ? buscarRelacionComplementaria($conn, (int)$curso['id_materia'], $gestionActual, true) : null;
+$relacionComplementariaComoSub = $es_primaria_basica ? buscarRelacionComplementaria($conn, (int)$curso['id_materia'], $gestionActual, false) : null;
+$es_materia_principal_complementada = $relacionComplementariaPrincipal !== null;
+$es_materia_complementaria = $relacionComplementariaComoSub !== null;
+$materiaComplementariaId = $es_materia_principal_complementada ? (int)$relacionComplementariaPrincipal['materia_relacionada'] : 0;
+$materiaPrincipalDesdeComplementariaId = $es_materia_complementaria ? (int)$relacionComplementariaComoSub['materia_relacionada'] : 0;
+$porcentajeTransferenciaPrincipal = $es_materia_principal_complementada ? (float)$relacionComplementariaPrincipal['porcentaje_transferencia'] : 0.0;
+$porcentajeTransferenciaComoComplementaria = $es_materia_complementaria ? (float)$relacionComplementariaComoSub['porcentaje_transferencia'] : 0.0;
 $campo = $es_inicial ? 'comentario' : 'calificacion';
 if ($es_inicial) {
     $modalidadCarga = 'trimestres';
@@ -597,11 +743,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        if (!$es_inicial && $es_primaria_basica) {
+            if ($es_materia_complementaria && $porcentajeTransferenciaComoComplementaria > 0) {
+                aplicarBonusComplementario(
+                    $conn,
+                    (int)$curso['id_curso'],
+                    $materiaPrincipalDesdeComplementariaId,
+                    (int)$curso['id_materia'],
+                    $gestionActual,
+                    $trimestreSeleccionado,
+                    $porcentajeTransferenciaComoComplementaria
+                );
+            }
+            if ($es_materia_principal_complementada && $porcentajeTransferenciaPrincipal > 0) {
+                aplicarBonusComplementario(
+                    $conn,
+                    (int)$curso['id_curso'],
+                    (int)$curso['id_materia'],
+                    $materiaComplementariaId,
+                    $gestionActual,
+                    $trimestreSeleccionado,
+                    $porcentajeTransferenciaPrincipal
+                );
+            }
+        }
+
         $conn->commit();
         $redirectExtra = ['success' => 1, 'confirmar' => 1];
         if ($vistaActual === 'trimestral') {
             $redirectExtra['vista'] = 'trimestral';
         }
+
         header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra));
         exit();
     } catch (Exception $e) {
@@ -1096,6 +1268,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <?php else: ?>
                                         Selecciona trimestre y parcial, verifica que esté habilitado y carga las notas.
                                     <?php endif; ?>
+                                    <?php if (!$es_inicial && $es_materia_principal_complementada): ?>
+                                    <br><strong>Bonus automático:</strong> Hasta <?php echo $porcentajeTransferenciaPrincipal; ?> puntos provienen de Inglés. Los docentes no editan ese valor aquí.
+                                    <?php elseif (!$es_inicial && $es_materia_complementaria): ?>
+                                    <br><strong>Importante:</strong> La nota final de esta materia transfiere hasta <?php echo $porcentajeTransferenciaComoComplementaria; ?> puntos a Lenguaje.
+                                    <?php endif; ?>
                                 </p>
                             </div>
                             <div class="periodo-toolbar">
@@ -1165,6 +1342,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <span class="badge bg-light text-dark border periodo-badge">
                                         Gestión <?php echo htmlspecialchars($gestionActual); ?>
                                     </span>
+                                    <?php if (!$es_inicial && $es_materia_principal_complementada && $periodoEditable): ?>
+                                        <span class="badge bg-warning text-dark border" style="font-size:0.75rem;">
+                                            Bonus en sincronización…
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -1175,6 +1357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
                                 <input type="hidden" name="vista" value="trimestral">
+
                                 <?php if (!$trimestreEditableParaVistaTrimestral): ?>
                                     <div class="alert alert-warning">
                                         <strong>Modo consulta:</strong> Ningún parcial de este trimestre está habilitado.
@@ -1191,7 +1374,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <th class="th-sub-total" style="min-width:50px">P3</th>
                                                 <th class="th-total" style="min-width:55px">Promedio</th>
                                                 <th style="background:#fef3c7!important;color:#92400e!important;min-width:55px">Auto (5)</th>
+                                                <?php if ($es_materia_principal_complementada): ?>
+                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Bonus Inglés (<?php echo $porcentajeTransferenciaPrincipal; ?>)</th>
+                                                <?php else: ?>
                                                 <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Extra</th>
+                                                <?php endif; ?>
                                                 <th class="th-total" style="min-width:55px">TOTAL</th>
                                             </tr>
                                         </thead>
@@ -1208,6 +1395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                     $parciales95[$px] = isset($notas[$idEst][$trimestreSeleccionado][$px]) && is_numeric($notas[$idEst][$trimestreSeleccionado][$px])
                                                         ? (float)$notas[$idEst][$trimestreSeleccionado][$px] : null;
                                                 }
+
                                                 $vals95 = array_filter($parciales95, fn($v) => $v !== null);
                                                 $prom95 = count($vals95) ? array_sum($vals95) / count($vals95) : null;
                                                 $autoNum = ($autoVal !== '' && $autoVal !== null) ? (float)$autoVal : null;
@@ -1229,13 +1417,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                     </td>
                                                     <td>
-                                                        <input type="number" name="extra[<?php echo $idEst; ?>]"
-                                                               class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
-                                                               value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
-                                                               step="0.01" min="0" max="100"
-                                                               <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
+                                                        <?php if ($es_materia_principal_complementada): ?>
+                                                            <div class="form-control nota-input nota-disabled text-center" style="width:auto;min-width:55px;">
+                                                                <?php echo $extraVal !== null && $extraVal !== '' ? number_format((float)$extraVal, 2) : '0.00'; ?>
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <input type="number" name="extra[<?php echo $idEst; ?>]"
+                                                                   class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
+                                                                   value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
+                                                                   step="0.01" min="0" max="100"
+                                                                   <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
+                                                        <?php endif; ?>
                                                     </td>
-                                                    <td class="nota-ref total-final" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>">
+                                                    <td class="nota-ref total-final" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? number_format($extraNum, 2) : '0'; ?>">
                                                         <?php echo number_format($totalFinal, 2); ?>
                                                     </td>
                                                 </tr>
@@ -1660,7 +1854,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!totalCell) return;
             const prom95 = parseFloat(totalCell.dataset.prom95) || 0;
             const autoVal = autoInput ? (parseNumber(autoInput.value) ?? 0) : 0;
-            const extraVal = extraInput ? (parseNumber(extraInput.value) ?? 0) : 0;
+            let extraVal = 0;
+            if (extraInput) {
+                extraVal = parseNumber(extraInput.value) ?? 0;
+                totalCell.dataset.bonus = extraVal.toFixed(2);
+            } else if (totalCell.dataset.bonus !== undefined) {
+                extraVal = parseNumber(totalCell.dataset.bonus) ?? 0;
+            }
             totalCell.textContent = (prom95 + autoVal + extraVal).toFixed(2);
         }
 
