@@ -21,6 +21,39 @@ if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
     $gestionAlternativa = $matches[1];
 }
 
+if (!function_exists('obtener_sigla_materia')) {
+    function obtener_sigla_materia(string $nombre): string
+    {
+        $recortado = trim($nombre);
+        if ($recortado === '') {
+            return 'CB';
+        }
+        $sigla = mb_strtoupper(mb_substr($recortado, 0, 2));
+        $sigla = preg_replace('/[^A-Z0-9]/u', '', $sigla);
+        return $sigla !== '' ? $sigla : 'CB';
+    }
+}
+
+if (!function_exists('determinar_prioridad_gestion')) {
+    function determinar_prioridad_gestion(?string $gestionValor, string $gestionActual, ?string $gestionAlternativa): int
+    {
+        if ($gestionValor === null) {
+            return 2;
+        }
+        $gestionLimpia = trim($gestionValor);
+        if ($gestionLimpia === $gestionActual) {
+            return 4;
+        }
+        if ($gestionAlternativa !== null && $gestionLimpia === $gestionAlternativa) {
+            return 3;
+        }
+        if ($gestionLimpia === '') {
+            return 2;
+        }
+        return 1;
+    }
+}
+
 // 1. Obtener información del curso
 $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
 $stmt_curso->execute([$id_curso]);
@@ -55,6 +88,11 @@ $stmt_materias = $conn->prepare("
 $stmt_materias->execute([$id_curso]);
 $todas_materias = $stmt_materias->fetchAll(PDO::FETCH_ASSOC);
 
+$materiasPorId = [];
+foreach ($todas_materias as $materia) {
+    $materiasPorId[(int)$materia['id_materia']] = $materia;
+}
+
 $materias_padre = $materias_extra = $materias_hijas = [];
 foreach ($todas_materias as $materia) {
     if ($materia['es_extra'] == 1) {
@@ -87,6 +125,70 @@ $materias = array_merge(
         return array_merge($carry, [$padre], $padre['hijas']);
     }, [])
 );
+
+$materiasBonusInfo = [];
+$idsMaterias = array_column($todas_materias, 'id_materia');
+
+if (!empty($idsMaterias)) {
+    $placeholders = implode(',', array_fill(0, count($idsMaterias), '?'));
+    $sqlComplementarias = "SELECT id_materia_principal, id_materia_complementaria, porcentaje_transferencia, gestion
+                            FROM materias_complementarias
+                            WHERE id_materia_principal IN ($placeholders)";
+    $paramsComplementarias = array_map('intval', $idsMaterias);
+
+    $stmtComplementarias = $conn->prepare($sqlComplementarias);
+    $stmtComplementarias->execute($paramsComplementarias);
+
+    foreach ($stmtComplementarias->fetchAll(PDO::FETCH_ASSOC) as $relacion) {
+        $idPrincipal = (int)$relacion['id_materia_principal'];
+        $idComplementaria = (int)$relacion['id_materia_complementaria'];
+        $prioridad = determinar_prioridad_gestion($relacion['gestion'] ?? null, $gestionActual, $gestionAlternativa);
+        if ($prioridad <= 0) {
+            continue;
+        }
+
+        if (!isset($materiasBonusInfo[$idPrincipal]) || $prioridad > $materiasBonusInfo[$idPrincipal]['prioridad']) {
+            $nombreComplementaria = $materiasPorId[$idComplementaria]['nombre_materia'] ?? '';
+            $sigla = $nombreComplementaria !== '' ? obtener_sigla_materia($nombreComplementaria) : 'CB';
+            $materiasBonusInfo[$idPrincipal] = [
+                'id_complementaria' => $idComplementaria,
+                'porcentaje' => (float)$relacion['porcentaje_transferencia'],
+                'label' => 'P-' . $sigla,
+                'nombre_complementaria' => $nombreComplementaria
+            ];
+        }
+    }
+}
+
+$datosTrimestrales = [];
+$prioridadTrimestral = [];
+if (!empty($idsMaterias)) {
+    $placeholdersTrimestrales = implode(',', array_fill(0, count($idsMaterias), '?'));
+    $sqlTrimestral = "SELECT id_estudiante, id_materia, autoevaluacion, nota_extra, gestion
+                      FROM calificaciones_trimestrales
+                      WHERE trimestre = ?
+                        AND id_materia IN ($placeholdersTrimestrales)";
+    $paramsTrimestral = array_merge([(int)$trimestre], array_map('intval', $idsMaterias));
+
+    $stmtTrimestral = $conn->prepare($sqlTrimestral);
+    $stmtTrimestral->execute($paramsTrimestral);
+
+    foreach ($stmtTrimestral->fetchAll(PDO::FETCH_ASSOC) as $filaTrimestral) {
+        $idEstTr = (int)$filaTrimestral['id_estudiante'];
+        $idMatTr = (int)$filaTrimestral['id_materia'];
+        $prioridad = determinar_prioridad_gestion($filaTrimestral['gestion'] ?? null, $gestionActual, $gestionAlternativa);
+
+        if (!isset($prioridadTrimestral[$idEstTr][$idMatTr]) || $prioridad > $prioridadTrimestral[$idEstTr][$idMatTr]) {
+            $prioridadTrimestral[$idEstTr][$idMatTr] = $prioridad;
+            $autoeval = $filaTrimestral['autoevaluacion'];
+            $extra = $filaTrimestral['nota_extra'];
+            $datosTrimestrales[$idEstTr][$idMatTr] = [
+                'autoevaluacion' => ($autoeval !== null && $autoeval !== '') ? (float)$autoeval : null,
+                'nota_extra' => ($extra !== null && $extra !== '') ? (float)$extra : null
+            ];
+        }
+    }
+}
 
 // 5. Calificaciones parciales y promedios del trimestre
 $calificacionesParciales = [];
@@ -140,8 +242,41 @@ foreach ($estudiantes as $estudiante) {
     }
 }
 
+$bonusComplementarios = [];
+foreach ($estudiantes as $estudiante) {
+    $idEstudiante = (int)$estudiante['id_estudiante'];
+    foreach ($todas_materias as $materia) {
+        $idMateria = (int)$materia['id_materia'];
+        $promedioBase = $promediosMateriaTrimestre[$idEstudiante][$idMateria] ?? '';
+        $datosTri = $datosTrimestrales[$idEstudiante][$idMateria] ?? null;
+        $autoVal = $datosTri['autoevaluacion'] ?? null;
+        $extraVal = $datosTri['nota_extra'] ?? null;
+
+        $tieneBase = ($promedioBase !== '' && $promedioBase !== null);
+        $tieneAuto = ($autoVal !== null);
+        $tieneExtra = ($extraVal !== null);
+
+        if ($tieneBase || $tieneAuto || $tieneExtra) {
+            $baseNum = $tieneBase ? (float)$promedioBase : 0.0;
+            $autoNum = $tieneAuto ? (float)$autoVal : 0.0;
+            $extraNum = $tieneExtra ? (float)$extraVal : 0.0;
+            $promediosMateriaTrimestre[$idEstudiante][$idMateria] = number_format($baseNum + $autoNum + $extraNum, 2);
+        } else {
+            $promediosMateriaTrimestre[$idEstudiante][$idMateria] = '';
+        }
+
+        if (isset($materiasBonusInfo[$idMateria])) {
+            $bonusComplementarios[$idEstudiante][$idMateria] = $tieneExtra ? number_format((float)$extraVal, 2) : '';
+        }
+    }
+}
+
 foreach ($estudiantes as $estudiante) {
     foreach ($materias_padre_con_hijas as $padre) {
+        $idPadre = (int)$padre['id_materia'];
+        $sumatoriaPromediosHijas = 0;
+        $contadorHijas = 0;
+
         for ($parcial = 1; $parcial <= 3; $parcial++) {
             $suma = 0;
             $cont = 0;
@@ -152,16 +287,22 @@ foreach ($estudiantes as $estudiante) {
                     $cont++;
                 }
             }
-            $calificacionesParciales[$estudiante['id_estudiante']][$padre['id_materia']][$parcial] = $cont > 0 ? number_format($suma / $cont, 2) : '';
+            $calificacionesParciales[$estudiante['id_estudiante']][$idPadre][$parcial] = $cont > 0 ? number_format($suma / $cont, 2) : '';
         }
 
-        $parcialesPadre = $calificacionesParciales[$estudiante['id_estudiante']][$padre['id_materia']] ?? [];
-        $parcialesValidosPadre = array_filter($parcialesPadre, function ($valor) {
-            return $valor !== '' && $valor !== null;
-        });
-        $promediosMateriaTrimestre[$estudiante['id_estudiante']][$padre['id_materia']] = !empty($parcialesValidosPadre)
-            ? number_format(array_sum(array_map('floatval', $parcialesValidosPadre)) / count($parcialesValidosPadre), 2)
-            : '';
+        foreach ($padre['hijas'] as $hija) {
+            $notaHija = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$hija['id_materia']] ?? '';
+            if ($notaHija !== '' && $notaHija !== null) {
+                $sumatoriaPromediosHijas += (float)$notaHija;
+                $contadorHijas++;
+            }
+        }
+
+        if ($contadorHijas > 0) {
+            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$idPadre] = number_format($sumatoriaPromediosHijas / $contadorHijas, 2);
+        } else {
+            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$idPadre] = '';
+        }
     }
 }
 
@@ -169,11 +310,12 @@ $promedios_trimestre = [];
 foreach ($estudiantes as $estudiante) {
     $suma = $contador = 0;
     foreach ($materias as $mat) {
-        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id']))
+        if ($mat['es_extra'] == 1 || isset($mat['materia_padre_id'])) {
             continue;
+        }
         $nota = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
-        if ($nota !== '') {
-            $suma += floatval($nota);
+        if ($nota !== '' && $nota !== null) {
+            $suma += (float)$nota;
             $contador++;
         }
     }
@@ -351,11 +493,6 @@ foreach ($estudiantes as $estudiante) {
             box-shadow: 4px 0 12px rgba(37, 99, 235, 0.35);
         }
 
-        body.dark-mode .average-col {
-            background: #1e293b !important;
-            color: #e2e8f0;
-        }
-
         body.dark-mode .padre-th {
             background: #1f2937 !important;
             color: #f8fafc !important;
@@ -511,6 +648,18 @@ foreach ($estudiantes as $estudiante) {
         .subject-heading .bi-info-circle {
             font-size: 0.82rem;
             opacity: 0.78;
+        }
+
+        .bonus-col {
+            min-width: 76px;
+            text-align: center;
+            background: #fff4e6;
+            color: #b45309;
+            font-weight: 600;
+        }
+
+        .bonus-col.nota-baja {
+            color: #b45309 !important;
         }
 
         .average-col {
@@ -692,11 +841,6 @@ foreach ($estudiantes as $estudiante) {
             box-shadow: 4px 0 12px rgba(37, 99, 235, 0.35) !important;
         }
 
-        body.dark-mode .average-col {
-            background: #1c2a3d !important;
-            color: #e2e8f0 !important;
-        }
-
         body.dark-mode .padre-th {
             background: #223047 !important;
             color: #f8fafc !important;
@@ -815,6 +959,12 @@ foreach ($estudiantes as $estudiante) {
                         title: '<?= addslashes($mat['nombre_materia']) ?> P3',
                         dataKey: 'materia_<?= $mat['id_materia'] ?>_p3'
                     });
+                    <?php if (isset($materiasBonusInfo[$mat['id_materia']])): ?>
+                        headers.push({
+                            title: '<?= addslashes($mat['nombre_materia']) ?> <?= addslashes($materiasBonusInfo[$mat['id_materia']]['label']) ?>',
+                            dataKey: 'materia_<?= $mat['id_materia'] ?>_pin'
+                        });
+                    <?php endif; ?>
                     headers.push({
                         title: '<?= addslashes($mat['nombre_materia']) ?> Prom.',
                         dataKey: 'materia_<?= $mat['id_materia'] ?>_prom'
@@ -833,6 +983,9 @@ foreach ($estudiantes as $estudiante) {
                         'materia_<?= $mat['id_materia'] ?>_p1': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][1] ?? '--' ?>',
                         'materia_<?= $mat['id_materia'] ?>_p2': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][2] ?? '--' ?>',
                         'materia_<?= $mat['id_materia'] ?>_p3': '<?= $calificacionesParciales[$est['id_estudiante']][$mat['id_materia']][3] ?? '--' ?>',
+                        <?php if (isset($materiasBonusInfo[$mat['id_materia']])): ?>
+                        'materia_<?= $mat['id_materia'] ?>_pin': '<?= $bonusComplementarios[$est['id_estudiante']][$mat['id_materia']] ?? '--' ?>',
+                        <?php endif; ?>
                         'materia_<?= $mat['id_materia'] ?>_prom': '<?= $promediosMateriaTrimestre[$est['id_estudiante']][$mat['id_materia']] ?? '--' ?>'
                     <?php endforeach; ?>,
                         promedio: '<?= $promedios_trimestre[$est['id_estudiante']] ?>'
@@ -949,10 +1102,12 @@ foreach ($estudiantes as $estudiante) {
                                 $clase = 'hija-th';
                             elseif (!empty($mat['hijas']))
                                 $clase = 'padre-th';
+                            $bonusInfo = $materiasBonusInfo[$mat['id_materia']] ?? null;
+                            $colspan = 4 + ($bonusInfo ? 1 : 0);
                             $profesorMateria = trim((string)($mat['nombre_profesor'] ?? ''));
                             $textoProfesor = $profesorMateria !== '' ? $profesorMateria : 'Profesor no asignado';
                             ?>
-                            <th colspan="4" class="<?= $clase ?>">
+                            <th colspan="<?= $colspan ?>" class="<?= $clase ?>">
                                 <span class="subject-heading"
                                     data-bs-toggle="tooltip"
                                     data-bs-title="Profesor: <?= htmlspecialchars($textoProfesor, ENT_QUOTES) ?>">
@@ -960,15 +1115,22 @@ foreach ($estudiantes as $estudiante) {
                                     <i class="bi bi-info-circle"></i>
                                 </span>
                                 <?= $mat['es_extra'] ? '<small>(Extra)</small>' : '' ?>
+                                <?php if ($bonusInfo && !empty($bonusInfo['nombre_complementaria'])): ?>
+                                    <div><small class="text-muted">Bonus desde <?= htmlspecialchars($bonusInfo['nombre_complementaria']) ?></small></div>
+                                <?php endif; ?>
                             </th>
                         <?php endforeach; ?>
                         <th rowspan="2">Promedio</th>
                     </tr>
                     <tr class="trim-header-sub">
                         <?php foreach ($materias as $mat): ?>
+                            <?php $bonusInfo = $materiasBonusInfo[$mat['id_materia']] ?? null; ?>
                             <th class="partial-col">P1</th>
                             <th class="partial-col">P2</th>
                             <th class="partial-col">P3</th>
+                            <?php if ($bonusInfo): ?>
+                                <th class="bonus-col" data-bs-toggle="tooltip" data-bs-title="<?= htmlspecialchars('Puntos ponderados desde ' . ($bonusInfo['nombre_complementaria'] ?? 'materia complementaria'), ENT_QUOTES) ?>"><?= htmlspecialchars($bonusInfo['label']) ?></th>
+                            <?php endif; ?>
                             <th class="average-col">Prom.</th>
                         <?php endforeach; ?>
                     </tr>
@@ -996,10 +1158,15 @@ foreach ($estudiantes as $estudiante) {
                                 $p2 = $calificacionesParciales[$estudiante['id_estudiante']][$mat['id_materia']][2] ?? '';
                                 $p3 = $calificacionesParciales[$estudiante['id_estudiante']][$mat['id_materia']][3] ?? '';
                                 $promedioMateria = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
+                                $bonusInfo = $materiasBonusInfo[$mat['id_materia']] ?? null;
+                                $bonusVal = $bonusInfo ? ($bonusComplementarios[$estudiante['id_estudiante']][$mat['id_materia']] ?? '') : '';
                                 ?>
                                 <td class="partial-col <?= $clase ?> <?= (is_numeric($p1) && floatval($p1) < 51) ? 'nota-baja' : '' ?>"><?= $p1 !== '' ? $p1 : '--' ?></td>
                                 <td class="partial-col <?= $clase ?> <?= (is_numeric($p2) && floatval($p2) < 51) ? 'nota-baja' : '' ?>"><?= $p2 !== '' ? $p2 : '--' ?></td>
                                 <td class="partial-col <?= $clase ?> <?= (is_numeric($p3) && floatval($p3) < 51) ? 'nota-baja' : '' ?>"><?= $p3 !== '' ? $p3 : '--' ?></td>
+                                <?php if ($bonusInfo): ?>
+                                    <td class="bonus-col" title="<?= htmlspecialchars('Puntos ponderados desde ' . ($bonusInfo['nombre_complementaria'] ?? 'materia complementaria'), ENT_QUOTES) ?>"><?= $bonusVal !== '' ? $bonusVal : '--' ?></td>
+                                <?php endif; ?>
                                 <td class="average-col <?= $clase ?> <?= (is_numeric($promedioMateria) && floatval($promedioMateria) < 51) ? 'nota-baja' : '' ?>"><?= $promedioMateria !== '' ? $promedioMateria : '--' ?></td>
                             <?php endforeach; ?>
                             <td class="fw-bold"><?= $promedios_trimestre[$estudiante['id_estudiante']] ?></td>
