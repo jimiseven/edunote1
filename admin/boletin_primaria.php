@@ -9,6 +9,19 @@ if (!isset($_SESSION['user_id'])) {
 
 $conn = (new Database())->connect();
 
+$anioBoletinPdf = (string)date('Y');
+try {
+    $stmtGestionBoletin = $conn->query('SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1');
+    if ($stmtGestionBoletin) {
+        $gestBoletin = trim((string)$stmtGestionBoletin->fetchColumn());
+        if ($gestBoletin !== '' && preg_match('/\b(20\d{2})\b/', $gestBoletin, $mAnio)) {
+            $anioBoletinPdf = $mAnio[1];
+        }
+    }
+} catch (PDOException $e) {
+    // Mantener año por defecto del servidor
+}
+
 // Obtener ID del curso desde parámetro GET
 $id_curso = $_GET['id_curso'] ?? 0;
 
@@ -542,6 +555,7 @@ foreach ($estudiantes as $est) {
             const calificaciones = <?= json_encode($calificaciones) ?>;
             const nombreCurso = <?= json_encode(htmlspecialchars_decode($nombre_curso)) ?>;
             const trimestre = <?= $vista == 'trimestral' ? $trimestre : 1 ?>;
+            const anioGestionBoletin = <?= json_encode($anioBoletinPdf) ?>;
 
             const {
                 jsPDF
@@ -586,7 +600,7 @@ foreach ($estudiantes as $est) {
                 doc.setFont('helvetica', 'bold');
                 doc.text("GESTIÓN :", 150, 33);
                 doc.setFont('helvetica', 'normal');
-                doc.text("2025", 180, 33);
+                doc.text(String(anioGestionBoletin), 180, 33);
 
                 doc.line(20, 37, 190, 37); // Línea separadora
 
