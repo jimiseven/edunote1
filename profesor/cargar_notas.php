@@ -868,15 +868,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (isset($_POST['guardar_trimestral'])) {
+            $promedioParcialesTrimestre = static function (int $idEst) use ($notas, $trimestreSeleccionado): ?float {
+                $parciales95 = [];
+                for ($px = 1; $px <= 3; $px++) {
+                    $v = $notas[$idEst][$trimestreSeleccionado][$px] ?? null;
+                    $parciales95[$px] = ($v !== null && $v !== '' && is_numeric($v)) ? (float)$v : null;
+                }
+                $vals = array_filter($parciales95, static fn($x) => $x !== null);
+                return count($vals) > 0 ? array_sum($vals) / count($vals) : null;
+            };
+
+            $trimestralAGuardar = [];
             foreach ($estudiantes as $estudiante) {
                 $idEst = (int)$estudiante['id_estudiante'];
-                $autoVal = isset($_POST['auto'][$idEst]) ? trim($_POST['auto'][$idEst]) : '';
-                $extraVal = isset($_POST['extra'][$idEst]) ? trim($_POST['extra'][$idEst]) : '';
+                $autoVal = isset($_POST['auto'][$idEst]) ? trim((string)$_POST['auto'][$idEst]) : '';
+                $extraVal = isset($_POST['extra'][$idEst]) ? trim((string)$_POST['extra'][$idEst]) : '';
 
                 $autoNum = ($autoVal !== '' && is_numeric(str_replace(',', '.', $autoVal)))
                     ? (float)str_replace(',', '.', $autoVal) : null;
                 $extraNum = ($extraVal !== '' && is_numeric(str_replace(',', '.', $extraVal)))
                     ? (float)str_replace(',', '.', $extraVal) : null;
+
+                if ($es_materia_principal_complementada && ($extraVal === '' || $extraNum === null)) {
+                    $exPrev = $notasTrimestrales[$idEst][$trimestreSeleccionado]['nota_extra'] ?? null;
+                    if ($exPrev !== null && $exPrev !== '' && is_numeric($exPrev)) {
+                        $extraNum = (float)$exPrev;
+                    }
+                }
+
+                if ($autoNum !== null) {
+                    if ($autoNum < 0 || $autoNum > 5) {
+                        throw new Exception('La autoevaluación debe estar entre 0 y 5 puntos: ' . $estudiante['nombre']);
+                    }
+                }
+                if ($extraNum !== null) {
+                    if ($extraNum < 0 || $extraNum > 5) {
+                        throw new Exception('El puntaje extra debe estar entre 0 y 5 puntos: ' . $estudiante['nombre']);
+                    }
+                }
+
+                $prom95 = $promedioParcialesTrimestre($idEst);
+                $promPart = $prom95 !== null ? $prom95 : 0.0;
+                $totalTrim = $promPart + ($autoNum ?? 0) + ($extraNum ?? 0);
+                if ($totalTrim > 100.00001) {
+                    throw new Exception(
+                        'La nota trimestral total no puede superar 100 puntos: ' . $estudiante['nombre']
+                        . ' (promedio parciales ' . number_format($promPart, 2)
+                        . ' + auto ' . number_format((float)($autoNum ?? 0), 2)
+                        . ' + extra ' . number_format((float)($extraNum ?? 0), 2)
+                        . ' = ' . number_format($totalTrim, 2) . ').'
+                    );
+                }
+
+                $trimestralAGuardar[$idEst] = ['auto' => $autoNum, 'extra' => $extraNum];
+            }
+
+            foreach ($estudiantes as $estudiante) {
+                $idEst = (int)$estudiante['id_estudiante'];
+                $autoNum = $trimestralAGuardar[$idEst]['auto'];
+                $extraNum = $trimestralAGuardar[$idEst]['extra'];
 
                 if ($autoNum === null && $extraNum === null) {
                     $conn->prepare("DELETE FROM calificaciones_trimestrales
@@ -1615,7 +1665,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                             <input type="number" name="extra[<?php echo $idEst; ?>]"
                                                                    class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
                                                                    value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
-                                                                   step="0.01" min="0" max="100"
+                                                                   step="0.01" min="0" max="5"
                                                                    <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                         <?php endif; ?>
                                                     </td>
