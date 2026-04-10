@@ -43,6 +43,66 @@ function tablaDetalleCalificacionesDisponible(PDO $conn) {
     }
 }
 
+function asegurarTablaEtiquetasActividades(PDO $conn): void {
+    $conn->exec("CREATE TABLE IF NOT EXISTS `parciales_etiquetas_actividades` (
+        `id_materia` int(11) NOT NULL,
+        `id_periodo_evaluacion` int(11) NOT NULL,
+        `area` enum('SER','SABER','HACER') NOT NULL,
+        `indice` tinyint unsigned NOT NULL,
+        `etiqueta` varchar(120) NOT NULL DEFAULT '',
+        `actualizado_en` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (`id_materia`,`id_periodo_evaluacion`,`area`,`indice`),
+        KEY `idx_periodo_materia` (`id_materia`,`id_periodo_evaluacion`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+}
+
+/**
+ * @return array{SER: array<int, string>, SABER: array<int, string>, HACER: array<int, string>}
+ */
+function cargarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo): array {
+    $default = ['SER' => [], 'SABER' => [], 'HACER' => []];
+    for ($i = 1; $i <= 4; $i++) {
+        $default['SER'][$i] = '';
+    }
+    for ($i = 1; $i <= 8; $i++) {
+        $default['SABER'][$i] = '';
+        $default['HACER'][$i] = '';
+    }
+    $stmt = $conn->prepare('SELECT area, indice, etiqueta FROM parciales_etiquetas_actividades
+        WHERE id_materia = ? AND id_periodo_evaluacion = ?');
+    $stmt->execute([$idMateria, $idPeriodo]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $a = $row['area'];
+        $idx = (int)$row['indice'];
+        if (isset($default[$a][$idx])) {
+            $default[$a][$idx] = (string)$row['etiqueta'];
+        }
+    }
+    return $default;
+}
+
+function guardarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo, array $postEtiquetas): void {
+    // No llamar a asegurarTablaEtiquetasActividades() aquí: CREATE TABLE hace COMMIT implícito en MySQL y rompe la transacción activa.
+    $stmtDel = $conn->prepare('DELETE FROM parciales_etiquetas_actividades WHERE id_materia = ? AND id_periodo_evaluacion = ?');
+    $stmtDel->execute([$idMateria, $idPeriodo]);
+    $stmtIns = $conn->prepare('INSERT INTO parciales_etiquetas_actividades
+        (id_materia, id_periodo_evaluacion, area, indice, etiqueta) VALUES (?, ?, ?, ?, ?)');
+    $areas = ['SER' => 4, 'SABER' => 8, 'HACER' => 8];
+    foreach ($areas as $area => $max) {
+        $bloque = $postEtiquetas[$area] ?? null;
+        if (!is_array($bloque)) {
+            continue;
+        }
+        for ($i = 1; $i <= $max; $i++) {
+            $texto = isset($bloque[$i]) ? trim((string)$bloque[$i]) : '';
+            $texto = mb_substr($texto, 0, 120);
+            if ($texto !== '') {
+                $stmtIns->execute([$idMateria, $idPeriodo, $area, $i, $texto]);
+            }
+        }
+    }
+}
+
 function buscarRelacionComplementaria(PDO $conn, int $materiaId, string $gestionActual, bool $comoPrincipal): ?array {
     $columnaFiltro = $comoPrincipal ? 'id_materia_principal' : 'id_materia_complementaria';
     $columnaRelacion = $comoPrincipal ? 'id_materia_complementaria' : 'id_materia_principal';
@@ -396,6 +456,20 @@ if (!$es_inicial) {
     }
 }
 
+$etiquetasActividades = [
+    'SER' => [1 => '', 2 => '', 3 => '', 4 => ''],
+    'SABER' => array_fill(1, 8, ''),
+    'HACER' => array_fill(1, 8, ''),
+];
+if (!$es_inicial) {
+    try {
+        asegurarTablaEtiquetasActividades($conn);
+        $etiquetasActividades = cargarEtiquetasActividades($conn, (int)$curso['id_materia'], $idPeriodoSeleccionado);
+    } catch (PDOException $e) {
+        // Sin tabla o sin permisos: solo placeholders en la vista
+    }
+}
+
 $notasTrimestrales = [];
 try {
     $stmt = $conn->prepare("SELECT id_estudiante, trimestre, autoevaluacion, nota_extra
@@ -450,6 +524,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $idPeriodoSeleccionado = (int)$periodoValidado['id_periodo_evaluacion'];
+        // DDL fuera de la transacción: CREATE TABLE provoca COMMIT implícito y deja "There is no active transaction" al hacer commit().
+        try {
+            asegurarTablaEtiquetasActividades($conn);
+        } catch (PDOException $e) {
+            // Sin permisos o error de esquema: las etiquetas pueden no guardarse; las notas siguen igual.
+        }
         $conn->beginTransaction();
 
         if (isset($_POST['guardar_notas'])) {
@@ -546,6 +626,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             . implode('; ', $detalle) . '.'
                         );
                     }
+                }
+            }
+
+            if (!$es_inicial && !empty($periodoEditable) && isset($_POST['guardar_notas'])) {
+                $etiPost = $_POST['etiquetas_actividades'] ?? [];
+                if (is_array($etiPost)) {
+                    guardarEtiquetasActividades($conn, (int)$curso['id_materia'], $idPeriodoSeleccionado, $etiPost);
                 }
             }
 
@@ -832,7 +919,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $conn->commit();
+        if ($conn->inTransaction()) {
+            $conn->commit();
+        }
         $redirectExtra = ['success' => 1, 'confirmar' => 1];
         if ($vistaActual === 'trimestral') {
             $redirectExtra['vista'] = 'trimestral';
@@ -1097,7 +1186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-bottom: 2px solid #94a3b8;
         }
         .table-container thead tr:first-child th { top: 0; }
-        .table-container thead tr:nth-child(2) th { top: 28px; }
+        .table-container thead tr:nth-child(2) th { top: 32px; }
+        .table-container thead tr:nth-child(3) th { top: 124px; }
         .table-container thead th,
         .table-container tbody td {
             padding: 3px 2px;
@@ -1139,6 +1229,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .th-sub-saber { background: #eff6ff !important; font-size: 0.7rem; }
         .th-sub-hacer { background: #fff7ed !important; font-size: 0.7rem; }
         .th-sub-total { background: #faf5ff !important; font-size: 0.7rem; font-weight: 700; }
+        .th-etiqueta {
+            vertical-align: bottom !important;
+            padding: 3px 2px !important;
+            max-width: 36px;
+        }
+        .actividad-etiqueta-input {
+            display: block;
+            width: 100%;
+            max-width: 30px;
+            min-height: 76px;
+            max-height: 120px;
+            margin: 0 auto;
+            font-size: 0.62rem;
+            line-height: 1.15;
+            padding: 4px 2px;
+            resize: vertical;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            text-orientation: mixed;
+            white-space: pre-wrap;
+            word-break: break-word;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .th-etiqueta-ser .actividad-etiqueta-input { background: #f0fdf4; border-color: #bbf7d0; }
+        .th-etiqueta-saber .actividad-etiqueta-input { background: #eff6ff; border-color: #bfdbfe; }
+        .th-etiqueta-hacer .actividad-etiqueta-input { background: #fff7ed; border-color: #fed7aa; }
+        .th-etiqueta-prom {
+            background: #f8fafc !important;
+            min-width: 40px;
+        }
+        .th-etiqueta-total {
+            background: #faf5ff !important;
+            min-width: 36px;
+        }
         .paste-col-btn {
             border: none;
             background: transparent;
@@ -1569,7 +1695,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <?php else: ?>
                                 <div class="helper-alert">
                                     <strong>Importante:</strong> Verifica que el orden de estudiantes coincida con tu lista antes de cargar notas.
-                                    <span class="d-block mt-1" style="font-size:0.85rem;">Rangos por casilla: <strong>SER</strong> 0–10, <strong>SABER</strong> 0–45, <strong>HACER</strong> 0–40. Puedes guardar solo algunos alumnos o todos; las áreas que dejes vacías en el formulario conservan el valor ya guardado en el periodo (si existía).</span>
+                                    <span class="d-block mt-1" style="font-size:0.85rem;">Rangos por casilla: <strong>SER</strong> 0–10, <strong>SABER</strong> 0–45, <strong>HACER</strong> 0–40. Puedes guardar solo algunos alumnos o todos; las áreas que dejes vacías en el formulario conservan el valor ya guardado en el periodo (si existía). En la fila superior de cada columna puedes escribir el nombre de la actividad (texto vertical); si la dejas vacía se muestra «Actividad N».</span>
                                 </div>
                                 <?php if (!$periodoEditable): ?>
                                     <div class="alert alert-warning">
@@ -1580,8 +1706,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <table class="table table-bordered">
                                         <thead class="table-light">
                                             <tr>
-                                                <th class="col-num">#</th>
-                                                <th class="col-nombre">Estudiante</th>
+                                                <th class="col-num"<?php echo !$es_inicial ? ' rowspan="3"' : ''; ?>>#</th>
+                                                <th class="col-nombre"<?php echo !$es_inicial ? ' rowspan="3"' : ''; ?>>Estudiante</th>
                                                 <?php if ($es_inicial): ?>
                                                     <th class="text-center <?php echo $periodoEditable ? 'periodo-activo-th' : 'periodo-inactivo-th'; ?>">
                                                         <?php echo $modalidadCarga === 'trimestres' ? 'Comentario trimestral' : 'Comentario parcial'; ?>
@@ -1595,8 +1721,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             </tr>
                                             <?php if (!$es_inicial): ?>
                                             <tr>
-                                                <th class="col-num"></th>
-                                                <th class="col-nombre"></th>
+                                                <?php for ($i = 1; $i <= 4; $i++): ?>
+                                                    <?php
+                                                    $etSer = trim((string)($etiquetasActividades['SER'][$i] ?? ''));
+                                                    $phSer = 'Actividad ' . $i;
+                                                    ?>
+                                                    <th class="th-etiqueta th-etiqueta-ser">
+                                                        <label class="visually-hidden" for="eti_ser_<?php echo $i; ?>">Nombre actividad SER <?php echo $i; ?></label>
+                                                        <textarea id="eti_ser_<?php echo $i; ?>"
+                                                                  name="etiquetas_actividades[SER][<?php echo $i; ?>]"
+                                                                  class="form-control actividad-etiqueta-input"
+                                                                  maxlength="120"
+                                                                  rows="4"
+                                                                  autocomplete="off"
+                                                                  placeholder="<?php echo htmlspecialchars($phSer); ?>"
+                                                                  <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>><?php echo htmlspecialchars($etSer); ?></textarea>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-etiqueta th-etiqueta-prom th-etiqueta-ser"></th>
+                                                <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                    <?php
+                                                    $etSab = trim((string)($etiquetasActividades['SABER'][$i] ?? ''));
+                                                    $phSab = 'Actividad ' . $i;
+                                                    ?>
+                                                    <th class="th-etiqueta th-etiqueta-saber">
+                                                        <label class="visually-hidden" for="eti_saber_<?php echo $i; ?>">Nombre actividad SABER <?php echo $i; ?></label>
+                                                        <textarea id="eti_saber_<?php echo $i; ?>"
+                                                                  name="etiquetas_actividades[SABER][<?php echo $i; ?>]"
+                                                                  class="form-control actividad-etiqueta-input"
+                                                                  maxlength="120"
+                                                                  rows="4"
+                                                                  autocomplete="off"
+                                                                  placeholder="<?php echo htmlspecialchars($phSab); ?>"
+                                                                  <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>><?php echo htmlspecialchars($etSab); ?></textarea>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-etiqueta th-etiqueta-prom th-etiqueta-saber"></th>
+                                                <?php for ($i = 1; $i <= 8; $i++): ?>
+                                                    <?php
+                                                    $etHac = trim((string)($etiquetasActividades['HACER'][$i] ?? ''));
+                                                    $phHac = 'Actividad ' . $i;
+                                                    ?>
+                                                    <th class="th-etiqueta th-etiqueta-hacer">
+                                                        <label class="visually-hidden" for="eti_hacer_<?php echo $i; ?>">Nombre actividad HACER <?php echo $i; ?></label>
+                                                        <textarea id="eti_hacer_<?php echo $i; ?>"
+                                                                  name="etiquetas_actividades[HACER][<?php echo $i; ?>]"
+                                                                  class="form-control actividad-etiqueta-input"
+                                                                  maxlength="120"
+                                                                  rows="4"
+                                                                  autocomplete="off"
+                                                                  placeholder="<?php echo htmlspecialchars($phHac); ?>"
+                                                                  <?php echo !$periodoEditable ? 'readonly disabled' : ''; ?>><?php echo htmlspecialchars($etHac); ?></textarea>
+                                                    </th>
+                                                <?php endfor; ?>
+                                                <th class="th-etiqueta th-etiqueta-prom th-etiqueta-hacer"></th>
+                                                <th class="th-etiqueta th-etiqueta-total"></th>
+                                            </tr>
+                                            <tr>
                                                 <?php for ($i = 1; $i <= 4; $i++): ?>
                                                     <th class="th-sub-ser">
                                                         <?php echo $i; ?>
