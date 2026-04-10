@@ -22,6 +22,7 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $id_curso = intval($_GET['id']);
 $vista = isset($_GET['vista']) ? $_GET['vista'] : 'anual';
 $trimestre = isset($_GET['trimestre']) ? intval($_GET['trimestre']) : 1;
+$aplicaLenguajeComunicacion = ($id_curso >= 106 && $id_curso <= 117);
 
 $database = new Database();
 $conn = $database->connect();
@@ -85,6 +86,20 @@ $stmt_materias = $conn->prepare("
 $stmt_materias->execute([$id_curso]);
 $todas_materias = $stmt_materias->fetchAll(PDO::FETCH_ASSOC);
 
+$normalizarNombreMateria = static function ($nombre) {
+    $texto = mb_strtolower(trim((string)$nombre), 'UTF-8');
+    $reemplazos = [
+        'á' => 'a',
+        'é' => 'e',
+        'í' => 'i',
+        'ó' => 'o',
+        'ú' => 'u',
+        'ü' => 'u',
+        'ñ' => 'n',
+    ];
+    return strtr($texto, $reemplazos);
+};
+
 // Reorganiza materias: padres simples, extras, luego padres con hijas + hijas
 $materias_padre = [];
 $materias_extra = [];
@@ -128,6 +143,63 @@ $materias = array_merge(
 // Añade las hijas después de cada padre correspondiente
 foreach ($materias_padre_con_hijas as $padre) {
     $materias = array_merge($materias, $padre['hijas']);
+}
+
+$materiaLenguajeId = null;
+$materiaInglesId = null;
+foreach ($todas_materias as $materiaTmp) {
+    $nombreNormalizado = $normalizarNombreMateria($materiaTmp['nombre_materia']);
+    if ($materiaLenguajeId === null && preg_match('/\blenguaje\b/', $nombreNormalizado)) {
+        $materiaLenguajeId = (int)$materiaTmp['id_materia'];
+    }
+    if ($materiaInglesId === null && preg_match('/\bingles\b/', $nombreNormalizado)) {
+        $materiaInglesId = (int)$materiaTmp['id_materia'];
+    }
+}
+
+$mostrarLenguajeComunicacion = $aplicaLenguajeComunicacion && $materiaLenguajeId !== null && $materiaInglesId !== null;
+$materiaVirtualLenguajeComunicacionId = 'virtual_lenguaje_comunicacion';
+$materias_para_mostrar = $materias;
+if ($mostrarLenguajeComunicacion) {
+    $materias_para_mostrar[] = [
+        'id_materia' => $materiaVirtualLenguajeComunicacionId,
+        'nombre_materia' => 'Lenguaje y Comunicación',
+        'es_extra' => 0,
+        'es_submateria' => 0,
+        'materia_padre_id' => null
+    ];
+}
+
+if ($aplicaLenguajeComunicacion) {
+    $ordenOriginalMaterias = [];
+    foreach ($materias_para_mostrar as $idxMateria => $materiaOrdenTmp) {
+        $ordenOriginalMaterias[(string)$materiaOrdenTmp['id_materia']] = $idxMateria;
+    }
+
+    $prioridadMateria = static function (array $materia, callable $normalizarNombreMateria, string $materiaVirtualLenguajeComunicacionId): int {
+        if ((string)$materia['id_materia'] === $materiaVirtualLenguajeComunicacionId) {
+            return 0;
+        }
+        $nombre = $normalizarNombreMateria($materia['nombre_materia']);
+        if (preg_match('/\blenguaje\b/', $nombre)) {
+            return 1;
+        }
+        if (preg_match('/\bingles\b/', $nombre)) {
+            return 2;
+        }
+        return 100;
+    };
+
+    usort($materias_para_mostrar, static function (array $a, array $b) use ($prioridadMateria, $normalizarNombreMateria, $materiaVirtualLenguajeComunicacionId, $ordenOriginalMaterias) {
+        $prioridadA = $prioridadMateria($a, $normalizarNombreMateria, $materiaVirtualLenguajeComunicacionId);
+        $prioridadB = $prioridadMateria($b, $normalizarNombreMateria, $materiaVirtualLenguajeComunicacionId);
+        if ($prioridadA === $prioridadB) {
+            $idxA = $ordenOriginalMaterias[(string)$a['id_materia']] ?? PHP_INT_MAX;
+            $idxB = $ordenOriginalMaterias[(string)$b['id_materia']] ?? PHP_INT_MAX;
+            return $idxA <=> $idxB;
+        }
+        return $prioridadA <=> $prioridadB;
+    });
 }
 
 // Calificaciones
@@ -280,6 +352,27 @@ if (!empty($notasTrimestralesPadres)) {
     $aplicarNotasTrimestrales($calificaciones, $notasTrimestralesPadres);
 }
 
+if ($mostrarLenguajeComunicacion) {
+    foreach ($estudiantes as $estudiante) {
+        $idEstudiante = $estudiante['id_estudiante'];
+        for ($trim = 1; $trim <= 3; $trim++) {
+            $notaLenguaje = $calificaciones[$idEstudiante][$materiaLenguajeId][$trim] ?? '';
+            $notaIngles = $calificaciones[$idEstudiante][$materiaInglesId][$trim] ?? '';
+
+            $valorLenguaje = ($notaLenguaje !== '' && $notaLenguaje !== null) ? (float)str_replace(',', '', (string)$notaLenguaje) : null;
+            $valorIngles = ($notaIngles !== '' && $notaIngles !== null) ? (float)str_replace(',', '', (string)$notaIngles) : null;
+
+            if ($valorLenguaje === null && $valorIngles === null) {
+                $calificaciones[$idEstudiante][$materiaVirtualLenguajeComunicacionId][$trim] = '';
+                continue;
+            }
+
+            $notaCombinada = (($valorLenguaje ?? 0) * 95 / 100) + (($valorIngles ?? 0) * 5 / 100);
+            $calificaciones[$idEstudiante][$materiaVirtualLenguajeComunicacionId][$trim] = (string)round($notaCombinada);
+        }
+    }
+}
+
 // Build data for modal: individual partial grades + trimester extras
 $detalleParciales = [];
 foreach ($parcialesPorTrimestre as $idEst => $materias_est) {
@@ -301,13 +394,19 @@ foreach ($parcialesPorTrimestre as $idEst => $materias_est) {
 // PROMEDIOS
 $promedios_materias = [];
 foreach ($estudiantes as $estudiante) {
-    foreach ($todas_materias as $materia) {
+    foreach ($materias_para_mostrar as $materia) {
         $notas = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']] ?? [];
         $notas_validas = array_filter($notas, function ($v) {
             return $v !== '' && $v !== null;
         });
         $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] =
             (count($notas_validas) > 0) ? number_format(array_sum($notas_validas) / count($notas_validas), 2) : '';
+    }
+    if ($mostrarLenguajeComunicacion) {
+        $promedioVirtual = $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualLenguajeComunicacionId] ?? '';
+        if ($promedioVirtual !== '') {
+            $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualLenguajeComunicacionId] = (string)round((float)$promedioVirtual);
+        }
     }
 }
 
@@ -1256,7 +1355,7 @@ $estudiantes_ordenados = $estudiantes;
                                     <th rowspan="2" class="align-middle">#</th>
                                     <th rowspan="2" class="align-middle">Pos.</th>
                                     <th rowspan="2" class="align-middle text-start">Estudiante</th>
-                                    <?php foreach ($materias as $materia): ?>
+                                    <?php foreach ($materias_para_mostrar as $materia): ?>
                                         <?php
                                         $longitudMateria = mb_strlen($materia['nombre_materia']);
                                         $claseNombreMateria = 'nombre-materia';
@@ -1279,7 +1378,7 @@ $estudiantes_ordenados = $estudiantes;
                                     <th rowspan="2" class="text-center">P. General</th>
                                 </tr>
                                 <tr>
-                                    <?php foreach ($materias as $materia): ?>
+                                    <?php foreach ($materias_para_mostrar as $materia): ?>
                                         <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T1</th>
                                         <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T2</th>
                                         <th class="text-center materia-subhead<?= $materia['es_extra'] ? ' extra-materia' : '' ?>">T3</th>
@@ -1301,7 +1400,7 @@ $estudiantes_ordenados = $estudiantes;
                                         <td class="student-name">
                                             <?= htmlspecialchars($nombreEstudiante) ?>
                                         </td>
-                                        <?php foreach ($materias as $materia): ?>
+                                        <?php foreach ($materias_para_mostrar as $materia): ?>
                                             <?php
                                             $clase_extra = !empty($materia['es_extra']) ? 'materia-extra' : '';
                                             $n1 = $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][1] ?? '';
@@ -1312,14 +1411,15 @@ $estudiantes_ordenados = $estudiantes;
                                             $idMatJs = $materia['id_materia'];
                                             $nomEstEsc = htmlspecialchars($nombreEstudiante, ENT_QUOTES, 'UTF-8');
                                             $nomMatEsc = htmlspecialchars($materia['nombre_materia'], ENT_QUOTES, 'UTF-8');
+                                            $esMateriaVirtual = ($materia['id_materia'] === $materiaVirtualLenguajeComunicacionId);
                                             ?>
-                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>"
+                                            <td class="<?= !$esMateriaVirtual ? 'nota-detail-trigger' : '' ?> <?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>"
                                                 data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="1"
                                                 data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n1 ?></td>
-                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>"
+                                            <td class="<?= !$esMateriaVirtual ? 'nota-detail-trigger' : '' ?> <?= $clase_extra ?> <?= (is_numeric($n2) && $n2 < 50) ? 'nota-baja' : '' ?>"
                                                 data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="2"
                                                 data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n2 ?></td>
-                                            <td class="nota-detail-trigger <?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>"
+                                            <td class="<?= !$esMateriaVirtual ? 'nota-detail-trigger' : '' ?> <?= $clase_extra ?> <?= (is_numeric($n3) && $n3 < 50) ? 'nota-baja' : '' ?>"
                                                 data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="3"
                                                 data-student="<?= $nomEstEsc ?>" data-materia-name="<?= $nomMatEsc ?>"><?= $n3 ?></td>
                                             <td class="average-cell <?= $clase_extra ?> <?= (is_numeric($pm) && $pm < 50) ? 'nota-baja' : '' ?>"><?= $pm ?></td>
