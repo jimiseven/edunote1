@@ -23,6 +23,8 @@ $id_curso = intval($_GET['id']);
 $vista = isset($_GET['vista']) ? $_GET['vista'] : 'anual';
 $trimestre = isset($_GET['trimestre']) ? intval($_GET['trimestre']) : 1;
 $aplicaLenguajeComunicacion = ($id_curso >= 106 && $id_curso <= 117);
+$aplicaTecnicaTecnologiaGralVirtual = ($id_curso >= 120 && $id_curso <= 123);
+$materiaVirtualTtgGralId = 'virtual_tecnica_tecnologia_gral';
 
 $database = new Database();
 $conn = $database->connect();
@@ -147,6 +149,9 @@ foreach ($materias_padre_con_hijas as $padre) {
 
 $materiaLenguajeId = null;
 $materiaInglesId = null;
+$materiaTtgGeneralId = null;
+$materiaContabilidadId = null;
+$materiaTransformAlimentosId = null;
 foreach ($todas_materias as $materiaTmp) {
     $nombreNormalizado = $normalizarNombreMateria($materiaTmp['nombre_materia']);
     if ($materiaLenguajeId === null && preg_match('/\blenguaje\b/', $nombreNormalizado)) {
@@ -155,10 +160,28 @@ foreach ($todas_materias as $materiaTmp) {
     if ($materiaInglesId === null && preg_match('/\bingles\b/', $nombreNormalizado)) {
         $materiaInglesId = (int)$materiaTmp['id_materia'];
     }
+    if ($materiaTtgGeneralId === null
+        && preg_match('/tecnica/', $nombreNormalizado)
+        && preg_match('/tecnologia/', $nombreNormalizado)
+        && preg_match('/\bgeneral\b/', $nombreNormalizado)) {
+        $materiaTtgGeneralId = (int)$materiaTmp['id_materia'];
+    }
+    if ($materiaContabilidadId === null && preg_match('/\bcontabilidad\b/', $nombreNormalizado)) {
+        $materiaContabilidadId = (int)$materiaTmp['id_materia'];
+    }
+    if ($materiaTransformAlimentosId === null
+        && preg_match('/transformacion/', $nombreNormalizado)
+        && preg_match('/aliment/', $nombreNormalizado)) {
+        $materiaTransformAlimentosId = (int)$materiaTmp['id_materia'];
+    }
 }
 
 $mostrarLenguajeComunicacion = $aplicaLenguajeComunicacion && $materiaLenguajeId !== null && $materiaInglesId !== null;
 $materiaVirtualLenguajeComunicacionId = 'virtual_lenguaje_comunicacion';
+$mostrarTecnicaTecnologiaGralVirtual = $aplicaTecnicaTecnologiaGralVirtual
+    && $materiaTtgGeneralId !== null
+    && $materiaContabilidadId !== null
+    && $materiaTransformAlimentosId !== null;
 $materias_para_mostrar = $materias;
 if ($mostrarLenguajeComunicacion) {
     $materias_para_mostrar[] = [
@@ -167,6 +190,16 @@ if ($mostrarLenguajeComunicacion) {
         'es_extra' => 0,
         'es_submateria' => 0,
         'materia_padre_id' => null
+    ];
+}
+if ($mostrarTecnicaTecnologiaGralVirtual) {
+    $materias_para_mostrar[] = [
+        'id_materia' => $materiaVirtualTtgGralId,
+        'nombre_materia' => 'Tecnica Tecnologia Gral',
+        'es_extra' => 0,
+        'es_submateria' => 0,
+        'materia_padre_id' => null,
+        'virtual_negrita' => true,
     ];
 }
 
@@ -196,6 +229,49 @@ if ($aplicaLenguajeComunicacion) {
         if ($prioridadA === $prioridadB) {
             $idxA = $ordenOriginalMaterias[(string)$a['id_materia']] ?? PHP_INT_MAX;
             $idxB = $ordenOriginalMaterias[(string)$b['id_materia']] ?? PHP_INT_MAX;
+            return $idxA <=> $idxB;
+        }
+        return $prioridadA <=> $prioridadB;
+    });
+}
+
+if ($mostrarTecnicaTecnologiaGralVirtual) {
+    $ordenOriginalMateriasTtg = [];
+    foreach ($materias_para_mostrar as $idxMateriaTtg => $materiaOrdenTtg) {
+        $ordenOriginalMateriasTtg[(string)$materiaOrdenTtg['id_materia']] = $idxMateriaTtg;
+    }
+
+    $prioridadMateriaTtg = static function (array $materia) use (
+        $materiaVirtualTtgGralId,
+        $materiaTtgGeneralId,
+        $materiaContabilidadId,
+        $materiaTransformAlimentosId
+    ): int {
+        $id = (string)$materia['id_materia'];
+        if ($id === $materiaVirtualTtgGralId) {
+            return 0;
+        }
+        if ($materia['id_materia'] === $materiaTtgGeneralId) {
+            return 1;
+        }
+        if ($materia['id_materia'] === $materiaContabilidadId) {
+            return 2;
+        }
+        if ($materia['id_materia'] === $materiaTransformAlimentosId) {
+            return 3;
+        }
+        return 100;
+    };
+
+    usort($materias_para_mostrar, static function (array $a, array $b) use (
+        $prioridadMateriaTtg,
+        $ordenOriginalMateriasTtg
+    ) {
+        $prioridadA = $prioridadMateriaTtg($a);
+        $prioridadB = $prioridadMateriaTtg($b);
+        if ($prioridadA === $prioridadB) {
+            $idxA = $ordenOriginalMateriasTtg[(string)$a['id_materia']] ?? PHP_INT_MAX;
+            $idxB = $ordenOriginalMateriasTtg[(string)$b['id_materia']] ?? PHP_INT_MAX;
             return $idxA <=> $idxB;
         }
         return $prioridadA <=> $prioridadB;
@@ -373,6 +449,31 @@ if ($mostrarLenguajeComunicacion) {
     }
 }
 
+if ($mostrarTecnicaTecnologiaGralVirtual) {
+    foreach ($estudiantes as $estudiante) {
+        $idEstudiante = $estudiante['id_estudiante'];
+        for ($trim = 1; $trim <= 3; $trim++) {
+            $notaTtg = $calificaciones[$idEstudiante][$materiaTtgGeneralId][$trim] ?? '';
+            $notaCont = $calificaciones[$idEstudiante][$materiaContabilidadId][$trim] ?? '';
+            $notaTrans = $calificaciones[$idEstudiante][$materiaTransformAlimentosId][$trim] ?? '';
+
+            $valorTtg = ($notaTtg !== '' && $notaTtg !== null) ? (float)str_replace(',', '', (string)$notaTtg) : null;
+            $valorCont = ($notaCont !== '' && $notaCont !== null) ? (float)str_replace(',', '', (string)$notaCont) : null;
+            $valorTrans = ($notaTrans !== '' && $notaTrans !== null) ? (float)str_replace(',', '', (string)$notaTrans) : null;
+
+            if ($valorTtg === null && $valorCont === null && $valorTrans === null) {
+                $calificaciones[$idEstudiante][$materiaVirtualTtgGralId][$trim] = '';
+                continue;
+            }
+
+            $notaCombinadaTtg = (($valorTtg ?? 0) * 90 / 100)
+                + (($valorCont ?? 0) * 5 / 100)
+                + (($valorTrans ?? 0) * 5 / 100);
+            $calificaciones[$idEstudiante][$materiaVirtualTtgGralId][$trim] = (string)round($notaCombinadaTtg);
+        }
+    }
+}
+
 // Build data for modal: individual partial grades + trimester extras
 $detalleParciales = [];
 foreach ($parcialesPorTrimestre as $idEst => $materias_est) {
@@ -406,6 +507,12 @@ foreach ($estudiantes as $estudiante) {
         $promedioVirtual = $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualLenguajeComunicacionId] ?? '';
         if ($promedioVirtual !== '') {
             $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualLenguajeComunicacionId] = (string)round((float)$promedioVirtual);
+        }
+    }
+    if ($mostrarTecnicaTecnologiaGralVirtual) {
+        $promedioVirtualTtg = $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualTtgGralId] ?? '';
+        if ($promedioVirtualTtg !== '') {
+            $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualTtgGralId] = (string)round((float)$promedioVirtualTtg);
         }
     }
 }
@@ -751,6 +858,11 @@ $estudiantes_ordenados = $estudiantes;
             top: 0;
             z-index: 20;
             box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+        }
+
+        .materia-head.virtual-materia-negrita,
+        .materia-head.virtual-materia-negrita .nombre-materia {
+            font-weight: 700 !important;
         }
 
         .materia-head {
@@ -1366,7 +1478,7 @@ $estudiantes_ordenados = $estudiantes;
                                         }
                                         ?>
                                         <th colspan="4"
-                                            class="text-center materia-head <?= $materia['es_extra'] ? 'extra-materia' : '' ?>">
+                                            class="text-center materia-head <?= $materia['es_extra'] ? 'extra-materia' : '' ?><?= !empty($materia['virtual_negrita']) ? ' virtual-materia-negrita' : '' ?>">
                                             <span class="<?= $claseNombreMateria ?>">
                                                 <?= htmlspecialchars($materia['nombre_materia']) ?>
                                             </span>
@@ -1411,7 +1523,8 @@ $estudiantes_ordenados = $estudiantes;
                                             $idMatJs = $materia['id_materia'];
                                             $nomEstEsc = htmlspecialchars($nombreEstudiante, ENT_QUOTES, 'UTF-8');
                                             $nomMatEsc = htmlspecialchars($materia['nombre_materia'], ENT_QUOTES, 'UTF-8');
-                                            $esMateriaVirtual = ($materia['id_materia'] === $materiaVirtualLenguajeComunicacionId);
+                                            $esMateriaVirtual = ($materia['id_materia'] === $materiaVirtualLenguajeComunicacionId
+                                                || $materia['id_materia'] === $materiaVirtualTtgGralId);
                                             ?>
                                             <td class="<?= !$esMateriaVirtual ? 'nota-detail-trigger' : '' ?> <?= $clase_extra ?> <?= (is_numeric($n1) && $n1 < 50) ? 'nota-baja' : '' ?>"
                                                 data-estudiante-id="<?= $idEstJs ?>" data-materia-id="<?= $idMatJs ?>" data-trimestre="1"
