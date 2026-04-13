@@ -60,6 +60,7 @@ function edunote_aplicar_migraciones_bds(PDO $conn) {
     $dirBds = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'bds' . DIRECTORY_SEPARATOR;
 
     edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'calificaciones_parciales_detalle.sql'));
+    edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'asistencia.sql'));
 
     try {
         $conn->query('SELECT 1 FROM calificaciones_parciales_detalle LIMIT 0');

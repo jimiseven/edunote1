@@ -319,6 +319,17 @@ function active($str, $current)
                     </li>
                 </ul>
 
+                <!-- Asistencia -->
+                <div class="sidebar-section-title">ASISTENCIA</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('asistencia', $current); ?>" href="asistencia.php">
+                            <span data-feather="check-circle"></span>
+                            Asistencia
+                        </a>
+                    </li>
+                </ul>
+
             <?php elseif ($role == 2): // Profesor 
             ?>
                 <div class="sidebar-section-title">MIS CURSOS</div>
