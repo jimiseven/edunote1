@@ -44,7 +44,7 @@ function fetch_remote_binary($url)
     return false;
 }
 
-function create_gafete_png($qrBinary, $destPath, array $student)
+function create_gafete_png_binary($qrBinary, array $student)
 {
     if (!function_exists('imagecreatetruecolor')) {
         return false;
@@ -95,12 +95,14 @@ function create_gafete_png($qrBinary, $destPath, array $student)
     imagestring($canvas, 5, $x, 440, utf8_decode($idText), $gray);
     imagestring($canvas, 3, $x, 500, utf8_decode('Uso institucional - Control de asistencia QR'), $gray);
 
-    $ok = imagepng($canvas, $destPath, 9);
+    ob_start();
+    imagepng($canvas, null, 9);
+    $binary = ob_get_clean();
 
     imagedestroy($qrImg);
     imagedestroy($canvas);
 
-    return (bool)$ok;
+    return $binary !== false ? $binary : false;
 }
 
 // Procesar registro de asistencia (cuando se escanea un QR desde el modal)
@@ -161,90 +163,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'download_qr_zip') {
-    $relativePathPost = trim((string)($_POST['relative_path'] ?? ''));
-    $relativePathPost = str_replace('\\', '/', $relativePathPost);
-    $relativePathPost = ltrim($relativePathPost, '/');
-
-    if ($relativePathPost === '' || strpos($relativePathPost, 'uploads/qr_asistencia/') !== 0) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Ruta de carpeta inválida para generar ZIP.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    $projectRoot = realpath(__DIR__ . '/../');
-    $sourceDir = realpath($projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePathPost));
-
-    if (!$sourceDir || !is_dir($sourceDir) || strpos(str_replace('\\', '/', $sourceDir), str_replace('\\', '/', $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'qr_asistencia')) !== 0) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se encontró la carpeta de gafetes para comprimir.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    if (!class_exists('ZipArchive')) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    $zipName = 'gafetes_' . date('Ymd_His') . '.zip';
-    $tempZip = tempnam(sys_get_temp_dir(), 'gafetes_zip_');
-    if ($tempZip === false) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear archivo temporal ZIP.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    $zipPath = $tempZip . '.zip';
-    @unlink($tempZip);
-
-    $zip = new ZipArchive();
-    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear el archivo ZIP.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    $files = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($sourceDir, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::LEAVES_ONLY
-    );
-
-    foreach ($files as $file) {
-        if (!$file->isFile()) {
-            continue;
-        }
-        $filePath = $file->getRealPath();
-        $localName = substr($filePath, strlen($sourceDir) + 1);
-        $zip->addFile($filePath, $localName);
-    }
-
-    $zip->close();
-
-    if (!is_file($zipPath)) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo generar el ZIP final.'];
-        header('Location: asistencia.php');
-        exit();
-    }
-
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename="' . $zipName . '"');
-    header('Content-Length: ' . filesize($zipPath));
-    header('Pragma: public');
-    header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
-    readfile($zipPath);
-    @unlink($zipPath);
-    exit();
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_qr_folder') {
     $idCursoPost = isset($_POST['id_curso']) ? (int)$_POST['id_curso'] : 0;
     $idEstudiantePost = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
     $nivelRedirect = $_POST['nivel'] ?? '';
 
     if ($idCursoPost <= 0) {
-        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Debes seleccionar un curso para generar la carpeta de QRs.'];
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Debes seleccionar un curso para generar el ZIP de gafetes.'];
         header('Location: asistencia.php');
+        exit();
+    }
+
+    if (!class_exists('ZipArchive')) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
+        header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
         exit();
     }
 
@@ -266,20 +198,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $studentsQr = $stmtQrStudents->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($studentsQr)) {
-        $_SESSION['asistencia_flash'] = ['type' => 'warning', 'message' => 'No se encontraron estudiantes para generar QRs.'];
+        $_SESSION['asistencia_flash'] = ['type' => 'warning', 'message' => 'No se encontraron estudiantes para generar gafetes.'];
         header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
         exit();
     }
 
     $courseInfo = $studentsQr[0];
-    $baseDir = realpath(__DIR__ . '/../') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'qr_asistencia';
-    $folderPath = $baseDir . DIRECTORY_SEPARATOR
-        . sanitize_file_part($courseInfo['nivel']) . DIRECTORY_SEPARATOR
-        . sanitize_file_part($courseInfo['curso'] . '_' . $courseInfo['paralelo']) . DIRECTORY_SEPARATOR
-        . date('Y-m-d');
+    $tempZip = tempnam(sys_get_temp_dir(), 'gafetes_zip_');
+    if ($tempZip === false) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear archivo temporal ZIP.'];
+        header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+        exit();
+    }
 
-    if (!is_dir($folderPath)) {
-        mkdir($folderPath, 0777, true);
+    $zipPath = $tempZip . '.zip';
+    @unlink($tempZip);
+
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear el archivo ZIP.'];
+        header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+        exit();
     }
 
     $ok = 0;
@@ -297,13 +236,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         $fileName = sanitize_file_part($studentQr['apellido_paterno'] . '_' . $studentQr['nombres'])
             . '_' . (int)$studentQr['id_estudiante'] . '.png';
-        $destPath = $folderPath . DIRECTORY_SEPARATOR . $fileName;
-        $saved = create_gafete_png($binary, $destPath, $studentQr);
+        $gafeteBinary = create_gafete_png_binary($binary, $studentQr);
 
-        if (!$saved) {
-            $fallback = @file_put_contents($destPath, $binary);
-            $saved = $fallback !== false;
+        if ($gafeteBinary === false) {
+            $gafeteBinary = $binary;
         }
+
+        $saved = $zip->addFromString($fileName, $gafeteBinary);
 
         if (!$saved) {
             $fail++;
@@ -312,24 +251,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
-    $relativePath = 'uploads/qr_asistencia/'
-        . sanitize_file_part($courseInfo['nivel']) . '/'
-        . sanitize_file_part($courseInfo['curso'] . '_' . $courseInfo['paralelo']) . '/'
-        . date('Y-m-d');
+    $zip->close();
 
-    $absolutePath = $folderPath;
-    $webRoot = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['PHP_SELF']))), '/');
-    $webPath = $webRoot . '/' . $relativePath;
+    if ($ok <= 0 || !is_file($zipPath)) {
+        @unlink($zipPath);
+        $_SESSION['asistencia_flash'] = [
+            'type' => 'danger',
+            'message' => "No se pudo generar el ZIP de gafetes. Fallidos: {$fail}."
+        ];
+        header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+        exit();
+    }
 
-    $_SESSION['asistencia_flash'] = [
-        'type' => $ok > 0 ? 'success' : 'danger',
-        'message' => "Carpeta generada: {$relativePath}. Gafetes creados: {$ok}. Fallidos: {$fail}.",
-        'absolute_path' => $absolutePath,
-        'web_path' => $webPath,
-        'relative_path' => $relativePath
-    ];
+    $slugCurso = sanitize_file_part($courseInfo['nivel'] . '_' . $courseInfo['curso'] . '_' . $courseInfo['paralelo']);
+    $zipName = 'gafetes_' . $slugCurso . '_' . date('Ymd_His') . '.zip';
 
-    header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . $zipName . '"');
+    header('Content-Length: ' . filesize($zipPath));
+    header('Pragma: public');
+    header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+    readfile($zipPath);
+    @unlink($zipPath);
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_all_school_zip') {
+    if (!class_exists('ZipArchive')) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $stmtAll = $conn->query("SELECT e.id_estudiante, e.nombres, e.apellido_paterno, e.apellido_materno,
+            c.nivel, c.curso, c.paralelo
+        FROM estudiantes e
+        INNER JOIN cursos c ON c.id_curso = e.id_curso
+        ORDER BY FIELD(c.nivel, 'Inicial', 'Primaria', 'Secundaria'), c.curso, c.paralelo,
+            e.apellido_paterno, e.apellido_materno, e.nombres");
+    $studentsAll = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($studentsAll)) {
+        $_SESSION['asistencia_flash'] = ['type' => 'warning', 'message' => 'No se encontraron estudiantes para generar gafetes.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $tempZip = tempnam(sys_get_temp_dir(), 'gafetes_all_zip_');
+    if ($tempZip === false) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear archivo temporal ZIP.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $zipPath = $tempZip . '.zip';
+    @unlink($tempZip);
+
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear el archivo ZIP.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $ok = 0;
+    $fail = 0;
+
+    foreach ($studentsAll as $studentQr) {
+        $qrData = 'EST:' . (int)$studentQr['id_estudiante'];
+        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=945x945&data=' . urlencode($qrData);
+        $binary = fetch_remote_binary($qrUrl);
+
+        if ($binary === false) {
+            $fail++;
+            continue;
+        }
+
+        $fileName = sanitize_file_part($studentQr['nivel']) . '__'
+            . sanitize_file_part($studentQr['curso'] . '_' . $studentQr['paralelo']) . '__'
+            . sanitize_file_part($studentQr['apellido_paterno'] . '_' . $studentQr['nombres'])
+            . '_' . (int)$studentQr['id_estudiante'] . '.png';
+
+        $gafeteBinary = create_gafete_png_binary($binary, $studentQr);
+        if ($gafeteBinary === false) {
+            $gafeteBinary = $binary;
+        }
+
+        $saved = $zip->addFromString($fileName, $gafeteBinary);
+        if (!$saved) {
+            $fail++;
+        } else {
+            $ok++;
+        }
+    }
+
+    $zip->close();
+
+    if ($ok <= 0 || !is_file($zipPath)) {
+        @unlink($zipPath);
+        $_SESSION['asistencia_flash'] = [
+            'type' => 'danger',
+            'message' => "No se pudo generar el ZIP global de gafetes. Fallidos: {$fail}."
+        ];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $zipName = 'gafetes_todo_colegio_' . date('Ymd_His') . '.zip';
+
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . $zipName . '"');
+    header('Content-Length: ' . filesize($zipPath));
+    header('Pragma: public');
+    header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+    readfile($zipPath);
+    @unlink($zipPath);
     exit();
 }
 
@@ -535,25 +571,6 @@ if ($id_curso) {
                     <?php $flash = $_SESSION['asistencia_flash']; unset($_SESSION['asistencia_flash']); ?>
                     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> no-print" role="alert">
                         <div><?= htmlspecialchars($flash['message']) ?></div>
-                        <?php if (!empty($flash['absolute_path'])): ?>
-                            <div class="mt-2">
-                                <label class="form-label mb-1"><strong>Ruta de carpeta (copiable):</strong></label>
-                                <div class="input-group input-group-sm">
-                                    <input type="text" class="form-control" id="qr-folder-path" value="<?= htmlspecialchars($flash['absolute_path']) ?>" readonly>
-                                    <button class="btn btn-outline-secondary" type="button" onclick="copyFolderPath()">Copiar</button>
-                                    <?php if (!empty($flash['web_path'])): ?>
-                                        <a class="btn btn-outline-primary" href="<?= htmlspecialchars($flash['web_path']) ?>" target="_blank" rel="noopener">Abrir enlace</a>
-                                    <?php endif; ?>
-                                    <?php if (!empty($flash['relative_path'])): ?>
-                                        <form method="POST" action="" class="d-inline">
-                                            <input type="hidden" name="action" value="download_qr_zip">
-                                            <input type="hidden" name="relative_path" value="<?= htmlspecialchars($flash['relative_path']) ?>">
-                                            <button class="btn btn-success" type="submit">Descargar ZIP</button>
-                                        </form>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -567,7 +584,7 @@ if ($id_curso) {
                         </a>
                         <?php if ($id_curso && !empty($estudiantes)): ?>
                             <button onclick="window.print()" class="btn btn-primary">
-                                <i class="ri-printer-line"></i> Imprimir todo el curso
+                                <i class="ri-printer-line"></i> Imprimir curso seleccionado
                             </button>
                         <?php endif; ?>
                     </div>
@@ -602,6 +619,15 @@ if ($id_curso) {
                                 </div>
                             </div>
                         </form>
+
+                        <div class="mt-3">
+                            <form method="POST" action="" class="d-inline">
+                                <input type="hidden" name="action" value="generate_all_school_zip">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="ri-download-cloud-2-line"></i> Descargar ZIP de todo el colegio
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
 
@@ -618,7 +644,7 @@ if ($id_curso) {
                             <input type="hidden" name="id_curso" value="<?= (int)$id_curso ?>">
                             <input type="hidden" name="nivel" value="<?= htmlspecialchars($nivel) ?>">
                             <button type="submit" class="btn btn-outline-primary">
-                                <i class="ri-id-card-line"></i> Generar carpeta de gafetes (curso)
+                                <i class="ri-download-cloud-2-line"></i> Descargar ZIP de gafetes (curso)
                             </button>
                         </form>
                     </div>
@@ -654,7 +680,7 @@ if ($id_curso) {
                                             <input type="hidden" name="id_estudiante" value="<?= (int)$est['id_estudiante'] ?>">
                                             <input type="hidden" name="nivel" value="<?= htmlspecialchars($nivel) ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-primary w-100">
-                                                <i class="ri-id-card-line"></i> Generar gafete PNG
+                                                <i class="ri-download-2-line"></i> Descargar ZIP (este estudiante)
                                             </button>
                                         </form>
                                     </div>
@@ -712,18 +738,6 @@ if ($id_curso) {
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
     <script>
         feather.replace();
-
-        function copyFolderPath() {
-            const input = document.getElementById('qr-folder-path');
-            if (!input) return;
-
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(input.value);
-            } else {
-                input.select();
-                document.execCommand('copy');
-            }
-        }
 
         function changeLevel(select) {
             const form = select.form;
