@@ -11,10 +11,17 @@ $conn = (new Database())->connect();
 
 // Procesar registro de asistencia (cuando se escanea un QR)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
-    $qr_data = json_decode($_POST['qr_data'], true);
-    
-    if ($qr_data && isset($qr_data['id_estudiante'])) {
-        $id_estudiante = $qr_data['id_estudiante'];
+    $raw_qr = trim((string)$_POST['qr_data']);
+    $id_estudiante = null;
+
+    $qr_data = json_decode($raw_qr, true);
+    if (is_array($qr_data) && isset($qr_data['id_estudiante'])) {
+        $id_estudiante = (int)$qr_data['id_estudiante'];
+    } elseif (preg_match('/^EST:(\d+)$/', $raw_qr, $m)) {
+        $id_estudiante = (int)$m[1];
+    }
+
+    if ($id_estudiante > 0) {
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
         

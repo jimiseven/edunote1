@@ -9,6 +9,100 @@ if (!isset($_SESSION['user_id'])) {
 
 $conn = (new Database())->connect();
 
+function sanitize_file_part($value)
+{
+    $value = trim((string)$value);
+    $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    $value = preg_replace('/[^A-Za-z0-9_-]+/', '_', $value);
+    $value = trim($value, '_');
+    return $value !== '' ? $value : 'sin_nombre';
+}
+
+function fetch_remote_binary($url)
+{
+    $data = @file_get_contents($url);
+    if ($data !== false) {
+        return $data;
+    }
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+        $response = curl_exec($ch);
+        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($response !== false && $statusCode >= 200 && $statusCode < 300) {
+            return $response;
+        }
+    }
+
+    return false;
+}
+
+function create_gafete_png($qrBinary, $destPath, array $student)
+{
+    if (!function_exists('imagecreatetruecolor')) {
+        return false;
+    }
+
+    $qrImg = @imagecreatefromstring($qrBinary);
+    if (!$qrImg) {
+        return false;
+    }
+
+    $width = 1063;
+    $height = 638;
+    $canvas = imagecreatetruecolor($width, $height);
+
+    $white = imagecolorallocate($canvas, 255, 255, 255);
+    $primary = imagecolorallocate($canvas, 34, 80, 149);
+    $dark = imagecolorallocate($canvas, 25, 25, 25);
+    $gray = imagecolorallocate($canvas, 90, 90, 90);
+    $border = imagecolorallocate($canvas, 210, 210, 210);
+
+    imagefill($canvas, 0, 0, $white);
+    imagerectangle($canvas, 0, 0, $width - 1, $height - 1, $border);
+
+    imagefilledrectangle($canvas, 0, 0, $width, 90, $primary);
+    imagestring($canvas, 5, 35, 34, utf8_decode('GAFETE ESTUDIANTIL - EDUNOTE'), imagecolorallocate($canvas, 255, 255, 255));
+
+    $qrSize = 430;
+    imagecopyresampled($canvas, $qrImg, 40, 140, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
+    imagerectangle($canvas, 40, 140, 40 + $qrSize, 140 + $qrSize, $border);
+
+    $fullName = trim(($student['apellido_paterno'] ?? '') . ' ' . ($student['apellido_materno'] ?? '') . ', ' . ($student['nombres'] ?? ''));
+    $curso = trim(($student['nivel'] ?? '') . ' ' . ($student['curso'] ?? '') . ' "' . ($student['paralelo'] ?? '') . '"');
+    $idText = 'ID: ' . (int)($student['id_estudiante'] ?? 0);
+
+    $x = 520;
+    imagestring($canvas, 5, $x, 150, utf8_decode('ESTUDIANTE'), $primary);
+
+    $nameLines = explode("\n", wordwrap($fullName, 28, "\n", true));
+    $nameY = 195;
+    foreach ($nameLines as $line) {
+        imagestring($canvas, 5, $x, $nameY, utf8_decode($line), $dark);
+        $nameY += 30;
+    }
+
+    imagestring($canvas, 5, $x, 330, utf8_decode('NIVEL Y CURSO'), $primary);
+    imagestring($canvas, 5, $x, 365, utf8_decode($curso), $dark);
+
+    imagestring($canvas, 5, $x, 440, utf8_decode($idText), $gray);
+    imagestring($canvas, 3, $x, 500, utf8_decode('Uso institucional - Control de asistencia QR'), $gray);
+
+    $ok = imagepng($canvas, $destPath, 9);
+
+    imagedestroy($qrImg);
+    imagedestroy($canvas);
+
+    return (bool)$ok;
+}
+
 // Procesar registro de asistencia (cuando se escanea un QR desde el modal)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'scan_qr' && isset($_POST['qr_data'])) {
     header('Content-Type: application/json; charset=utf-8');
@@ -67,12 +161,204 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
-// Obtener cursos
-$stmt_cursos = $conn->query("SELECT id_curso, nivel, curso, paralelo FROM cursos ORDER BY nivel, curso, paralelo");
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'download_qr_zip') {
+    $relativePathPost = trim((string)($_POST['relative_path'] ?? ''));
+    $relativePathPost = str_replace('\\', '/', $relativePathPost);
+    $relativePathPost = ltrim($relativePathPost, '/');
+
+    if ($relativePathPost === '' || strpos($relativePathPost, 'uploads/qr_asistencia/') !== 0) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Ruta de carpeta inválida para generar ZIP.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $projectRoot = realpath(__DIR__ . '/../');
+    $sourceDir = realpath($projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePathPost));
+
+    if (!$sourceDir || !is_dir($sourceDir) || strpos(str_replace('\\', '/', $sourceDir), str_replace('\\', '/', $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'qr_asistencia')) !== 0) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se encontró la carpeta de gafetes para comprimir.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    if (!class_exists('ZipArchive')) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $zipName = 'gafetes_' . date('Ymd_His') . '.zip';
+    $tempZip = tempnam(sys_get_temp_dir(), 'gafetes_zip_');
+    if ($tempZip === false) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear archivo temporal ZIP.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $zipPath = $tempZip . '.zip';
+    @unlink($tempZip);
+
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo crear el archivo ZIP.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $files = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($sourceDir, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::LEAVES_ONLY
+    );
+
+    foreach ($files as $file) {
+        if (!$file->isFile()) {
+            continue;
+        }
+        $filePath = $file->getRealPath();
+        $localName = substr($filePath, strlen($sourceDir) + 1);
+        $zip->addFile($filePath, $localName);
+    }
+
+    $zip->close();
+
+    if (!is_file($zipPath)) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'No se pudo generar el ZIP final.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . $zipName . '"');
+    header('Content-Length: ' . filesize($zipPath));
+    header('Pragma: public');
+    header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+    readfile($zipPath);
+    @unlink($zipPath);
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_qr_folder') {
+    $idCursoPost = isset($_POST['id_curso']) ? (int)$_POST['id_curso'] : 0;
+    $idEstudiantePost = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
+    $nivelRedirect = $_POST['nivel'] ?? '';
+
+    if ($idCursoPost <= 0) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Debes seleccionar un curso para generar la carpeta de QRs.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    $sql = "SELECT e.id_estudiante, e.nombres, e.apellido_paterno, e.apellido_materno, c.nivel, c.curso, c.paralelo
+            FROM estudiantes e
+            INNER JOIN cursos c ON c.id_curso = e.id_curso
+            WHERE e.id_curso = ?";
+    $params = [$idCursoPost];
+
+    if ($idEstudiantePost > 0) {
+        $sql .= " AND e.id_estudiante = ?";
+        $params[] = $idEstudiantePost;
+    }
+
+    $sql .= " ORDER BY e.apellido_paterno, e.apellido_materno, e.nombres";
+
+    $stmtQrStudents = $conn->prepare($sql);
+    $stmtQrStudents->execute($params);
+    $studentsQr = $stmtQrStudents->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($studentsQr)) {
+        $_SESSION['asistencia_flash'] = ['type' => 'warning', 'message' => 'No se encontraron estudiantes para generar QRs.'];
+        header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+        exit();
+    }
+
+    $courseInfo = $studentsQr[0];
+    $baseDir = realpath(__DIR__ . '/../') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'qr_asistencia';
+    $folderPath = $baseDir . DIRECTORY_SEPARATOR
+        . sanitize_file_part($courseInfo['nivel']) . DIRECTORY_SEPARATOR
+        . sanitize_file_part($courseInfo['curso'] . '_' . $courseInfo['paralelo']) . DIRECTORY_SEPARATOR
+        . date('Y-m-d');
+
+    if (!is_dir($folderPath)) {
+        mkdir($folderPath, 0777, true);
+    }
+
+    $ok = 0;
+    $fail = 0;
+
+    foreach ($studentsQr as $studentQr) {
+        $qrData = 'EST:' . (int)$studentQr['id_estudiante'];
+        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=945x945&data=' . urlencode($qrData);
+        $binary = fetch_remote_binary($qrUrl);
+
+        if ($binary === false) {
+            $fail++;
+            continue;
+        }
+
+        $fileName = sanitize_file_part($studentQr['apellido_paterno'] . '_' . $studentQr['nombres'])
+            . '_' . (int)$studentQr['id_estudiante'] . '.png';
+        $destPath = $folderPath . DIRECTORY_SEPARATOR . $fileName;
+        $saved = create_gafete_png($binary, $destPath, $studentQr);
+
+        if (!$saved) {
+            $fallback = @file_put_contents($destPath, $binary);
+            $saved = $fallback !== false;
+        }
+
+        if (!$saved) {
+            $fail++;
+        } else {
+            $ok++;
+        }
+    }
+
+    $relativePath = 'uploads/qr_asistencia/'
+        . sanitize_file_part($courseInfo['nivel']) . '/'
+        . sanitize_file_part($courseInfo['curso'] . '_' . $courseInfo['paralelo']) . '/'
+        . date('Y-m-d');
+
+    $absolutePath = $folderPath;
+    $webRoot = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['PHP_SELF']))), '/');
+    $webPath = $webRoot . '/' . $relativePath;
+
+    $_SESSION['asistencia_flash'] = [
+        'type' => $ok > 0 ? 'success' : 'danger',
+        'message' => "Carpeta generada: {$relativePath}. Gafetes creados: {$ok}. Fallidos: {$fail}.",
+        'absolute_path' => $absolutePath,
+        'web_path' => $webPath,
+        'relative_path' => $relativePath
+    ];
+
+    header('Location: asistencia.php?nivel=' . urlencode($nivelRedirect) . '&id_curso=' . $idCursoPost);
+    exit();
+}
+
+// Obtener cursos por nivel
+$nivelesPermitidos = ['Inicial', 'Primaria', 'Secundaria'];
+$id_curso = $_GET['id_curso'] ?? null;
+$nivel = $_GET['nivel'] ?? '';
+if (!in_array($nivel, $nivelesPermitidos, true)) {
+    $nivel = '';
+}
+
+if ($nivel === '' && !empty($id_curso)) {
+    $stmtNivel = $conn->prepare("SELECT nivel FROM cursos WHERE id_curso = ? LIMIT 1");
+    $stmtNivel->execute([(int)$id_curso]);
+    $nivelCurso = $stmtNivel->fetchColumn();
+    if ($nivelCurso && in_array($nivelCurso, $nivelesPermitidos, true)) {
+        $nivel = $nivelCurso;
+    }
+}
+
+if ($nivel !== '') {
+    $stmt_cursos = $conn->prepare("SELECT id_curso, nivel, curso, paralelo FROM cursos WHERE nivel = ? ORDER BY curso, paralelo");
+    $stmt_cursos->execute([$nivel]);
+} else {
+    $stmt_cursos = $conn->query("SELECT id_curso, nivel, curso, paralelo FROM cursos ORDER BY nivel, curso, paralelo");
+}
 $cursos = $stmt_cursos->fetchAll(PDO::FETCH_ASSOC);
 
 // Curso seleccionado
-$id_curso = $_GET['id_curso'] ?? null;
 $estudiantes = [];
 
 if ($id_curso) {
@@ -104,7 +390,7 @@ if ($id_curso) {
         .qr-card {
             border: 2px solid #dee2e6;
             border-radius: 10px;
-            padding: 20px;
+            padding: 12px;
             text-align: center;
             margin: 10px;
             background: white;
@@ -113,8 +399,16 @@ if ($id_curso) {
         .qr-card img {
             margin: 0 auto;
             display: block;
-            width: 150px;
-            height: 150px;
+            width: 170px;
+            height: 170px;
+        }
+        .badge-title {
+            font-weight: 700;
+            font-size: 0.78rem;
+            color: #225095;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
         }
         .student-name {
             font-weight: 600;
@@ -197,8 +491,34 @@ if ($id_curso) {
             .qr-card {
                 break-inside: avoid;
                 page-break-inside: avoid;
+                width: 9cm;
+                min-height: 5.8cm;
+                margin: 0.2cm auto;
+                box-shadow: none;
+                border: 1px solid #333;
+                border-radius: 0;
+                padding: 0.25cm;
+            }
+            .qr-card img {
+                width: 3.2cm !important;
+                height: 3.2cm !important;
+                margin: 0.05cm auto 0.1cm;
+            }
+            .badge-title {
+                font-size: 10pt;
+                margin-bottom: 0.15cm;
+            }
+            .student-name {
+                font-size: 10pt;
+                margin-top: 0;
+            }
+            .student-info {
+                font-size: 9pt;
             }
             .scan-fab {
+                display: none !important;
+            }
+            .no-print-student {
                 display: none !important;
             }
         }
@@ -206,14 +526,37 @@ if ($id_curso) {
 </head>
 <body>
     <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-3 col-lg-2 d-md-block sidebar collapse">
-                <?php include '../includes/sidebar.php'; ?>
-            </div>
+        <div class="row position-relative">
+            <?php include '../includes/sidebar.php'; ?>
 
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4">
+                <?php if (isset($_SESSION['asistencia_flash'])): ?>
+                    <?php $flash = $_SESSION['asistencia_flash']; unset($_SESSION['asistencia_flash']); ?>
+                    <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> no-print" role="alert">
+                        <div><?= htmlspecialchars($flash['message']) ?></div>
+                        <?php if (!empty($flash['absolute_path'])): ?>
+                            <div class="mt-2">
+                                <label class="form-label mb-1"><strong>Ruta de carpeta (copiable):</strong></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control" id="qr-folder-path" value="<?= htmlspecialchars($flash['absolute_path']) ?>" readonly>
+                                    <button class="btn btn-outline-secondary" type="button" onclick="copyFolderPath()">Copiar</button>
+                                    <?php if (!empty($flash['web_path'])): ?>
+                                        <a class="btn btn-outline-primary" href="<?= htmlspecialchars($flash['web_path']) ?>" target="_blank" rel="noopener">Abrir enlace</a>
+                                    <?php endif; ?>
+                                    <?php if (!empty($flash['relative_path'])): ?>
+                                        <form method="POST" action="" class="d-inline">
+                                            <input type="hidden" name="action" value="download_qr_zip">
+                                            <input type="hidden" name="relative_path" value="<?= htmlspecialchars($flash['relative_path']) ?>">
+                                            <button class="btn btn-success" type="submit">Descargar ZIP</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
                 <div class="d-flex justify-content-between align-items-center mb-4 no-print">
                     <h1 class="h3">
                         <i class="ri-qr-code-line"></i> Asistencia - Generación de QR
@@ -224,7 +567,7 @@ if ($id_curso) {
                         </a>
                         <?php if ($id_curso && !empty($estudiantes)): ?>
                             <button onclick="window.print()" class="btn btn-primary">
-                                <i class="ri-printer-line"></i> Imprimir QRs
+                                <i class="ri-printer-line"></i> Imprimir todo el curso
                             </button>
                         <?php endif; ?>
                     </div>
@@ -236,8 +579,19 @@ if ($id_curso) {
                         <form method="GET" action="">
                             <div class="row align-items-end">
                                 <div class="col-md-4">
+                                    <label for="nivel" class="form-label">Seleccionar Nivel</label>
+                                    <select class="form-select" id="nivel" name="nivel" onchange="changeLevel(this)">
+                                        <option value="">-- Seleccione un nivel --</option>
+                                        <?php foreach ($nivelesPermitidos as $nivelOpt): ?>
+                                            <option value="<?= htmlspecialchars($nivelOpt) ?>" <?= ($nivel === $nivelOpt) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($nivelOpt) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
                                     <label for="id_curso" class="form-label">Seleccionar Curso</label>
-                                    <select class="form-select" id="id_curso" name="id_curso" onchange="this.form.submit()">
+                                    <select class="form-select" id="id_curso" name="id_curso" onchange="this.form.submit()" <?= $nivel === '' ? 'disabled' : '' ?>>
                                         <option value="">-- Seleccione un curso --</option>
                                         <?php foreach ($cursos as $curso): ?>
                                             <option value="<?= $curso['id_curso'] ?>" <?= ($id_curso == $curso['id_curso']) ? 'selected' : '' ?>>
@@ -258,6 +612,17 @@ if ($id_curso) {
                         Se generará un código QR único para cada estudiante. Escanee el QR con el celular para registrar la asistencia.
                     </div>
 
+                    <div class="mb-3 d-flex gap-2 no-print">
+                        <form method="POST" action="">
+                            <input type="hidden" name="action" value="generate_qr_folder">
+                            <input type="hidden" name="id_curso" value="<?= (int)$id_curso ?>">
+                            <input type="hidden" name="nivel" value="<?= htmlspecialchars($nivel) ?>">
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="ri-id-card-line"></i> Generar carpeta de gafetes (curso)
+                            </button>
+                        </form>
+                    </div>
+
                     <div class="row" id="qr-container">
                         <?php foreach ($estudiantes as $est): ?>
                             <?php
@@ -265,18 +630,33 @@ if ($id_curso) {
                                 $qrDataEncoded = urlencode($qrData);
                                 $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . $qrDataEncoded;
                             ?>
-                            <div class="col-md-3 col-sm-4 col-6">
+                            <div class="col-md-3 col-sm-4 col-6 qr-card-wrapper" id="student-card-<?= (int)$est['id_estudiante'] ?>">
                                 <div class="qr-card">
+                                    <div class="badge-title">GAFETE ESTUDIANTIL</div>
                                     <img src="<?= $qrUrl ?>" alt="QR <?= htmlspecialchars($est['apellido_paterno'] . ' ' . $est['apellido_materno']) ?>" 
                                          onerror="this.onerror=null; this.src='https://via.placeholder.com/150?text=Error+QR';">
                                     <div class="student-name">
                                         <?= htmlspecialchars($est['apellido_paterno'] . ' ' . $est['apellido_materno'] . ', ' . $est['nombres']) ?>
                                     </div>
                                     <div class="student-info">
-                                        <?= htmlspecialchars($est['nivel'] . ' ' . $est['curso'] . ' "' . $est['paralelo'] . '"') ?>
+                                        Nivel y curso: <?= htmlspecialchars($est['nivel'] . ' ' . $est['curso'] . ' "' . $est['paralelo'] . '"') ?>
                                     </div>
                                     <div class="student-info mt-1">
                                         ID: <?= $est['id_estudiante'] ?>
+                                    </div>
+                                    <div class="mt-2 no-print d-grid gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-dark" onclick="printStudent(<?= (int)$est['id_estudiante'] ?>)">
+                                            <i class="ri-printer-line"></i> Imprimir este estudiante
+                                        </button>
+                                        <form method="POST" action="">
+                                            <input type="hidden" name="action" value="generate_qr_folder">
+                                            <input type="hidden" name="id_curso" value="<?= (int)$id_curso ?>">
+                                            <input type="hidden" name="id_estudiante" value="<?= (int)$est['id_estudiante'] ?>">
+                                            <input type="hidden" name="nivel" value="<?= htmlspecialchars($nivel) ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">
+                                                <i class="ri-id-card-line"></i> Generar gafete PNG
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -332,6 +712,45 @@ if ($id_curso) {
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
     <script>
         feather.replace();
+
+        function copyFolderPath() {
+            const input = document.getElementById('qr-folder-path');
+            if (!input) return;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(input.value);
+            } else {
+                input.select();
+                document.execCommand('copy');
+            }
+        }
+
+        function changeLevel(select) {
+            const form = select.form;
+            const courseSelect = document.getElementById('id_curso');
+            if (courseSelect) {
+                courseSelect.value = '';
+            }
+            form.submit();
+        }
+
+        function printStudent(studentId) {
+            const wrappers = document.querySelectorAll('.qr-card-wrapper');
+            wrappers.forEach(function(el) {
+                el.classList.add('no-print-student');
+            });
+
+            const selected = document.getElementById('student-card-' + studentId);
+            if (selected) {
+                selected.classList.remove('no-print-student');
+            }
+
+            window.print();
+
+            wrappers.forEach(function(el) {
+                el.classList.remove('no-print-student');
+            });
+        }
 
         let html5QrCode = null;
         let isScanning = false;

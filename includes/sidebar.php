@@ -323,9 +323,21 @@ function active($str, $current)
                 <div class="sidebar-section-title">ASISTENCIA</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
-                        <a class="nav-link <?php echo active('asistencia', $current); ?>" href="asistencia.php">
+                        <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="asistencia.php">
                             <span data-feather="check-circle"></span>
-                            Asistencia
+                            Ver QR
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="reporte_asistencia_curso.php">
+                            <span data-feather="file-text"></span>
+                            Reporte por curso
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('estadisticas_asistencia.php', $current); ?>" href="estadisticas_asistencia.php">
+                            <span data-feather="bar-chart-2"></span>
+                            Estadísticas
                         </a>
                     </li>
                 </ul>
