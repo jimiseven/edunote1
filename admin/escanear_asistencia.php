@@ -8,6 +8,51 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $conn = (new Database())->connect();
+$userId = (int)$_SESSION['user_id'];
+$userRole = (int)($_SESSION['user_role'] ?? 0);
+$isAdminAsistencia = $userRole === 1;
+
+function escaneo_get_lector(PDO $conn, $userId)
+{
+    $stmt = $conn->prepare("SELECT id_lector, alcance FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
+    $stmt->execute([(int)$userId]);
+    $lector = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $lector ?: null;
+}
+
+function escaneo_lector_curso_habilitado(PDO $conn, $idLector, $idCurso)
+{
+    if ((int)$idLector <= 0 || (int)$idCurso <= 0) {
+        return false;
+    }
+    $stmt = $conn->prepare("SELECT 1 FROM asistencia_lectores_cursos WHERE id_lector = ? AND id_curso = ? AND estado = 1 LIMIT 1");
+    $stmt->execute([(int)$idLector, (int)$idCurso]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function escaneo_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lectorInfo, $idCurso)
+{
+    if ($isAdminAsistencia) {
+        return true;
+    }
+    if (!$lectorInfo || (int)$idCurso <= 0) {
+        return false;
+    }
+    if (($lectorInfo['alcance'] ?? '') === 'GLOBAL') {
+        return true;
+    }
+    if (($lectorInfo['alcance'] ?? '') === 'POR_CURSO') {
+        return escaneo_lector_curso_habilitado($conn, (int)$lectorInfo['id_lector'], (int)$idCurso);
+    }
+    return false;
+}
+
+$lectorInfo = $isAdminAsistencia ? null : escaneo_get_lector($conn, $userId);
+if (!$isAdminAsistencia && !$lectorInfo) {
+    http_response_code(403);
+    echo '<h3>Acceso denegado</h3><p>Tu usuario no está habilitado para registrar asistencia.</p>';
+    exit();
+}
 
 // Procesar registro de asistencia (cuando se escanea un QR)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
@@ -22,6 +67,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
     }
 
     if ($id_estudiante > 0) {
+        $stmtCursoEst = $conn->prepare("SELECT id_curso FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
+        $stmtCursoEst->execute([$id_estudiante]);
+        $idCursoEscaneado = (int)$stmtCursoEst->fetchColumn();
+
+        if (!escaneo_usuario_puede_registrar($conn, $isAdminAsistencia, $lectorInfo, $idCursoEscaneado)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No tienes permiso para registrar asistencia en este curso.'
+            ]);
+            exit();
+        }
+
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
         
@@ -69,6 +126,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
 // Obtener información del curso
 $id_curso = $_GET['id_curso'] ?? null;
 $curso_info = null;
+
+if ($id_curso && !escaneo_usuario_puede_registrar($conn, $isAdminAsistencia, $lectorInfo, (int)$id_curso)) {
+    http_response_code(403);
+    echo '<h3>Acceso denegado</h3><p>No tienes permiso para operar en este curso.</p>';
+    exit();
+}
 
 if ($id_curso) {
     $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");

@@ -8,6 +8,56 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $conn = (new Database())->connect();
+$userId = (int)$_SESSION['user_id'];
+$userRole = (int)($_SESSION['user_role'] ?? 0);
+$isAdminAsistencia = $userRole === 1;
+
+function asistencia_get_lector(PDO $conn, $userId)
+{
+    $stmt = $conn->prepare("SELECT id_lector, id_personal, alcance, estado FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
+    $stmt->execute([(int)$userId]);
+    $lector = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $lector ?: null;
+}
+
+function asistencia_lector_curso_habilitado(PDO $conn, $idLector, $idCurso)
+{
+    if ((int)$idLector <= 0 || (int)$idCurso <= 0) {
+        return false;
+    }
+
+    $stmt = $conn->prepare("SELECT 1 FROM asistencia_lectores_cursos WHERE id_lector = ? AND id_curso = ? AND estado = 1 LIMIT 1");
+    $stmt->execute([(int)$idLector, (int)$idCurso]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function asistencia_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lectorInfo, $idCurso)
+{
+    if ($isAdminAsistencia) {
+        return true;
+    }
+
+    if (!$lectorInfo || (int)$idCurso <= 0) {
+        return false;
+    }
+
+    if (($lectorInfo['alcance'] ?? '') === 'GLOBAL') {
+        return true;
+    }
+
+    if (($lectorInfo['alcance'] ?? '') === 'POR_CURSO') {
+        return asistencia_lector_curso_habilitado($conn, (int)$lectorInfo['id_lector'], (int)$idCurso);
+    }
+
+    return false;
+}
+
+$lectorInfo = $isAdminAsistencia ? null : asistencia_get_lector($conn, $userId);
+if (!$isAdminAsistencia && !$lectorInfo) {
+    http_response_code(403);
+    echo '<h3>Acceso denegado</h3><p>Tu usuario no está habilitado para registrar asistencia.</p>';
+    exit();
+}
 
 function sanitize_file_part($value)
 {
@@ -119,6 +169,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     if ($id_estudiante > 0) {
+        $stmtCursoEst = $conn->prepare("SELECT id_curso FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
+        $stmtCursoEst->execute([$id_estudiante]);
+        $idCursoEscaneado = (int)$stmtCursoEst->fetchColumn();
+
+        if (!asistencia_usuario_puede_registrar($conn, $isAdminAsistencia, $lectorInfo, $idCursoEscaneado)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No tienes permiso para registrar asistencia en este curso.'
+            ]);
+            exit();
+        }
+
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
         
@@ -164,6 +226,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_qr_folder') {
+    if (!$isAdminAsistencia) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Solo administradores pueden generar ZIP de gafetes.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
     $idCursoPost = isset($_POST['id_curso']) ? (int)$_POST['id_curso'] : 0;
     $idEstudiantePost = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
     $nivelRedirect = $_POST['nivel'] ?? '';
@@ -277,6 +345,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_all_school_zip') {
+    if (!$isAdminAsistencia) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'Solo administradores pueden descargar el ZIP global.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
     if (!class_exists('ZipArchive')) {
         $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
         header('Location: asistencia.php');
@@ -386,13 +460,37 @@ if ($nivel === '' && !empty($id_curso)) {
     }
 }
 
-if ($nivel !== '') {
-    $stmt_cursos = $conn->prepare("SELECT id_curso, nivel, curso, paralelo FROM cursos WHERE nivel = ? ORDER BY curso, paralelo");
-    $stmt_cursos->execute([$nivel]);
+if ($isAdminAsistencia || (($lectorInfo['alcance'] ?? '') === 'GLOBAL')) {
+    if ($nivel !== '') {
+        $stmt_cursos = $conn->prepare("SELECT id_curso, nivel, curso, paralelo FROM cursos WHERE nivel = ? ORDER BY curso, paralelo");
+        $stmt_cursos->execute([$nivel]);
+    } else {
+        $stmt_cursos = $conn->query("SELECT id_curso, nivel, curso, paralelo FROM cursos ORDER BY nivel, curso, paralelo");
+    }
 } else {
-    $stmt_cursos = $conn->query("SELECT id_curso, nivel, curso, paralelo FROM cursos ORDER BY nivel, curso, paralelo");
+    if ($nivel !== '') {
+        $stmt_cursos = $conn->prepare("SELECT c.id_curso, c.nivel, c.curso, c.paralelo
+            FROM cursos c
+            INNER JOIN asistencia_lectores_cursos alc ON alc.id_curso = c.id_curso
+            WHERE alc.id_lector = ? AND alc.estado = 1 AND c.nivel = ?
+            ORDER BY c.curso, c.paralelo");
+        $stmt_cursos->execute([(int)$lectorInfo['id_lector'], $nivel]);
+    } else {
+        $stmt_cursos = $conn->prepare("SELECT c.id_curso, c.nivel, c.curso, c.paralelo
+            FROM cursos c
+            INNER JOIN asistencia_lectores_cursos alc ON alc.id_curso = c.id_curso
+            WHERE alc.id_lector = ? AND alc.estado = 1
+            ORDER BY FIELD(c.nivel, 'Inicial', 'Primaria', 'Secundaria'), c.curso, c.paralelo");
+        $stmt_cursos->execute([(int)$lectorInfo['id_lector']]);
+    }
 }
 $cursos = $stmt_cursos->fetchAll(PDO::FETCH_ASSOC);
+
+$cursoIdsPermitidos = array_map('intval', array_column($cursos, 'id_curso'));
+if ($id_curso && !$isAdminAsistencia && !in_array((int)$id_curso, $cursoIdsPermitidos, true)) {
+    $_SESSION['asistencia_flash'] = ['type' => 'warning', 'message' => 'No tienes permiso para acceder a ese curso.'];
+    $id_curso = null;
+}
 
 // Curso seleccionado
 $estudiantes = [];
@@ -582,7 +680,7 @@ if ($id_curso) {
                         <a href="dashboard_secundaria.php" class="btn btn-secondary">
                             <i class="ri-arrow-left-line"></i> Volver
                         </a>
-                        <?php if ($id_curso && !empty($estudiantes)): ?>
+                        <?php if ($id_curso && !empty($estudiantes) && $isAdminAsistencia): ?>
                             <button onclick="window.print()" class="btn btn-primary">
                                 <i class="ri-printer-line"></i> Imprimir curso seleccionado
                             </button>
@@ -620,19 +718,21 @@ if ($id_curso) {
                             </div>
                         </form>
 
-                        <div class="mt-3">
-                            <form method="POST" action="" class="d-inline">
-                                <input type="hidden" name="action" value="generate_all_school_zip">
-                                <button type="submit" class="btn btn-success">
-                                    <i class="ri-download-cloud-2-line"></i> Descargar ZIP de todo el colegio
-                                </button>
-                            </form>
-                        </div>
+                        <?php if ($isAdminAsistencia): ?>
+                            <div class="mt-3">
+                                <form method="POST" action="" class="d-inline">
+                                    <input type="hidden" name="action" value="generate_all_school_zip">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="ri-download-cloud-2-line"></i> Descargar ZIP de todo el colegio
+                                    </button>
+                                </form>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
                 <!-- Lista de estudiantes con QR -->
-                <?php if ($id_curso && !empty($estudiantes)): ?>
+                <?php if ($id_curso && !empty($estudiantes) && $isAdminAsistencia): ?>
                     <div class="alert alert-info no-print">
                         <i class="ri-information-line"></i> 
                         Se generará un código QR único para cada estudiante. Escanee el QR con el celular para registrar la asistencia.
@@ -690,7 +790,7 @@ if ($id_curso) {
                     </div>
                 <?php elseif ($id_curso): ?>
                     <div class="alert alert-warning">
-                        <i class="ri-alert-line"></i> No hay estudiantes matriculados en este curso.
+                        <i class="ri-alert-line"></i> <?= $isAdminAsistencia ? 'No hay estudiantes matriculados en este curso.' : 'No hay estudiantes disponibles o no tienes acceso a este curso.' ?>
                     </div>
                 <?php endif; ?>
 

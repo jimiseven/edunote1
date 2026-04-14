@@ -329,6 +329,12 @@ function active($str, $current)
                         </a>
                     </li>
                     <li>
+                        <a class="nav-link <?php echo active('lectores_asistencia.php', $current); ?>" href="lectores_asistencia.php">
+                            <span data-feather="users"></span>
+                            Lectores de asistencia
+                        </a>
+                    </li>
+                    <li>
                         <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="reporte_asistencia_curso.php">
                             <span data-feather="file-text"></span>
                             Reporte por curso
@@ -350,6 +356,12 @@ function active($str, $current)
                         <a class="nav-link <?php echo active('dashboard', $current); ?>" href="dashboard.php">
                             <span data-feather="book-open"></span>
                             Ver Cursos
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="../admin/asistencia.php">
+                            <span data-feather="check-square"></span>
+                            Registrar Asistencia
                         </a>
                     </li>
                 </ul>
