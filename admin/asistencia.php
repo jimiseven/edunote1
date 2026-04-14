@@ -11,10 +11,18 @@ $conn = (new Database())->connect();
 
 // Procesar registro de asistencia (cuando se escanea un QR desde el modal)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'scan_qr' && isset($_POST['qr_data'])) {
-    $qr_data = json_decode($_POST['qr_data'], true);
-    
-    if ($qr_data && isset($qr_data['id_estudiante'])) {
-        $id_estudiante = $qr_data['id_estudiante'];
+    header('Content-Type: application/json; charset=utf-8');
+    $raw_qr = trim((string)$_POST['qr_data']);
+    $id_estudiante = null;
+
+    $qr_data = json_decode($raw_qr, true);
+    if (is_array($qr_data) && isset($qr_data['id_estudiante'])) {
+        $id_estudiante = (int)$qr_data['id_estudiante'];
+    } elseif (preg_match('/^EST:(\d+)$/', $raw_qr, $m)) {
+        $id_estudiante = (int)$m[1];
+    }
+
+    if ($id_estudiante > 0) {
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
         
@@ -253,14 +261,9 @@ if ($id_curso) {
                     <div class="row" id="qr-container">
                         <?php foreach ($estudiantes as $est): ?>
                             <?php
-                                $qrData = json_encode([
-                                    'id_estudiante' => $est['id_estudiante'],
-                                    'nombres' => $est['nombres'],
-                                    'apellido_paterno' => $est['apellido_paterno'],
-                                    'apellido_materno' => $est['apellido_materno']
-                                ]);
+                                $qrData = 'EST:' . $est['id_estudiante'];
                                 $qrDataEncoded = urlencode($qrData);
-                                $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . $qrDataEncoded;
+                                $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" . $qrDataEncoded;
                             ?>
                             <div class="col-md-3 col-sm-4 col-6">
                                 <div class="qr-card">
@@ -330,8 +333,9 @@ if ($id_curso) {
     <script>
         feather.replace();
 
-        let html5QrcodeScanner = null;
+        let html5QrCode = null;
         let isScanning = false;
+        let isProcessingScan = false;
 
         function openScanner() {
             const modal = new bootstrap.Modal(document.getElementById('scannerModal'));
@@ -341,41 +345,105 @@ if ($id_curso) {
             setTimeout(startScanner, 500);
         }
 
-        function startScanner() {
+        async function startScanner() {
             if (isScanning) return;
             
             const readerElement = document.getElementById('reader');
             if (!readerElement) return;
 
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader",
-                {
-                    fps: 20,
-                    qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0
-                },
-                false
-            );
-            
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-            isScanning = true;
+            readerElement.innerHTML = '';
+
+            const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+            if (!window.isSecureContext && !isLocalhost) {
+                const resultDiv = document.getElementById('scan-result');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-warning result-card">
+                        <h5><i class="ri-lock-2-line"></i> Cámara bloqueada por el navegador</h5>
+                        <p>Para usar la cámara en celular debes abrir el sistema con <strong>HTTPS</strong> (o localhost).</p>
+                    </div>
+                `;
+                isScanning = false;
+                return;
+            }
+
+            try {
+                html5QrCode = new Html5Qrcode('reader');
+
+                const scanConfig = {
+                    fps: 25,
+                    qrbox: { width: 260, height: 260 },
+                    aspectRatio: 1.0,
+                    formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+                    disableFlip: true
+                };
+
+                const tryStart = async (cameraConfig) => {
+                    await html5QrCode.start(cameraConfig, scanConfig, onScanSuccess, onScanFailure);
+                };
+
+                let started = false;
+
+                try {
+                    await tryStart({ facingMode: { exact: 'environment' } });
+                    started = true;
+                } catch (e1) {
+                    try {
+                        await tryStart({ facingMode: 'environment' });
+                        started = true;
+                    } catch (e2) {
+                        const cameras = await Html5Qrcode.getCameras();
+                        if (cameras && cameras.length > 0) {
+                            const backCam = cameras.find(c => /back|rear|trasera|environment/i.test(c.label || ''));
+                            const selectedCam = backCam ? backCam.id : cameras[0].id;
+                            await tryStart({ deviceId: { exact: selectedCam } });
+                            started = true;
+                        }
+                    }
+                }
+
+                if (!started) {
+                    throw new Error('No se encontró una cámara disponible');
+                }
+
+                isScanning = true;
+            } catch (error) {
+                const resultDiv = document.getElementById('scan-result');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger result-card">
+                        <h5><i class="ri-error-warning-fill"></i> Error de cámara</h5>
+                        <p>No se pudo abrir la cámara. Revisa permisos del navegador y vuelve a intentar.</p>
+                    </div>
+                `;
+                console.error('No se pudo iniciar cámara:', error);
+                isScanning = false;
+            }
         }
 
-        function stopScanner() {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.clear();
-                html5QrcodeScanner = null;
+        async function stopScanner() {
+            if (html5QrCode) {
+                try {
+                    await html5QrCode.stop();
+                    await html5QrCode.clear();
+                } catch (error) {
+                    console.error('Error al detener cámara:', error);
+                }
+                html5QrCode = null;
             }
             isScanning = false;
+            isProcessingScan = false;
         }
 
-        function onScanSuccess(decodedText, decodedResult) {
-            // Detener el escaneo temporalmente
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.pause();
+        function onScanSuccess(decodedText) {
+            if (isProcessingScan) {
+                return;
             }
 
-            // Enviar datos al servidor
+            isProcessingScan = true;
+
+            if (html5QrCode) {
+                html5QrCode.pause();
+            }
+
             fetch('asistencia.php', {
                 method: 'POST',
                 headers: {
@@ -402,10 +470,11 @@ if ($id_curso) {
                     // Reanudar el escaneo después de 2 segundos
                     setTimeout(() => {
                         resultDiv.innerHTML = '';
-                        if (html5QrcodeScanner) {
-                            html5QrcodeScanner.resume();
+                        isProcessingScan = false;
+                        if (html5QrCode) {
+                            html5QrCode.resume();
                         }
-                    }, 2000);
+                    }, 1200);
                 } else {
                     resultDiv.innerHTML = `
                         <div class="alert alert-warning result-card">
@@ -420,10 +489,11 @@ if ($id_curso) {
                     // Reanudar el escaneo después de 2 segundos
                     setTimeout(() => {
                         resultDiv.innerHTML = '';
-                        if (html5QrcodeScanner) {
-                            html5QrcodeScanner.resume();
+                        isProcessingScan = false;
+                        if (html5QrCode) {
+                            html5QrCode.resume();
                         }
-                    }, 2000);
+                    }, 1200);
                 }
             })
             .catch(error => {
@@ -439,15 +509,15 @@ if ($id_curso) {
                 // Reanudar el escaneo
                 setTimeout(() => {
                     resultDiv.innerHTML = '';
-                    if (html5QrcodeScanner) {
-                        html5QrcodeScanner.resume();
+                    isProcessingScan = false;
+                    if (html5QrCode) {
+                        html5QrCode.resume();
                     }
-                }, 2000);
+                }, 1200);
             });
         }
 
-        function onScanFailure(error) {
-            // No hacer nada, es normal cuando no hay QR en la cámara
+        function onScanFailure() {
         }
 
         function playSuccessSound() {
@@ -487,8 +557,8 @@ if ($id_curso) {
         }
 
         // Detener el escáner cuando se cierra el modal
-        document.getElementById('scannerModal').addEventListener('hidden.bs.modal', function () {
-            stopScanner();
+        document.getElementById('scannerModal').addEventListener('hidden.bs.modal', async function () {
+            await stopScanner();
         });
     </script>
 </body>
