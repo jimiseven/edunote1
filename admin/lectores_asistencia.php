@@ -70,6 +70,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Lector inválido para asignar cursos.');
             }
 
+            $stmtLect = $conn->prepare("SELECT alcance FROM asistencia_lectores WHERE id_lector = ? LIMIT 1");
+            $stmtLect->execute([$idLector]);
+            $alcanceActual = (string)$stmtLect->fetchColumn();
+
+            if ($alcanceActual === 'GLOBAL') {
+                $_SESSION['asistencia_lectores_flash'] = [
+                    'type' => 'info',
+                    'message' => 'Este lector está en alcance GLOBAL y ya tiene acceso a todos los cursos.'
+                ];
+                header('Location: lectores_asistencia.php');
+                exit();
+            }
+
             $conn->beginTransaction();
 
             $stmtAlcance = $conn->prepare("UPDATE asistencia_lectores SET alcance = 'POR_CURSO', estado = 1 WHERE id_lector = ?");
@@ -215,7 +228,7 @@ foreach ($asigRows as $row) {
                                                 <td><?= htmlspecialchars($lector['apellidos'] . ', ' . $lector['nombres'] . ' (CI ' . $lector['carnet_identidad'] . ')') ?></td>
                                                 <td><?= htmlspecialchars($lector['nombre_rol'] ?: 'Sin rol') ?></td>
                                                 <td><?= htmlspecialchars($lector['alcance']) ?></td>
-                                                <td><?= (int)$lector['total_cursos'] ?></td>
+                                                <td><?= $lector['alcance'] === 'GLOBAL' ? 'Todos los cursos' : (int)$lector['total_cursos'] ?></td>
                                                 <td><?= (int)$lector['estado'] === 1 ? 'Habilitado' : 'Inhabilitado' ?></td>
                                                 <td>
                                                     <form method="POST" action="" class="d-inline">
@@ -230,30 +243,36 @@ foreach ($asigRows as $row) {
                                             </tr>
                                             <tr>
                                                 <td colspan="6" class="bg-light">
-                                                    <form method="POST" action="" class="row g-2">
-                                                        <input type="hidden" name="action" value="save_cursos">
-                                                        <input type="hidden" name="id_lector" value="<?= $idLector ?>">
-                                                        <div class="col-12">
-                                                            <strong>Asignar cursos (solo aplica a POR_CURSO):</strong>
+                                                    <?php if ($lector['alcance'] === 'GLOBAL'): ?>
+                                                        <div class="alert alert-success mb-0">
+                                                            Este usuario está en alcance <strong>GLOBAL</strong> y puede lecturar en todos los cursos.
                                                         </div>
-                                                        <?php foreach ($cursos as $curso): ?>
-                                                            <?php
-                                                                $idCurso = (int)$curso['id_curso'];
-                                                                $checked = in_array($idCurso, $asignaciones[$idLector] ?? [], true) ? 'checked' : '';
-                                                            ?>
-                                                            <div class="col-md-3 col-sm-6">
-                                                                <div class="form-check">
-                                                                    <input class="form-check-input" type="checkbox" name="cursos[]" value="<?= $idCurso ?>" id="lc<?= $idLector ?>c<?= $idCurso ?>" <?= $checked ?>>
-                                                                    <label class="form-check-label" for="lc<?= $idLector ?>c<?= $idCurso ?>">
-                                                                        <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?>
-                                                                    </label>
-                                                                </div>
+                                                    <?php else: ?>
+                                                        <form method="POST" action="" class="row g-2">
+                                                            <input type="hidden" name="action" value="save_cursos">
+                                                            <input type="hidden" name="id_lector" value="<?= $idLector ?>">
+                                                            <div class="col-12">
+                                                                <strong>Asignar cursos (solo aplica a POR_CURSO):</strong>
                                                             </div>
-                                                        <?php endforeach; ?>
-                                                        <div class="col-12 mt-2">
-                                                            <button type="submit" class="btn btn-sm btn-outline-primary">Guardar cursos</button>
-                                                        </div>
-                                                    </form>
+                                                            <?php foreach ($cursos as $curso): ?>
+                                                                <?php
+                                                                    $idCurso = (int)$curso['id_curso'];
+                                                                    $checked = in_array($idCurso, $asignaciones[$idLector] ?? [], true) ? 'checked' : '';
+                                                                ?>
+                                                                <div class="col-md-3 col-sm-6">
+                                                                    <div class="form-check">
+                                                                        <input class="form-check-input" type="checkbox" name="cursos[]" value="<?= $idCurso ?>" id="lc<?= $idLector ?>c<?= $idCurso ?>" <?= $checked ?>>
+                                                                        <label class="form-check-label" for="lc<?= $idLector ?>c<?= $idCurso ?>">
+                                                                            <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?>
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            <?php endforeach; ?>
+                                                            <div class="col-12 mt-2">
+                                                                <button type="submit" class="btn btn-sm btn-outline-primary">Guardar cursos</button>
+                                                            </div>
+                                                        </form>
+                                                    <?php endif; ?>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
