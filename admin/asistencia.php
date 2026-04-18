@@ -166,6 +166,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $id_estudiante = (int)$qr_data['id_estudiante'];
     } elseif (preg_match('/^EST:(\d+)$/', $raw_qr, $m)) {
         $id_estudiante = (int)$m[1];
+    } elseif (ctype_digit($raw_qr)) {
+        $id_estudiante = (int)$raw_qr;
     }
 
     if ($id_estudiante > 0) {
@@ -618,6 +620,79 @@ if ($id_curso) {
         .scan-modal .modal-footer {
             border-top: 1px solid rgba(255,255,255,0.2);
         }
+        .manual-id-card {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.28);
+            border-radius: 10px;
+            padding: 12px;
+        }
+        .manual-id-input {
+            background: rgba(255,255,255,0.95);
+            border: 0;
+        }
+        .manual-id-help {
+            font-size: 0.8rem;
+            opacity: 0.9;
+            margin-top: 6px;
+        }
+        .reader-pane {
+            border-radius: 10px;
+            transition: all 0.25s ease;
+        }
+        .reader-collapsed-hint {
+            display: none;
+            padding: 16px;
+            border-radius: 10px;
+            border: 2px dashed rgba(255,255,255,0.6);
+            background: rgba(255,255,255,0.15);
+            text-align: center;
+            cursor: pointer;
+        }
+        .scan-layout.manual-mode #reader {
+            display: none;
+        }
+        .scan-layout.manual-mode .reader-collapsed-hint {
+            display: block;
+        }
+        .scan-result-box {
+            position: sticky;
+            top: 0;
+            z-index: 6;
+        }
+        #scan-result .alert {
+            margin-bottom: 0.75rem;
+        }
+        @media (max-width: 991.98px) {
+            .d-flex.justify-content-between.align-items-center.mb-4.no-print {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 12px;
+            }
+            .d-flex.justify-content-between.align-items-center.mb-4.no-print > div {
+                width: 100%;
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .d-flex.justify-content-between.align-items-center.mb-4.no-print > div .btn {
+                flex: 1 1 auto;
+            }
+            .scan-fab {
+                width: 58px;
+                height: 58px;
+                right: 16px;
+                bottom: 16px;
+                font-size: 24px;
+            }
+            .qr-card {
+                margin: 6px;
+                padding: 10px;
+            }
+            .qr-card img {
+                width: 140px;
+                height: 140px;
+            }
+        }
         @media print {
             .no-print {
                 display: none !important;
@@ -815,7 +890,7 @@ if ($id_curso) {
 
     <!-- Modal para escanear QR -->
     <div class="modal fade scan-modal" id="scannerModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
@@ -824,8 +899,34 @@ if ($id_curso) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="reader"></div>
-                    <div id="scan-result" class="mt-3"></div>
+                    <div class="scan-result-box">
+                        <div id="scan-result"></div>
+                    </div>
+                    <div class="row g-3 align-items-start scan-layout" id="scanLayout">
+                        <div class="col-lg-8">
+                            <div class="reader-pane">
+                                <div id="reader"></div>
+                                <div id="readerCollapsedHint" class="reader-collapsed-hint" onclick="setManualMode(false)">
+                                    <i class="ri-qr-scan-line"></i>
+                                    Lector QR minimizado. Toca aquí para volver al tamaño grande.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <div class="manual-id-card">
+                                <label for="manualStudentId" class="form-label mb-1"><strong>Registrar por ID</strong></label>
+                                <div class="input-group">
+                                    <input type="number" min="1" step="1" id="manualStudentId" class="form-control manual-id-input" placeholder="Ej: 154">
+                                    <button class="btn btn-light" type="button" onclick="registerById()">
+                                        <i class="ri-user-add-line"></i> Registrar
+                                    </button>
+                                </div>
+                                <div class="manual-id-help">
+                                    Usar cuando el estudiante no tenga su QR. Solo ingrese el ID del estudiante.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cerrar</button>
@@ -869,9 +970,100 @@ if ($id_curso) {
         let html5QrCode = null;
         let isScanning = false;
         let isProcessingScan = false;
+        const RESULT_DISPLAY_MS = 3000;
+
+        function setManualMode(enabled) {
+            const layout = document.getElementById('scanLayout');
+            if (!layout) {
+                return;
+            }
+            if (enabled) {
+                layout.classList.add('manual-mode');
+            } else {
+                layout.classList.remove('manual-mode');
+            }
+        }
+
+        function renderScanResult(data) {
+            const resultDiv = document.getElementById('scan-result');
+            const modalBody = document.querySelector('#scannerModal .modal-body');
+
+            if (data.success) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success result-card">
+                        <h5><i class="ri-check-circle-fill"></i> ¡Asistencia Registrada!</h5>
+                        <p><strong>Estudiante:</strong> ${data.estudiante}</p>
+                        <p><strong>Hora:</strong> ${data.hora}</p>
+                    </div>
+                `;
+                playSuccessSound();
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-warning result-card">
+                        <h5><i class="ri-alert-fill"></i> Atención</h5>
+                        <p>${data.message}</p>
+                    </div>
+                `;
+                playErrorSound();
+            }
+
+            if (modalBody) {
+                modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            setTimeout(() => {
+                resultDiv.innerHTML = '';
+                isProcessingScan = false;
+                if (html5QrCode) {
+                    html5QrCode.resume();
+                }
+            }, RESULT_DISPLAY_MS);
+        }
+
+        function procesarRegistroAsistencia(payload) {
+            if (isProcessingScan) {
+                return;
+            }
+
+            isProcessingScan = true;
+
+            if (html5QrCode) {
+                html5QrCode.pause();
+            }
+
+            fetch('asistencia.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'action=scan_qr&qr_data=' + encodeURIComponent(payload)
+            })
+            .then(response => response.json())
+            .then(renderScanResult)
+            .catch(error => {
+                console.error('Error:', error);
+                const resultDiv = document.getElementById('scan-result');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger result-card">
+                        <h5><i class="ri-error-warning-fill"></i> Error</h5>
+                        <p>Error al procesar el registro</p>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    resultDiv.innerHTML = '';
+                    isProcessingScan = false;
+                    if (html5QrCode) {
+                        html5QrCode.resume();
+                    }
+                }, RESULT_DISPLAY_MS);
+            });
+        }
 
         function openScanner() {
             const modal = new bootstrap.Modal(document.getElementById('scannerModal'));
+            setManualMode(false);
             modal.show();
             
             // Iniciar el escáner después de que el modal se muestre
@@ -967,87 +1159,32 @@ if ($id_curso) {
         }
 
         function onScanSuccess(decodedText) {
-            if (isProcessingScan) {
+            procesarRegistroAsistencia(decodedText);
+        }
+
+        function registerById() {
+            const input = document.getElementById('manualStudentId');
+            if (!input) {
                 return;
             }
 
-            isProcessingScan = true;
+            setManualMode(true);
 
-            if (html5QrCode) {
-                html5QrCode.pause();
-            }
-
-            fetch('asistencia.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'action=scan_qr&qr_data=' + encodeURIComponent(decodedText)
-            })
-            .then(response => response.json())
-            .then(data => {
-                const resultDiv = document.getElementById('scan-result');
-                
-                if (data.success) {
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-success result-card">
-                            <h5><i class="ri-check-circle-fill"></i> ¡Asistencia Registrada!</h5>
-                            <p><strong>Estudiante:</strong> ${data.estudiante}</p>
-                            <p><strong>Hora:</strong> ${data.hora}</p>
-                        </div>
-                    `;
-                    
-                    // Reproducir sonido de éxito
-                    playSuccessSound();
-                    
-                    // Reanudar el escaneo después de 2 segundos
-                    setTimeout(() => {
-                        resultDiv.innerHTML = '';
-                        isProcessingScan = false;
-                        if (html5QrCode) {
-                            html5QrCode.resume();
-                        }
-                    }, 1200);
-                } else {
-                    resultDiv.innerHTML = `
-                        <div class="alert alert-warning result-card">
-                            <h5><i class="ri-alert-fill"></i> Atención</h5>
-                            <p>${data.message}</p>
-                        </div>
-                    `;
-                    
-                    // Reproducir sonido de error
-                    playErrorSound();
-                    
-                    // Reanudar el escaneo después de 2 segundos
-                    setTimeout(() => {
-                        resultDiv.innerHTML = '';
-                        isProcessingScan = false;
-                        if (html5QrCode) {
-                            html5QrCode.resume();
-                        }
-                    }, 1200);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
+            const idValue = (input.value || '').trim();
+            if (!/^\d+$/.test(idValue) || parseInt(idValue, 10) <= 0) {
                 const resultDiv = document.getElementById('scan-result');
                 resultDiv.innerHTML = `
-                    <div class="alert alert-danger result-card">
-                        <h5><i class="ri-error-warning-fill"></i> Error</h5>
-                        <p>Error al procesar el QR</p>
+                    <div class="alert alert-warning result-card">
+                        <h5><i class="ri-alert-fill"></i> ID inválido</h5>
+                        <p>Ingresa un ID numérico válido.</p>
                     </div>
                 `;
-                
-                // Reanudar el escaneo
-                setTimeout(() => {
-                    resultDiv.innerHTML = '';
-                    isProcessingScan = false;
-                    if (html5QrCode) {
-                        html5QrCode.resume();
-                    }
-                }, 1200);
-            });
+                return;
+            }
+
+            procesarRegistroAsistencia('EST:' + parseInt(idValue, 10));
+            input.value = '';
+            input.focus();
         }
 
         function onScanFailure() {
@@ -1091,7 +1228,23 @@ if ($id_curso) {
 
         // Detener el escáner cuando se cierra el modal
         document.getElementById('scannerModal').addEventListener('hidden.bs.modal', async function () {
+            setManualMode(false);
             await stopScanner();
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const input = document.getElementById('manualStudentId');
+            if (input) {
+                input.addEventListener('focus', function() {
+                    setManualMode(true);
+                });
+                input.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        registerById();
+                    }
+                });
+            }
         });
     </script>
 </body>
