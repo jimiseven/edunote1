@@ -1018,7 +1018,7 @@ if ($id_curso) {
         let html5QrCode = null;
         let isScanning = false;
         let isProcessingScan = false;
-        const RESULT_DISPLAY_MS = 3000;
+        const RESULT_DISPLAY_MS = 1000;
 
         function setManualMode(enabled) {
             const layout = document.getElementById('scanLayout');
@@ -1248,7 +1248,7 @@ if ($id_curso) {
             
             oscillator.frequency.value = 800;
             oscillator.type = 'sine';
-            gainNode.gain.value = 0.3;
+            gainNode.gain.value = 0.6;
             
             oscillator.start();
             setTimeout(() => {
@@ -1266,7 +1266,7 @@ if ($id_curso) {
             
             oscillator.frequency.value = 300;
             oscillator.type = 'square';
-            gainNode.gain.value = 0.2;
+            gainNode.gain.value = 0.5;
             
             oscillator.start();
             setTimeout(() => {

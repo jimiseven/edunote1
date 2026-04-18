@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/ejecutar_migraciones_bds.php';
+date_default_timezone_set('America/La_Paz');
 
 class Database {
     private $host = 'localhost';
