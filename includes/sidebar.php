@@ -9,6 +9,8 @@ function active($str, $current)
     return (strpos($current, $str) !== false) ? 'active' : '';
 }
 ?>
+<button type="button" class="sidebar-mobile-open-btn" id="sidebarOpenGlobal" aria-label="Mostrar menú">☰</button>
+<div class="sidebar-mobile-backdrop" id="sidebarMobileBackdrop"></div>
 <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block sidebar collapse shadow" style="background:#181f2c; min-height:100vh;">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
@@ -18,6 +20,9 @@ function active($str, $current)
             letter-spacing: 0.01em;
             display: flex;
             flex-direction: column;
+            position: sticky;
+            top: 0;
+            height: 100vh;
         }
 
         .sidebar-toggle {
@@ -39,6 +44,36 @@ function active($str, $current)
         .sidebar-toggle:hover {
             background: #242f49;
             color: #ffffff;
+        }
+
+        .sidebar-mobile-open-btn {
+            display: none;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            border: 1px solid #2a3547;
+            background: #1e2638;
+            color: #ffffff;
+            z-index: 1055;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .sidebar-mobile-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1040;
+        }
+
+        body.sidebar-mobile-open .sidebar-mobile-open-btn {
+            display: none !important;
         }
 
         body.sidebar-collapsed #sidebarMenu {
@@ -187,6 +222,9 @@ function active($str, $current)
             padding: 1rem 0 0.4rem;
             margin-top: auto;
             /* Empuja todo hacia arriba */
+            flex-shrink: 0;
+            background: #181f2c;
+            border-top: 1px solid #24304a;
         }
 
         .sidebar-logout .nav-link {
@@ -207,6 +245,38 @@ function active($str, $current)
         }
 
         @media (max-width: 991px) {
+            .sidebar-mobile-open-btn {
+                display: inline-flex;
+            }
+
+            #sidebarMenu {
+                position: fixed;
+                top: 0;
+                left: -285px;
+                width: 270px !important;
+                max-width: 270px !important;
+                min-height: 100vh !important;
+                height: 100vh;
+                z-index: 1050;
+                transition: left .25s ease;
+                overflow: hidden;
+            }
+
+            #sidebarMenu .position-sticky {
+                height: 100vh !important;
+                min-height: 100vh !important;
+            }
+
+            #sidebarMenu .position-sticky > div[style*='overflow-y: auto'] {
+                overflow-y: auto !important;
+                min-height: 0;
+                padding-bottom: 10px;
+            }
+
+            body.sidebar-mobile-open #sidebarMenu {
+                left: 0;
+            }
+
             .sidebar-brand {
                 padding: 0.8rem 1rem 0.6rem;
             }
@@ -221,6 +291,15 @@ function active($str, $current)
 
             .sidebar-search-box {
                 padding: 0 1rem 0.8rem;
+            }
+
+            .sidebar-bottom {
+                padding-bottom: env(safe-area-inset-bottom, 10px);
+            }
+
+            .sidebar-logout .nav-link {
+                width: calc(100% - 1.6rem);
+                margin: 0 0.8rem;
             }
         }
     </style>
@@ -353,7 +432,7 @@ function active($str, $current)
                 <div class="sidebar-section-title">MIS CURSOS</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
-                        <a class="nav-link <?php echo active('dashboard', $current); ?>" href="dashboard.php">
+                        <a class="nav-link <?php echo active('dashboard', $current); ?>" href="../profesor/dashboard.php">
                             <span data-feather="book-open"></span>
                             Ver Cursos
                         </a>
@@ -422,14 +501,52 @@ function active($str, $current)
             } catch (e) {}
 
             const btn = document.getElementById('sidebarToggleGlobal');
+            const openBtn = document.getElementById('sidebarOpenGlobal');
+            const backdrop = document.getElementById('sidebarMobileBackdrop');
+
+            const isMobile = () => window.matchMedia('(max-width: 991px)').matches;
+
+            const closeMobileSidebar = () => {
+                document.body.classList.remove('sidebar-mobile-open');
+            };
+
             if (btn) {
                 btn.addEventListener('click', function() {
+                    if (isMobile()) {
+                        closeMobileSidebar();
+                        return;
+                    }
+
                     document.body.classList.toggle('sidebar-collapsed');
                     try {
                         localStorage.setItem('edunote_sidebar_collapsed', document.body.classList.contains('sidebar-collapsed') ? '1' : '0');
                     } catch (e) {}
                 });
             }
+
+            if (openBtn) {
+                openBtn.addEventListener('click', function() {
+                    document.body.classList.toggle('sidebar-mobile-open');
+                });
+            }
+
+            if (backdrop) {
+                backdrop.addEventListener('click', closeMobileSidebar);
+            }
+
+            document.querySelectorAll('#sidebarMenu .nav-link').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    if (isMobile()) {
+                        closeMobileSidebar();
+                    }
+                });
+            });
+
+            window.addEventListener('resize', function() {
+                if (!isMobile()) {
+                    closeMobileSidebar();
+                }
+            });
         })();
         if (window.feather) feather.replace();
     </script>

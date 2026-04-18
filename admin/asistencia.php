@@ -663,10 +663,14 @@ if ($id_curso) {
             margin-bottom: 0.75rem;
         }
         @media (max-width: 991.98px) {
+            .asistencia-main {
+                padding-top: 3.2rem !important;
+            }
             .d-flex.justify-content-between.align-items-center.mb-4.no-print {
                 flex-direction: column;
                 align-items: flex-start !important;
                 gap: 12px;
+                padding-left: 56px;
             }
             .d-flex.justify-content-between.align-items-center.mb-4.no-print > div {
                 width: 100%;
@@ -691,6 +695,17 @@ if ($id_curso) {
             .qr-card img {
                 width: 140px;
                 height: 140px;
+            }
+        }
+        @media (max-width: 767.98px) {
+            .asistencia-main {
+                padding-top: 0.75rem !important;
+            }
+            .asistencia-main .card {
+                border-radius: 12px;
+            }
+            .asistencia-main .h3 {
+                font-size: 1.2rem;
             }
         }
         @media print {
@@ -739,7 +754,7 @@ if ($id_curso) {
             <?php include '../includes/sidebar.php'; ?>
 
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4 asistencia-main">
                 <?php if (isset($_SESSION['asistencia_flash'])): ?>
                     <?php $flash = $_SESSION['asistencia_flash']; unset($_SESSION['asistencia_flash']); ?>
                     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> no-print" role="alert">
@@ -752,9 +767,6 @@ if ($id_curso) {
                         <i class="ri-qr-code-line"></i> Asistencia - Generación de QR
                     </h1>
                     <div>
-                        <a href="dashboard_secundaria.php" class="btn btn-secondary">
-                            <i class="ri-arrow-left-line"></i> Volver
-                        </a>
                         <?php if ($id_curso && !empty($estudiantes) && $isAdminAsistencia): ?>
                             <button onclick="window.print()" class="btn btn-primary">
                                 <i class="ri-printer-line"></i> Imprimir curso seleccionado
@@ -763,37 +775,73 @@ if ($id_curso) {
                     </div>
                 </div>
 
-                <!-- Selector de curso -->
-                <div class="card mb-4 no-print">
-                    <div class="card-body">
-                        <form method="GET" action="">
-                            <div class="row align-items-end">
-                                <div class="col-md-4">
-                                    <label for="nivel" class="form-label">Seleccionar Nivel</label>
-                                    <select class="form-select" id="nivel" name="nivel" onchange="changeLevel(this)">
-                                        <option value="">-- Seleccione un nivel --</option>
-                                        <?php foreach ($nivelesPermitidos as $nivelOpt): ?>
-                                            <option value="<?= htmlspecialchars($nivelOpt) ?>" <?= ($nivel === $nivelOpt) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($nivelOpt) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                <?php if (!$isAdminAsistencia): ?>
+                    <div class="card mb-4 no-print">
+                        <div class="card-body">
+                            <h5 class="mb-3"><i class="ri-shield-check-line"></i> Permisos de lecturado</h5>
+                            <?php if (($lectorInfo['alcance'] ?? '') === 'GLOBAL'): ?>
+                                <div class="alert alert-success mb-0">
+                                    Tienes acceso para lecturar <strong>todos los cursos</strong>.
                                 </div>
-                                <div class="col-md-4">
-                                    <label for="id_curso" class="form-label">Seleccionar Curso</label>
-                                    <select class="form-select" id="id_curso" name="id_curso" onchange="this.form.submit()" <?= $nivel === '' ? 'disabled' : '' ?>>
-                                        <option value="">-- Seleccione un curso --</option>
+                            <?php else: ?>
+                                <div class="alert alert-info mb-3">
+                                    Cursos habilitados para tu usuario:
+                                </div>
+                                <?php if (!empty($cursos)): ?>
+                                    <div class="d-flex flex-wrap gap-2">
                                         <?php foreach ($cursos as $curso): ?>
-                                            <option value="<?= $curso['id_curso'] ?>" <?= ($id_curso == $curso['id_curso']) ? 'selected' : '' ?>>
+                                            <span class="badge bg-primary">
                                                 <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?>
-                                            </option>
+                                            </span>
                                         <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                        </form>
+                                    </div>
+                                <?php else: ?>
+                                    <div class="alert alert-warning mb-0">
+                                        No tienes cursos habilitados actualmente. Contacta al administrador.
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
 
-                        <?php if ($isAdminAsistencia): ?>
+                            <div class="mt-3">
+                                <button type="button" class="btn btn-success" onclick="openScanner()">
+                                    <i class="ri-qr-scan-line"></i> Habilitar pantalla de lecturado
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Selector de curso -->
+                <?php if ($isAdminAsistencia): ?>
+                    <div class="card mb-4 no-print">
+                        <div class="card-body">
+                            <form method="GET" action="">
+                                <div class="row align-items-end">
+                                    <div class="col-md-4">
+                                        <label for="nivel" class="form-label">Seleccionar Nivel</label>
+                                        <select class="form-select" id="nivel" name="nivel" onchange="changeLevel(this)">
+                                            <option value="">-- Seleccione un nivel --</option>
+                                            <?php foreach ($nivelesPermitidos as $nivelOpt): ?>
+                                                <option value="<?= htmlspecialchars($nivelOpt) ?>" <?= ($nivel === $nivelOpt) ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($nivelOpt) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="id_curso" class="form-label">Seleccionar Curso</label>
+                                        <select class="form-select" id="id_curso" name="id_curso" onchange="this.form.submit()" <?= $nivel === '' ? 'disabled' : '' ?>>
+                                            <option value="">-- Seleccione un curso --</option>
+                                            <?php foreach ($cursos as $curso): ?>
+                                                <option value="<?= $curso['id_curso'] ?>" <?= ($id_curso == $curso['id_curso']) ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            </form>
+
                             <div class="mt-3">
                                 <form method="POST" action="" class="d-inline">
                                     <input type="hidden" name="action" value="generate_all_school_zip">
@@ -802,9 +850,9 @@ if ($id_curso) {
                                     </button>
                                 </form>
                             </div>
-                        <?php endif; ?>
+                        </div>
                     </div>
-                </div>
+                <?php endif; ?>
 
                 <!-- Lista de estudiantes con QR -->
                 <?php if ($id_curso && !empty($estudiantes) && $isAdminAsistencia): ?>
@@ -870,9 +918,9 @@ if ($id_curso) {
                 <?php endif; ?>
 
                 <!-- Botón para ir al escáner -->
-                <?php if ($id_curso): ?>
+                <?php if ($id_curso && $isAdminAsistencia): ?>
                     <div class="mt-4 no-print">
-                        <a href="escanear_asistencia.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-lg">
+                        <a href="escanear_asistencia.php<?= $id_curso ? ('?id_curso=' . (int)$id_curso) : '' ?>" class="btn btn-success btn-lg">
                             <i class="ri-qr-scan-line"></i> Escanear Asistencia (Página completa)
                         </a>
                     </div>
@@ -882,7 +930,7 @@ if ($id_curso) {
     </div>
 
     <!-- Botón flotante para escanear -->
-    <?php if ($id_curso): ?>
+    <?php if ($id_curso && $isAdminAsistencia): ?>
         <button class="scan-fab no-print" onclick="openScanner()" title="Escanear QR">
             <i class="ri-qr-scan-2-line"></i>
         </button>
