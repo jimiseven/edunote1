@@ -153,13 +153,32 @@ foreach ($asigRows as $row) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lectores de Asistencia</title>
     <link rel="stylesheet" href="../css/bootstrap.min.css">
+    <style>
+        html, body {
+            height: 100%;
+        }
+        .lectores-layout {
+            min-height: 100vh;
+        }
+        .lectores-main {
+            height: 100vh;
+            overflow-y: auto;
+        }
+        @media (max-width: 991.98px) {
+            .lectores-main {
+                height: auto;
+                min-height: 100vh;
+                overflow-y: visible;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid">
-        <div class="row position-relative">
+        <div class="row position-relative lectores-layout">
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4">
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4 lectores-main">
                 <?php if (isset($_SESSION['asistencia_lectores_flash'])): ?>
                     <?php $flash = $_SESSION['asistencia_lectores_flash']; unset($_SESSION['asistencia_lectores_flash']); ?>
                     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?>" role="alert">
