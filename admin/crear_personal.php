@@ -14,24 +14,45 @@ $conn = $db->connect();
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        // Validar campos requeridos
+        $nombres = trim($_POST['nombres'] ?? '');
+        $apellidos = trim($_POST['apellidos'] ?? '');
+        $carnet_identidad = trim($_POST['carnet_identidad'] ?? '');
+        $celular = trim($_POST['celular'] ?? '');
+        $id_rol = (int)($_POST['id_rol'] ?? 0);
+
+        if (empty($nombres) || empty($apellidos) || empty($carnet_identidad) || $id_rol <= 0) {
+            throw new RuntimeException('Todos los campos obligatorios deben ser completados.');
+        }
+
+        // Verificar si el carnet ya existe
+        $stmt_check = $conn->prepare("SELECT id_personal FROM personal WHERE carnet_identidad = ?");
+        $stmt_check->execute([$carnet_identidad]);
+        if ($stmt_check->fetch()) {
+            throw new RuntimeException('Ya existe un personal con ese carnet de identidad.');
+        }
+
+        // Generar password por defecto (hash del carnet de identidad)
+        $password_default = password_hash($carnet_identidad, PASSWORD_DEFAULT);
+
+        // Insertar nuevo personal
         $stmt = $conn->prepare("
-            INSERT INTO personal (nombres, apellidos, celular, carnet_identidad, id_rol, estado)
-            VALUES (:nombres, :apellidos, :celular, :carnet_identidad, :id_rol, 1)
+            INSERT INTO personal (nombres, apellidos, celular, carnet_identidad, id_rol, password, estado)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
         ");
-        
-        $stmt->execute([
-            ':nombres' => $_POST['nombres'],
-            ':apellidos' => $_POST['apellidos'],
-            ':celular' => $_POST['celular'],
-            ':carnet_identidad' => $_POST['carnet_identidad'],
-            ':id_rol' => $_POST['id_rol']
-        ]);
+
+        $celular = empty($celular) ? null : $celular;
+        $stmt->execute([$nombres, $apellidos, $celular, $carnet_identidad, $id_rol, $password_default]);
 
         $_SESSION['success_message'] = 'Personal creado exitosamente';
         header('Location: personal.php');
         exit();
+    } catch (RuntimeException $e) {
+        $_SESSION['error_message'] = $e->getMessage();
+        header('Location: personal.php');
+        exit();
     } catch (PDOException $e) {
-        $_SESSION['error_message'] = 'Error al crear personal: ' . $e->getMessage();
+        $_SESSION['error_message'] = 'Error de base de datos: ' . $e->getMessage();
         header('Location: personal.php');
         exit();
     }

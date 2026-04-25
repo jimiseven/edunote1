@@ -414,6 +414,12 @@ function active($str, $current)
                         </a>
                     </li>
                     <li>
+                        <a class="nav-link <?php echo active('ajustes_asistencia.php', $current); ?>" href="ajustes_asistencia.php">
+                            <span data-feather="settings"></span>
+                            Ajustes
+                        </a>
+                    </li>
+                    <li>
                         <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="reporte_asistencia_curso.php">
                             <span data-feather="file-text"></span>
                             Reporte por curso

@@ -47,6 +47,36 @@ function escaneo_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lectorI
     return false;
 }
 
+function escaneo_resolver_puntualidad(PDO $conn, $fecha, $horaActual)
+{
+    $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+        FROM asistencia_horarios_ingreso
+        WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
+        ORDER BY fecha_inicio DESC, id_horario DESC
+        LIMIT 1");
+    $stmt->execute([$fecha]);
+    $horario = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$horario) {
+        return [
+            'estado_puntualidad' => null,
+            'hora_ingreso_programada' => null,
+            'tolerancia_min' => null,
+        ];
+    }
+
+    $toleranciaMin = max((int)($horario['tolerancia_min'] ?? 0), 0);
+    $horaIngreso = (string)$horario['hora_ingreso'];
+    $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
+    $estado = ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE';
+
+    return [
+        'estado_puntualidad' => $estado,
+        'hora_ingreso_programada' => $horaIngreso,
+        'tolerancia_min' => $toleranciaMin,
+    ];
+}
+
 $lectorInfo = $isAdminAsistencia ? null : escaneo_get_lector($conn, $userId);
 if (!$isAdminAsistencia && !$lectorInfo) {
     http_response_code(403);
@@ -93,9 +123,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                 'message' => 'El estudiante ya registró asistencia hoy a las ' . $existente['hora_entrada']
             ]);
         } else {
+            $puntualidad = escaneo_resolver_puntualidad($conn, $hoy, $hora_actual);
+
             // Registrar asistencia
-            $stmt = $conn->prepare("INSERT INTO asistencia (id_estudiante, fecha, hora_entrada, tipo_registro) VALUES (?, ?, ?, 'QR')");
-            if ($stmt->execute([$id_estudiante, $hoy, $hora_actual])) {
+            $stmt = $conn->prepare("INSERT INTO asistencia
+                (id_estudiante, fecha, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
+                VALUES (?, ?, ?, 'QR', ?, ?, ?)");
+            if ($stmt->execute([
+                $id_estudiante,
+                $hoy,
+                $hora_actual,
+                $puntualidad['estado_puntualidad'],
+                $puntualidad['hora_ingreso_programada'],
+                $puntualidad['tolerancia_min']
+            ])) {
                 // Obtener información del estudiante
                 $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
                 $stmt_est->execute([$id_estudiante]);
@@ -105,7 +146,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                     'success' => true,
                     'message' => 'Asistencia registrada correctamente',
                     'estudiante' => $estudiante['apellido_paterno'] . ' ' . $estudiante['apellido_materno'] . ', ' . $estudiante['nombres'],
-                    'hora' => $hora_actual
+                    'hora' => $hora_actual,
+                    'puntualidad' => $puntualidad['estado_puntualidad']
                 ]);
             } else {
                 echo json_encode([
@@ -291,6 +333,7 @@ if ($id_curso) {
                             <h5><i class="ri-check-circle-fill"></i> ¡Asistencia Registrada!</h5>
                             <p><strong>Estudiante:</strong> ${data.estudiante}</p>
                             <p><strong>Hora:</strong> ${data.hora}</p>
+                            ${data.puntualidad ? `<p><strong>Puntualidad:</strong> ${data.puntualidad}</p>` : ''}
                         </div>
                     `;
                     
