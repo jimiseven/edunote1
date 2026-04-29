@@ -88,6 +88,45 @@ $stmt_materias = $conn->prepare("
 $stmt_materias->execute([$id_curso]);
 $todas_materias = $stmt_materias->fetchAll(PDO::FETCH_ASSOC);
 
+$gestionesConsulta = [$gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $gestionesConsulta[] = $gestionAlternativa;
+}
+
+$periodosIdsTrimestre = [1 => null, 2 => null, 3 => null];
+if (!empty($gestionesConsulta)) {
+    $placeholdersPeriodos = implode(',', array_fill(0, count($gestionesConsulta), '?'));
+    $sqlPeriodosTrimestre = "SELECT id_periodo_evaluacion, parcial, gestion
+                              FROM periodos_evaluacion
+                              WHERE trimestre = ?
+                                AND gestion IN ($placeholdersPeriodos)";
+    $paramsPeriodosTrimestre = array_merge([(int)$trimestre], $gestionesConsulta);
+    try {
+        $stmtPeriodosTrimestre = $conn->prepare($sqlPeriodosTrimestre);
+        $stmtPeriodosTrimestre->execute($paramsPeriodosTrimestre);
+        foreach ($stmtPeriodosTrimestre->fetchAll(PDO::FETCH_ASSOC) as $filaPeriodo) {
+            $parcialFila = isset($filaPeriodo['parcial']) ? (int)$filaPeriodo['parcial'] : 0;
+            if ($parcialFila < 1 || $parcialFila > 3) {
+                continue;
+            }
+            $idPeriodoFila = isset($filaPeriodo['id_periodo_evaluacion']) ? (int)$filaPeriodo['id_periodo_evaluacion'] : null;
+            if ($idPeriodoFila === null) {
+                continue;
+            }
+            $gestionFila = isset($filaPeriodo['gestion']) ? trim((string)$filaPeriodo['gestion']) : '';
+            if ($gestionFila === $gestionActual) {
+                $periodosIdsTrimestre[$parcialFila] = $idPeriodoFila;
+            } elseif ($periodosIdsTrimestre[$parcialFila] === null) {
+                $periodosIdsTrimestre[$parcialFila] = $idPeriodoFila;
+            }
+        }
+    } catch (PDOException $e) {
+        $periodosIdsTrimestre = [1 => null, 2 => null, 3 => null];
+    }
+}
+
+$puedeEditarParciales = isset($_SESSION['user_role']) && (int)$_SESSION['user_role'] === 1;
+
 $materiasPorId = [];
 foreach ($todas_materias as $materia) {
     $materiasPorId[(int)$materia['id_materia']] = $materia;
@@ -360,12 +399,26 @@ foreach ($estudiantes as $estudiante) {
         .sidebar {
             width: var(--sidebar-width);
             height: 100vh;
+            height: 100dvh; /* Soporte para móviles */
             position: fixed;
             left: 0;
             top: 0;
             background: #2c3e50;
             padding: 20px;
             z-index: 1000;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.3) transparent;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
         }
 
         .main-content {
@@ -634,6 +687,40 @@ foreach ($estudiantes as $estudiante) {
         .partial-col {
             min-width: 72px;
             text-align: center;
+        }
+
+        .partial-col.js-parcial-edit {
+            cursor: pointer;
+            position: relative;
+            transition: background-color 0.15s ease, color 0.15s ease;
+        }
+
+        .partial-col.js-parcial-edit:hover {
+            background: #e0f2fe !important;
+            color: #0b2545 !important;
+        }
+
+        .partial-col.js-parcial-edit.parcial-loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .partial-col.js-parcial-edit::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 6px 6px 0;
+            border-color: transparent #2563eb transparent transparent;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        .partial-col.js-parcial-edit:hover::after {
+            opacity: 1;
         }
 
         .subject-heading {
@@ -1139,13 +1226,17 @@ foreach ($estudiantes as $estudiante) {
                     <?php $contador = 1; ?>
                     <?php foreach ($estudiantes as $estudiante): ?>
                         <tr>
+                            <?php
+                            $estudianteNombreMayus = strtoupper(
+                                $estudiante['apellido_paterno'] . ' ' .
+                                $estudiante['apellido_materno'] . ', ' .
+                                $estudiante['nombres']
+                            );
+                            $estudianteNombreEsc = htmlspecialchars($estudianteNombreMayus, ENT_QUOTES, 'UTF-8');
+                            ?>
                             <td class="number-col"><?= $contador++ ?></td>
                             <td class="student-name">
-                                <?= htmlspecialchars(strtoupper(
-                                    $estudiante['apellido_paterno'] . ' ' .
-                                    $estudiante['apellido_materno'] . ', ' .
-                                    $estudiante['nombres']
-                                )) ?>
+                                <?= htmlspecialchars($estudianteNombreMayus) ?>
                             </td>
                             <?php foreach ($materias as $mat): ?>
                                 <?php
@@ -1160,10 +1251,54 @@ foreach ($estudiantes as $estudiante) {
                                 $promedioMateria = $promediosMateriaTrimestre[$estudiante['id_estudiante']][$mat['id_materia']] ?? '';
                                 $bonusInfo = $materiasBonusInfo[$mat['id_materia']] ?? null;
                                 $bonusVal = $bonusInfo ? ($bonusComplementarios[$estudiante['id_estudiante']][$mat['id_materia']] ?? '') : '';
+                                $materiaNombreEsc = htmlspecialchars($mat['nombre_materia'], ENT_QUOTES, 'UTF-8');
+                                $materiaIdAttr = (int)$mat['id_materia'];
+                                $estudianteIdAttr = (int)$estudiante['id_estudiante'];
+                                // Materia compuesta = padre con hijas (calculada, no editable)
+                                // Hijas y extras sí son editables (tienen notas directas)
+                                $esMateriaCompuesta = !empty($mat['hijas']);
+                                $esMateriaEditable = !$esMateriaCompuesta; // Hijas, extras y padres simples son editables
+                                
+                                $periodoIdP1 = $periodosIdsTrimestre[1] ?? null;
+                                $periodoIdP2 = $periodosIdsTrimestre[2] ?? null;
+                                $periodoIdP3 = $periodosIdsTrimestre[3] ?? null;
+                                $editableP1 = $puedeEditarParciales && $esMateriaEditable && $periodoIdP1 !== null;
+                                $editableP2 = $puedeEditarParciales && $esMateriaEditable && $periodoIdP2 !== null;
+                                $editableP3 = $puedeEditarParciales && $esMateriaEditable && $periodoIdP3 !== null;
                                 ?>
-                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p1) && floatval($p1) < 51) ? 'nota-baja' : '' ?>"><?= $p1 !== '' ? $p1 : '--' ?></td>
-                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p2) && floatval($p2) < 51) ? 'nota-baja' : '' ?>"><?= $p2 !== '' ? $p2 : '--' ?></td>
-                                <td class="partial-col <?= $clase ?> <?= (is_numeric($p3) && floatval($p3) < 51) ? 'nota-baja' : '' ?>"><?= $p3 !== '' ? $p3 : '--' ?></td>
+                                <td
+                                    class="partial-col <?= $clase ?> <?= (is_numeric($p1) && floatval($p1) < 51) ? 'nota-baja' : '' ?><?= $editableP1 ? ' js-parcial-edit' : '' ?>"
+                                    <?= $editableP1 ? 'title="Editar P1"' : '' ?>
+                                    data-materia-id="<?= $materiaIdAttr ?>"
+                                    data-estudiante-id="<?= $estudianteIdAttr ?>"
+                                    data-parcial="1"
+                                    <?= $periodoIdP1 !== null ? 'data-periodo-id="' . $periodoIdP1 . '"' : '' ?>
+                                    data-trimestre="<?= (int)$trimestre ?>"
+                                    data-student="<?= $estudianteNombreEsc ?>"
+                                    data-materia-name="<?= $materiaNombreEsc ?>"
+                                ><?= $p1 !== '' ? $p1 : '--' ?></td>
+                                <td
+                                    class="partial-col <?= $clase ?> <?= (is_numeric($p2) && floatval($p2) < 51) ? 'nota-baja' : '' ?><?= $editableP2 ? ' js-parcial-edit' : '' ?>"
+                                    <?= $editableP2 ? 'title="Editar P2"' : '' ?>
+                                    data-materia-id="<?= $materiaIdAttr ?>"
+                                    data-estudiante-id="<?= $estudianteIdAttr ?>"
+                                    data-parcial="2"
+                                    <?= $periodoIdP2 !== null ? 'data-periodo-id="' . $periodoIdP2 . '"' : '' ?>
+                                    data-trimestre="<?= (int)$trimestre ?>"
+                                    data-student="<?= $estudianteNombreEsc ?>"
+                                    data-materia-name="<?= $materiaNombreEsc ?>"
+                                ><?= $p2 !== '' ? $p2 : '--' ?></td>
+                                <td
+                                    class="partial-col <?= $clase ?> <?= (is_numeric($p3) && floatval($p3) < 51) ? 'nota-baja' : '' ?><?= $editableP3 ? ' js-parcial-edit' : '' ?>"
+                                    <?= $editableP3 ? 'title="Editar P3"' : '' ?>
+                                    data-materia-id="<?= $materiaIdAttr ?>"
+                                    data-estudiante-id="<?= $estudianteIdAttr ?>"
+                                    data-parcial="3"
+                                    <?= $periodoIdP3 !== null ? 'data-periodo-id="' . $periodoIdP3 . '"' : '' ?>
+                                    data-trimestre="<?= (int)$trimestre ?>"
+                                    data-student="<?= $estudianteNombreEsc ?>"
+                                    data-materia-name="<?= $materiaNombreEsc ?>"
+                                ><?= $p3 !== '' ? $p3 : '--' ?></td>
                                 <?php if ($bonusInfo): ?>
                                     <td class="bonus-col" title="<?= htmlspecialchars('Puntos ponderados desde ' . ($bonusInfo['nombre_complementaria'] ?? 'materia complementaria'), ENT_QUOTES) ?>"><?= $bonusVal !== '' ? $bonusVal : '--' ?></td>
                                 <?php endif; ?>
@@ -1177,6 +1312,457 @@ foreach ($estudiantes as $estudiante) {
         </div>
     </div>
 
+    <?php if ($puedeEditarParciales): ?>
+    <div class="modal fade" id="modalEditarParcial" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar notas del parcial</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="flex-grow-1">
+                                <strong>Estudiante:</strong>
+                                <span id="modalParcialEstudiante">—</span>
+                            </div>
+                            <div class="flex-grow-1">
+                                <strong>Materia:</strong>
+                                <span id="modalParcialMateria">—</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Pestañas para los 3 parciales -->
+                    <ul class="nav nav-tabs" id="parcialTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="parcial1-tab" data-bs-toggle="tab" data-bs-target="#parcial1-content" type="button" role="tab" aria-controls="parcial1-content" aria-selected="true">
+                                <strong>Parcial 1</strong>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="parcial2-tab" data-bs-toggle="tab" data-bs-target="#parcial2-content" type="button" role="tab" aria-controls="parcial2-content" aria-selected="false">
+                                <strong>Parcial 2</strong>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="parcial3-tab" data-bs-toggle="tab" data-bs-target="#parcial3-content" type="button" role="tab" aria-controls="parcial3-content" aria-selected="false">
+                                <strong>Parcial 3</strong>
+                            </button>
+                        </li>
+                    </ul>
+                    <div class="tab-content border border-top-0 p-3 rounded-bottom" id="parcialTabContent">
+                        <?php for ($p = 1; $p <= 3; $p++): ?>
+                        <div class="tab-pane fade <?= $p === 1 ? 'show active' : '' ?>" id="parcial<?= $p ?>-content" role="tabpanel" aria-labelledby="parcial<?= $p ?>-tab">
+                            <div class="row g-3">
+                                <div class="col-12 col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-transparent fw-bold">SER (0-10)</div>
+                                        <div class="card-body">
+                                            <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="SER"></div>
+                                            <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="SER">Sin datos ingresados.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-transparent fw-bold">SABER (0-45)</div>
+                                        <div class="card-body">
+                                            <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="SABER"></div>
+                                            <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="SABER">Sin datos ingresados.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-header bg-transparent fw-bold">HACER (0-40)</div>
+                                        <div class="card-body">
+                                            <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="HACER"></div>
+                                            <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="HACER">Sin datos ingresados.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endfor; ?>
+                    </div>
+                    <div class="alert alert-info mt-3" id="modalInfoTrimestral" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <div class="me-auto text-muted small" id="modalParcialMensaje"></div>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="modalParcialGuardar">Guardar parcial actual</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <?php if ($puedeEditarParciales): ?>
+    <script>
+        (function() {
+            console.log('[Editar Parcial] Script iniciado');
+            const modalEl = document.getElementById('modalEditarParcial');
+            if (!modalEl) {
+                console.error('[Editar Parcial] Modal no encontrado');
+                return;
+            }
+
+            const bsModal = new bootstrap.Modal(modalEl);
+            const tabla = document.querySelector('.trimester-table');
+            if (!tabla) {
+                console.error('[Editar Parcial] Tabla no encontrada');
+                return;
+            }
+
+            const estudianteEl = modalEl.querySelector('#modalParcialEstudiante');
+            const materiaEl = modalEl.querySelector('#modalParcialMateria');
+            const infoMsgEl = modalEl.querySelector('#modalParcialMensaje');
+            const infoTrimestralEl = modalEl.querySelector('#modalInfoTrimestral');
+            const btnGuardar = modalEl.querySelector('#modalParcialGuardar');
+
+            let contextoActual = null;
+            const maxPorArea = { SER: 4, SABER: 8, HACER: 8 };
+            const rangos = { SER: 10, SABER: 45, HACER: 40 };
+
+            // Mapa de inputs y resúmenes por parcial y área
+            const inputsMap = {};
+            const resumenMap = {};
+
+            function crearInput(area, indice) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'col-6';
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'form-control form-control-sm';
+                input.dataset.area = area;
+                input.dataset.indice = indice;
+                input.step = '0.01';
+                input.min = '0';
+                input.max = String(rangos[area]);
+                input.placeholder = `${indice}`;
+
+                wrapper.appendChild(input);
+                return { wrapper, input };
+            }
+
+            function renderInputs(container, area) {
+                container.innerHTML = '';
+                const elementos = [];
+                for (let i = 1; i <= maxPorArea[area]; i++) {
+                    const { wrapper, input } = crearInput(area, i);
+                    container.appendChild(wrapper);
+                    elementos.push(input);
+                }
+                return elementos;
+            }
+
+            // Inicializar inputs para los 3 parciales
+            for (let p = 1; p <= 3; p++) {
+                inputsMap[p] = {};
+                resumenMap[p] = {};
+                ['SER', 'SABER', 'HACER'].forEach(area => {
+                    const container = modalEl.querySelector(`.parcial-inputs[data-parcial="${p}"][data-area="${area}"]`);
+                    const resumenEl = modalEl.querySelector(`.parcial-resumen[data-parcial="${p}"][data-area="${area}"]`);
+                    if (container && resumenEl) {
+                        inputsMap[p][area] = renderInputs(container, area);
+                        resumenMap[p][area] = resumenEl;
+                    }
+                });
+            }
+
+            function asignarValores(parcial, area, valores) {
+                const inputs = inputsMap[parcial]?.[area];
+                if (!inputs) return;
+                inputs.forEach(input => {
+                    const idx = parseInt(input.dataset.indice, 10);
+                    const valor = valores[idx] ?? null;
+                    input.value = valor !== null ? valor : '';
+                });
+            }
+
+            function resumenArea(textEl, inputs, area) {
+                const valores = inputs
+                    .map(input => {
+                        const v = input.value.trim();
+                        if (v === '') return null;
+                        const num = Number(v.replace(',', '.'));
+                        return isNaN(num) ? null : num;
+                    })
+                    .filter(v => v !== null);
+
+                if (valores.length === 0) {
+                    textEl.textContent = 'Sin datos ingresados.';
+                    return { promedio: null, cantidad: 0 };
+                }
+                const suma = valores.reduce((acc, v) => acc + v, 0);
+                const promedio = suma / valores.length;
+                const restante = rangos[area] - promedio;
+                textEl.innerHTML = `Promedio: <strong>${promedio.toFixed(2)}</strong> · Restante área: ${restante.toFixed(2)}`;
+                return { promedio, cantidad: valores.length };
+            }
+
+            function calcularResumenes(parcial) {
+                if (!parcial) {
+                    for (let p = 1; p <= 3; p++) {
+                        calcularResumenes(p);
+                    }
+                    return;
+                }
+                ['SER', 'SABER', 'HACER'].forEach(area => {
+                    const inputs = inputsMap[parcial]?.[area];
+                    const resumenEl = resumenMap[parcial]?.[area];
+                    if (inputs && resumenEl) {
+                        resumenArea(resumenEl, inputs, area);
+                    }
+                });
+            }
+
+            function limpiarModal() {
+                contextoActual = null;
+                infoMsgEl.textContent = '';
+                infoTrimestralEl.style.display = 'none';
+                estudianteEl.textContent = '—';
+                materiaEl.textContent = '—';
+                for (let p = 1; p <= 3; p++) {
+                    ['SER', 'SABER', 'HACER'].forEach(area => {
+                        const inputs = inputsMap[p]?.[area];
+                        if (inputs) {
+                            inputs.forEach(input => input.value = '');
+                        }
+                    });
+                }
+                calcularResumenes();
+            }
+
+            function obtenerValores(inputs, area) {
+                const resultado = {};
+                inputs.forEach(input => {
+                    const idx = input.dataset.indice;
+                    const valor = input.value.trim();
+                    if (valor === '') {
+                        resultado[idx] = null;
+                        return;
+                    }
+                    const num = Number(valor.replace(',', '.'));
+                    if (isNaN(num)) {
+                        throw new Error(`${area} ${idx}: ingrese un número válido.`);
+                    }
+                    if (num < 0 || num > rangos[area]) {
+                        throw new Error(`${area} ${idx}: debe estar entre 0 y ${rangos[area]}.`);
+                    }
+                    resultado[idx] = Number(num.toFixed(2));
+                });
+                return resultado;
+            }
+
+            async function cargarDetalle(celda, contexto) {
+                celda.classList.add('parcial-loading');
+                try {
+                    const params = new URLSearchParams({
+                        id_curso: contexto.idCurso,
+                        id_materia: contexto.idMateria,
+                        id_estudiante: contexto.idEstudiante,
+                        trimestre: contexto.trimestre,
+                    });
+
+                    const resp = await fetch('ajax_parcial_notas.php?' + params.toString(), {
+                        credentials: 'same-origin'
+                    });
+                    if (!resp.ok) {
+                        throw new Error('No fue posible obtener los datos.');
+                    }
+                    const json = await resp.json();
+                    if (!json.success) {
+                        throw new Error(json.message || 'Error desconocido.');
+                    }
+
+                    // Cargar los 3 parciales
+                    for (let p = 1; p <= 3; p++) {
+                        const detalle = json.data.detalle_parciales?.[p];
+                        if (detalle) {
+                            asignarValores(p, 'SER', detalle.SER || []);
+                            asignarValores(p, 'SABER', detalle.SABER || []);
+                            asignarValores(p, 'HACER', detalle.HACER || []);
+                        }
+                    }
+                    calcularResumenes();
+
+                    if (json.data.autoevaluacion !== null || json.data.nota_extra !== null) {
+                        infoTrimestralEl.style.display = 'block';
+                        infoTrimestralEl.innerHTML = `Autoevaluación: <strong>${json.data.autoevaluacion ?? 0}</strong> · Extra: <strong>${json.data.nota_extra ?? 0}</strong>`;
+                    } else {
+                        infoTrimestralEl.style.display = 'none';
+                    }
+                } catch (error) {
+                    infoMsgEl.textContent = error.message;
+                } finally {
+                    celda.classList.remove('parcial-loading');
+                }
+            }
+
+            tabla.addEventListener('click', async function (event) {
+                const celda = event.target.closest('.js-parcial-edit');
+                if (!celda) return;
+
+                const dataset = celda.dataset;
+                
+                const idMateria = parseInt(dataset.materiaId, 10);
+                const idEstudiante = parseInt(dataset.estudianteId, 10);
+                const parcial = parseInt(dataset.parcial, 10);
+                const idPeriodo = parseInt(dataset.periodoId, 10);
+                const trimestre = parseInt(dataset.trimestre, 10);
+
+                if (!idMateria || !idEstudiante || !parcial || !idPeriodo || !trimestre) {
+                    infoMsgEl.textContent = 'Información incompleta para editar.';
+                    return;
+                }
+
+                contextoActual = {
+                    idCurso: <?= (int)$id_curso ?>,
+                    idMateria,
+                    idEstudiante,
+                    idPeriodo,
+                    trimestre,
+                    parcial,
+                    celda,
+                };
+
+                estudianteEl.textContent = dataset.student ?? '—';
+                materiaEl.textContent = dataset.materiaName ?? '—';
+                infoMsgEl.textContent = '';
+                infoTrimestralEl.style.display = 'none';
+
+                // Limpiar todos los inputs
+                for (let p = 1; p <= 3; p++) {
+                    ['SER', 'SABER', 'HACER'].forEach(area => {
+                        const inputs = inputsMap[p]?.[area];
+                        if (inputs) {
+                            inputs.forEach(input => input.value = '');
+                        }
+                    });
+                }
+                calcularResumenes();
+
+                // Activar la pestaña del parcial clickeado
+                const tabEl = modalEl.querySelector(`#parcial${parcial}-tab`);
+                if (tabEl) {
+                    const tab = new bootstrap.Tab(tabEl);
+                    tab.show();
+                }
+
+                await cargarDetalle(celda, contextoActual);
+
+                bsModal.show();
+            });
+
+            // Eventos input para todos los inputs
+            for (let p = 1; p <= 3; p++) {
+                ['SER', 'SABER', 'HACER'].forEach(area => {
+                    const inputs = inputsMap[p]?.[area];
+                    if (inputs) {
+                        inputs.forEach(input => {
+                            input.addEventListener('input', () => {
+                                try {
+                                    calcularResumenes(p);
+                                    infoMsgEl.textContent = '';
+                                } catch (error) {
+                                    infoMsgEl.textContent = error.message;
+                                }
+                            });
+                        });
+                    }
+                });
+            }
+
+            btnGuardar.addEventListener('click', async function () {
+                if (!contextoActual) return;
+                const parcial = contextoActual.parcial;
+                try {
+                    const ser = obtenerValores(inputsMap[parcial]['SER'], 'SER');
+                    const saber = obtenerValores(inputsMap[parcial]['SABER'], 'SABER');
+                    const hacer = obtenerValores(inputsMap[parcial]['HACER'], 'HACER');
+
+                    const conteos = [
+                        contar_valores_no_nulos(Object.values(ser)),
+                        contar_valores_no_nulos(Object.values(saber)),
+                        contar_valores_no_nulos(Object.values(hacer))
+                    ];
+
+                    const conteosFiltrados = conteos.filter(v => v > 0);
+                    if (conteosFiltrados.length > 0) {
+                        const conteoUnico = conteosFiltrados[0];
+                        if (!conteosFiltrados.every(v => v === conteoUnico)) {
+                            throw new Error('SER, SABER y HACER deben tener la misma cantidad de valores.');
+                        }
+                    }
+
+                    btnGuardar.disabled = true;
+                    infoMsgEl.textContent = 'Guardando...';
+
+                    const payload = {
+                        id_curso: contextoActual.idCurso,
+                        id_materia: contextoActual.idMateria,
+                        id_estudiante: contextoActual.idEstudiante,
+                        id_periodo_evaluacion: contextoActual.idPeriodo,
+                        trimestre: contextoActual.trimestre,
+                        parcial: contextoActual.parcial,
+                        ser,
+                        saber,
+                        hacer,
+                    };
+
+                    const resp = await fetch('ajax_parcial_notas.php', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    const json = await resp.json();
+                    if (!resp.ok || !json.success) {
+                        throw new Error(json.message || 'No se pudo guardar.');
+                    }
+
+                    infoMsgEl.textContent = 'Cambios guardados correctamente.';
+
+                    if (contextoActual.celda) {
+                        if (json.data.parcial_formatted !== undefined) {
+                            contextoActual.celda.textContent = json.data.parcial_formatted;
+                        }
+                        contextoActual.celda.classList.toggle('nota-baja', !!json.data.es_nota_baja);
+                    }
+
+                    const fila = contextoActual.celda?.parentElement;
+                    if (fila && json.data.promedio_materia_formatted !== undefined) {
+                        const celdasProm = fila.querySelectorAll('.average-col');
+                        if (celdasProm.length > 0) {
+                            const celdaProm = celdasProm[celdasProm.length - 1];
+                            if (celdaProm) {
+                                celdaProm.textContent = json.data.promedio_materia_formatted ?? '--';
+                                celdaProm.classList.toggle('nota-baja', json.data.promedio_materia_formatted !== null && parseFloat(json.data.promedio_materia_formatted) < 51);
+                            }
+                        }
+                    }
+
+                    setTimeout(() => {
+                        bsModal.hide();
+                    }, 600);
+                } catch (error) {
+                    infoMsgEl.textContent = error.message;
+                } finally {
+                    btnGuardar.disabled = false;
+                }
+            });
+
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                limpiarModal();
+            });
+        })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>
