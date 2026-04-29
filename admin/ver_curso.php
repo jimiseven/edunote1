@@ -1439,18 +1439,15 @@ $estudiantes_ordenados = $estudiantes;
                             <i class="bi bi-pencil"></i> Editar
                         </a>
                         <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
-                            <i class="bi bi-calendar-week"></i> Ver Trimestre
-                        </a>
-                        <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
-                            <i class="bi bi-file-earmark-excel"></i> Reporte Excel
-                        </a>
-                        <a href="repoPdf.php?id_curso=<?= $id_curso ?>" class="btn btn-danger btn-sm">
-                            <i class="bi bi-file-earmark-pdf"></i> Reporte PDF
-                        </a>
-                        <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
-                            <i class="bi bi-arrow-down-up"></i> Ordenar Materias
-                        </button>
-                    </div>
+                           <i class="bi bi-calendar-week"></i> Ver Trimestre
+                       </a>
+                       <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
+                           <i class="bi bi-file-earmark-excel"></i> Reporte Excel
+                       </a>
+                       <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
+                           <i class="bi bi-arrow-down-up"></i> Ordenar Materias
+                       </button>
+                   </div>
                 </div>
                 <?php if (isset($success_message)): ?>
                     <div class="alert alert-success alert-dismissible fade show mb-3">
