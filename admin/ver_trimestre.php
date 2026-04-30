@@ -689,6 +689,25 @@ foreach ($estudiantes as $estudiante) {
             text-align: center;
         }
 
+        #parcialTabs .nav-link {
+            color: #111827;
+            font-weight: 600;
+            opacity: 1;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        #parcialTabs .nav-link:hover,
+        #parcialTabs .nav-link:focus {
+            color: #1d4ed8;
+            background-color: rgba(29, 78, 216, 0.08);
+        }
+
+        #parcialTabs .nav-link.active {
+            background-color: #1d4ed8;
+            color: #ffffff;
+            pointer-events: none;
+        }
+
         .partial-col.js-parcial-edit {
             cursor: pointer;
             position: relative;
@@ -1336,28 +1355,34 @@ foreach ($estudiantes as $estudiante) {
                     <!-- Pestañas para los 3 parciales -->
                     <ul class="nav nav-tabs" id="parcialTabs" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="parcial1-tab" data-bs-toggle="tab" data-bs-target="#parcial1-content" type="button" role="tab" aria-controls="parcial1-content" aria-selected="true">
+                            <button class="nav-link active" id="parcial1-tab" data-parcial="1" data-bs-toggle="tab" data-bs-target="#parcial1-content" type="button" role="tab" aria-controls="parcial1-content" aria-selected="true">
                                 <strong>Parcial 1</strong>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="parcial2-tab" data-bs-toggle="tab" data-bs-target="#parcial2-content" type="button" role="tab" aria-controls="parcial2-content" aria-selected="false">
+                            <button class="nav-link" id="parcial2-tab" data-parcial="2" data-bs-toggle="tab" data-bs-target="#parcial2-content" type="button" role="tab" aria-controls="parcial2-content" aria-selected="false">
                                 <strong>Parcial 2</strong>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="parcial3-tab" data-bs-toggle="tab" data-bs-target="#parcial3-content" type="button" role="tab" aria-controls="parcial3-content" aria-selected="false">
+                            <button class="nav-link" id="parcial3-tab" data-parcial="3" data-bs-toggle="tab" data-bs-target="#parcial3-content" type="button" role="tab" aria-controls="parcial3-content" aria-selected="false">
                                 <strong>Parcial 3</strong>
                             </button>
                         </li>
                     </ul>
+                    <div class="mt-3" id="modalParcialNotaInfo">
+                        Nota del parcial seleccionado: <strong id="modalParcialNotaActual">—</strong>
+                    </div>
                     <div class="tab-content border border-top-0 p-3 rounded-bottom" id="parcialTabContent">
                         <?php for ($p = 1; $p <= 3; $p++): ?>
                         <div class="tab-pane fade <?= $p === 1 ? 'show active' : '' ?>" id="parcial<?= $p ?>-content" role="tabpanel" aria-labelledby="parcial<?= $p ?>-tab">
                             <div class="row g-3">
                                 <div class="col-12 col-lg-4">
                                     <div class="card h-100">
-                                        <div class="card-header bg-transparent fw-bold">SER (0-10)</div>
+                                        <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+                                            <span>SER (0-10)</span>
+                                            <small class="text-primary" data-parcial="<?= $p ?>" data-area="SER" data-role="total-area">—</small>
+                                        </div>
                                         <div class="card-body">
                                             <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="SER"></div>
                                             <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="SER">Sin datos ingresados.</div>
@@ -1366,7 +1391,10 @@ foreach ($estudiantes as $estudiante) {
                                 </div>
                                 <div class="col-12 col-lg-4">
                                     <div class="card h-100">
-                                        <div class="card-header bg-transparent fw-bold">SABER (0-45)</div>
+                                        <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+                                            <span>SABER (0-45)</span>
+                                            <small class="text-primary" data-parcial="<?= $p ?>" data-area="SABER" data-role="total-area">—</small>
+                                        </div>
                                         <div class="card-body">
                                             <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="SABER"></div>
                                             <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="SABER">Sin datos ingresados.</div>
@@ -1375,7 +1403,10 @@ foreach ($estudiantes as $estudiante) {
                                 </div>
                                 <div class="col-12 col-lg-4">
                                     <div class="card h-100">
-                                        <div class="card-header bg-transparent fw-bold">HACER (0-40)</div>
+                                        <div class="card-header bg-transparent fw-bold d-flex justify-content-between align-items-center">
+                                            <span>HACER (0-40)</span>
+                                            <small class="text-primary" data-parcial="<?= $p ?>" data-area="HACER" data-role="total-area">—</small>
+                                        </div>
                                         <div class="card-body">
                                             <div class="row g-2 parcial-inputs" data-parcial="<?= $p ?>" data-area="HACER"></div>
                                             <div class="mt-2 text-muted small parcial-resumen" data-parcial="<?= $p ?>" data-area="HACER">Sin datos ingresados.</div>
@@ -1421,14 +1452,17 @@ foreach ($estudiantes as $estudiante) {
             const infoMsgEl = modalEl.querySelector('#modalParcialMensaje');
             const infoTrimestralEl = modalEl.querySelector('#modalInfoTrimestral');
             const btnGuardar = modalEl.querySelector('#modalParcialGuardar');
+            const notaActualEl = modalEl.querySelector('#modalParcialNotaActual');
 
             let contextoActual = null;
+            let totalesParcialesCache = null;
             const maxPorArea = { SER: 4, SABER: 8, HACER: 8 };
             const rangos = { SER: 10, SABER: 45, HACER: 40 };
 
             // Mapa de inputs y resúmenes por parcial y área
             const inputsMap = {};
             const resumenMap = {};
+            const totalAreaMap = {};
 
             function crearInput(area, indice) {
                 const wrapper = document.createElement('div');
@@ -1466,9 +1500,14 @@ foreach ($estudiantes as $estudiante) {
                 ['SER', 'SABER', 'HACER'].forEach(area => {
                     const container = modalEl.querySelector(`.parcial-inputs[data-parcial="${p}"][data-area="${area}"]`);
                     const resumenEl = modalEl.querySelector(`.parcial-resumen[data-parcial="${p}"][data-area="${area}"]`);
+                    const totalEl = modalEl.querySelector(`[data-role="total-area"][data-parcial="${p}"][data-area="${area}"]`);
                     if (container && resumenEl) {
                         inputsMap[p][area] = renderInputs(container, area);
                         resumenMap[p][area] = resumenEl;
+                        if (!totalAreaMap[p]) {
+                            totalAreaMap[p] = {};
+                        }
+                        totalAreaMap[p][area] = totalEl ?? null;
                     }
                 });
             }
@@ -1520,8 +1559,60 @@ foreach ($estudiantes as $estudiante) {
                 });
             }
 
+            function aplicarTotalesParciales(totales) {
+                if (!totales) {
+                    for (let p = 1; p <= 3; p++) {
+                        ['SER', 'SABER', 'HACER'].forEach(area => {
+                            const totalEl = totalAreaMap[p]?.[area];
+                            if (totalEl) {
+                                totalEl.textContent = '—';
+                            }
+                        });
+                    }
+                    return;
+                }
+                for (let p = 1; p <= 3; p++) {
+                    const totalesParcial = totales[p];
+                    if (!totalesParcial) {
+                        continue;
+                    }
+                    ['SER', 'SABER', 'HACER'].forEach(area => {
+                        const inputs = inputsMap[p]?.[area];
+                        const resumenEl = resumenMap[p]?.[area];
+                        const totalEl = totalAreaMap[p]?.[area];
+                        if (!inputs || !resumenEl) {
+                            return;
+                        }
+                        const tieneValores = inputs.some(input => input.value.trim() !== '');
+                        if (tieneValores) {
+                            if (totalEl) {
+                                totalEl.textContent = '—';
+                            }
+                            return;
+                        }
+                        const claveTotal = `${area.toLowerCase()}_total`;
+                        const totalArea = totalesParcial?.[claveTotal];
+                        if (totalArea !== null && totalArea !== undefined) {
+                            const numero = Number(totalArea);
+                            if (!Number.isNaN(numero)) {
+                                resumenEl.innerHTML = `Promedio registrado: <strong>${numero.toFixed(2)}</strong>`;
+                                if (totalEl) {
+                                    totalEl.textContent = numero.toFixed(2);
+                                }
+                                return;
+                            }
+                        }
+                        resumenEl.textContent = 'Sin datos ingresados.';
+                        if (totalEl) {
+                            totalEl.textContent = '—';
+                        }
+                    });
+                }
+            }
+
             function limpiarModal() {
                 contextoActual = null;
+                totalesParcialesCache = null;
                 infoMsgEl.textContent = '';
                 infoTrimestralEl.style.display = 'none';
                 estudianteEl.textContent = '—';
@@ -1535,6 +1626,8 @@ foreach ($estudiantes as $estudiante) {
                     });
                 }
                 calcularResumenes();
+                aplicarTotalesParciales(null);
+                notaActualEl.textContent = '—';
             }
 
             function obtenerValores(inputs, area) {
@@ -1558,6 +1651,45 @@ foreach ($estudiantes as $estudiante) {
                 return resultado;
             }
 
+            function calcularNotaParcial(parcial) {
+                const inputs = inputsMap[parcial];
+                if (!inputs) return null;
+                let total = 0;
+                ['SER', 'SABER', 'HACER'].forEach(area => {
+                    const areaInputs = inputs[area] ?? [];
+                    const valores = areaInputs
+                        .map(input => {
+                            const v = input.value.trim();
+                            if (v === '') return null;
+                            const num = Number(v.replace(',', '.'));
+                            return Number.isNaN(num) ? null : num;
+                        })
+                        .filter(v => v !== null);
+                    if (valores.length > 0) {
+                        total += valores.reduce((acc, val) => acc + val, 0) / valores.length;
+                    }
+                });
+                return total;
+            }
+
+            function actualizarNotaParcialDisplay(parcial, totales) {
+                let valor = calcularNotaParcial(parcial);
+                if ((valor === null || Number.isNaN(valor)) && totales) {
+                    const parcialTotals = totales[parcial];
+                    if (parcialTotals && parcialTotals.calificacion !== null && parcialTotals.calificacion !== undefined) {
+                        const cal = Number(parcialTotals.calificacion);
+                        if (!Number.isNaN(cal)) {
+                            valor = cal;
+                        }
+                    }
+                }
+                if (valor === null || Number.isNaN(valor)) {
+                    notaActualEl.textContent = '—';
+                    return;
+                }
+                notaActualEl.textContent = Number(valor).toFixed(2);
+            }
+
             async function cargarDetalle(celda, contexto) {
                 celda.classList.add('parcial-loading');
                 try {
@@ -1566,6 +1698,8 @@ foreach ($estudiantes as $estudiante) {
                         id_materia: contexto.idMateria,
                         id_estudiante: contexto.idEstudiante,
                         trimestre: contexto.trimestre,
+                        id_periodo_evaluacion: contexto.idPeriodo,
+                        parcial: contexto.parcial,
                     });
 
                     const resp = await fetch('ajax_parcial_notas.php?' + params.toString(), {
@@ -1588,7 +1722,10 @@ foreach ($estudiantes as $estudiante) {
                             asignarValores(p, 'HACER', detalle.HACER || []);
                         }
                     }
+                    totalesParcialesCache = json.data.totales_parciales ?? null;
                     calcularResumenes();
+                    aplicarTotalesParciales(totalesParcialesCache);
+                    actualizarNotaParcialDisplay(contexto.parcial, totalesParcialesCache);
 
                     if (json.data.autoevaluacion !== null || json.data.nota_extra !== null) {
                         infoTrimestralEl.style.display = 'block';
@@ -1658,6 +1795,17 @@ foreach ($estudiantes as $estudiante) {
                 bsModal.show();
             });
 
+            const tabsEl = modalEl.querySelector('#parcialTabs');
+            if (tabsEl) {
+                tabsEl.addEventListener('shown.bs.tab', (event) => {
+                    const button = event.target;
+                    const parcial = parseInt(button.dataset.parcial, 10);
+                    if (!Number.isNaN(parcial)) {
+                        actualizarNotaParcialDisplay(parcial, totalesParcialesCache);
+                    }
+                });
+            }
+
             // Eventos input para todos los inputs
             for (let p = 1; p <= 3; p++) {
                 ['SER', 'SABER', 'HACER'].forEach(area => {
@@ -1667,6 +1815,8 @@ foreach ($estudiantes as $estudiante) {
                             input.addEventListener('input', () => {
                                 try {
                                     calcularResumenes(p);
+                                    aplicarTotalesParciales(totalesParcialesCache);
+                                    actualizarNotaParcialDisplay(p, totalesParcialesCache);
                                     infoMsgEl.textContent = '';
                                 } catch (error) {
                                     infoMsgEl.textContent = error.message;
@@ -1684,20 +1834,6 @@ foreach ($estudiantes as $estudiante) {
                     const ser = obtenerValores(inputsMap[parcial]['SER'], 'SER');
                     const saber = obtenerValores(inputsMap[parcial]['SABER'], 'SABER');
                     const hacer = obtenerValores(inputsMap[parcial]['HACER'], 'HACER');
-
-                    const conteos = [
-                        contar_valores_no_nulos(Object.values(ser)),
-                        contar_valores_no_nulos(Object.values(saber)),
-                        contar_valores_no_nulos(Object.values(hacer))
-                    ];
-
-                    const conteosFiltrados = conteos.filter(v => v > 0);
-                    if (conteosFiltrados.length > 0) {
-                        const conteoUnico = conteosFiltrados[0];
-                        if (!conteosFiltrados.every(v => v === conteoUnico)) {
-                            throw new Error('SER, SABER y HACER deben tener la misma cantidad de valores.');
-                        }
-                    }
 
                     btnGuardar.disabled = true;
                     infoMsgEl.textContent = 'Guardando...';
@@ -1733,7 +1869,8 @@ foreach ($estudiantes as $estudiante) {
                         if (json.data.parcial_formatted !== undefined) {
                             contextoActual.celda.textContent = json.data.parcial_formatted;
                         }
-                        contextoActual.celda.classList.toggle('nota-baja', !!json.data.es_nota_baja);
+                        contextoActual.celda.classList.toggle('nota-baja', json.data.es_nota_baja === true);
+                        notaActualEl.textContent = json.data.parcial_formatted !== '--' ? json.data.parcial_formatted : '—';
                     }
 
                     const fila = contextoActual.celda?.parentElement;
@@ -1743,9 +1880,40 @@ foreach ($estudiantes as $estudiante) {
                             const celdaProm = celdasProm[celdasProm.length - 1];
                             if (celdaProm) {
                                 celdaProm.textContent = json.data.promedio_materia_formatted ?? '--';
-                                celdaProm.classList.toggle('nota-baja', json.data.promedio_materia_formatted !== null && parseFloat(json.data.promedio_materia_formatted) < 51);
+                                if (json.data.promedio_materia_formatted !== null) {
+                                    celdaProm.classList.toggle('nota-baja', parseFloat(json.data.promedio_materia_formatted) < 51);
+                                }
                             }
                         }
+                    }
+
+                    const promedioArea = valores => {
+                        const arr = Object.values(valores).filter(v => v !== null && v !== undefined);
+                        if (!arr.length) return null;
+                        const suma = arr.reduce((acc, val) => acc + Number(val), 0);
+                        return Number((suma / arr.length).toFixed(2));
+                    };
+
+                    if (!totalesParcialesCache) {
+                        totalesParcialesCache = {};
+                    }
+                    if (typeof contextoActual.parcial === 'number') {
+                        if (!totalesParcialesCache[contextoActual.parcial]) {
+                            totalesParcialesCache[contextoActual.parcial] = {
+                                ser_total: null,
+                                saber_total: null,
+                                hacer_total: null,
+                                calificacion: null,
+                            };
+                        }
+                        const serProm = promedioArea(ser);
+                        const saberProm = promedioArea(saber);
+                        const hacerProm = promedioArea(hacer);
+                        totalesParcialesCache[contextoActual.parcial].ser_total = serProm;
+                        totalesParcialesCache[contextoActual.parcial].saber_total = saberProm;
+                        totalesParcialesCache[contextoActual.parcial].hacer_total = hacerProm;
+                        totalesParcialesCache[contextoActual.parcial].calificacion = json.data.parcial_formatted !== '--' ? parseFloat(json.data.parcial_formatted) : null;
+                        aplicarTotalesParciales(totalesParcialesCache);
                     }
 
                     setTimeout(() => {

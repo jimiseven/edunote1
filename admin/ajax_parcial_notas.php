@@ -159,7 +159,8 @@ if ($method === 'GET') {
     $idEstudiante = sanitize_int($_GET['id_estudiante'] ?? null);
     $idPeriodo = sanitize_int($_GET['id_periodo_evaluacion'] ?? null);
     $trimestre = sanitize_int($_GET['trimestre'] ?? null);
-    $parcial = sanitize_int($_GET['parcial'] ?? null);
+    $parcialSolicitado = sanitize_int($_GET['parcial'] ?? null);
+    $idPeriodoSolicitado = sanitize_int($_GET['id_periodo_evaluacion'] ?? null);
 
     if (in_array(null, [$idCurso, $idMateria, $idEstudiante, $trimestre], true)) {
         json_response(['success' => false, 'message' => 'Parámetros incompletos.'], 422);
@@ -193,6 +194,11 @@ if ($method === 'GET') {
         $totalesParciales = [];
         for ($p = 1; $p <= 3; $p++) {
             $idPeriodoP = $periodos[$p] ?? null;
+            if ($parcialSolicitado !== null && $idPeriodoSolicitado !== null) {
+                if ($p === $parcialSolicitado) {
+                    $idPeriodoP = $idPeriodoSolicitado;
+                }
+            }
             $detalleParciales[$p] = [
                 'SER' => array_fill(1, 4, null),
                 'SABER' => array_fill(1, 8, null),
@@ -295,14 +301,39 @@ if ($method === 'POST') {
         $saberValores = preparar_area_inputs($input['saber'] ?? [], $areasConfig['SABER']['max_campos']);
         $hacerValores = preparar_area_inputs($input['hacer'] ?? [], $areasConfig['HACER']['max_campos']);
 
-        $conteos = [
-            contar_valores_no_nulos($serValores),
-            contar_valores_no_nulos($saberValores),
-            contar_valores_no_nulos($hacerValores),
-        ];
-        $conteosUnicos = array_unique($conteos);
-        if (count($conteosUnicos) > 1) {
-            throw new InvalidArgumentException('SER, SABER y HACER deben tener la misma cantidad de valores cargados.');
+        $conteoSer = contar_valores_no_nulos($serValores);
+        $conteoSaber = contar_valores_no_nulos($saberValores);
+        $conteoHacer = contar_valores_no_nulos($hacerValores);
+
+        $stmtPrev = $conn->prepare('SELECT id_calificacion_parcial, ser_total, saber_total, hacer_total
+            FROM calificaciones_parciales
+            WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ?
+            LIMIT 1');
+        $stmtPrev->execute([$idEstudiante, $idMateria, $idPeriodo]);
+        $filaPrev = $stmtPrev->fetch(PDO::FETCH_ASSOC) ?: null;
+        $idCalificacionExistente = $filaPrev ? (int)$filaPrev['id_calificacion_parcial'] : null;
+
+        if ($conteoSer === 0 && $conteoSaber === 0 && $conteoHacer === 0) {
+            if ($idCalificacionExistente !== null) {
+                $conn->prepare('DELETE FROM calificaciones_parciales WHERE id_calificacion_parcial = ?')
+                     ->execute([$idCalificacionExistente]);
+                try {
+                    $conn->prepare('DELETE FROM calificaciones_parciales_detalle WHERE id_calificacion_parcial = ?')
+                         ->execute([$idCalificacionExistente]);
+                } catch (PDOException $e) {
+                    // La tabla de detalle puede no existir.
+                }
+            }
+
+            $conn->commit();
+            json_response([
+                'success' => true,
+                'data' => [
+                    'parcial_formatted' => '--',
+                    'es_nota_baja' => false,
+                    'promedio_materia_formatted' => null,
+                ],
+            ]);
         }
 
         $rangos = [
@@ -331,37 +362,14 @@ if ($method === 'POST') {
         $saberResumen = resumen_area($saberValores);
         $hacerResumen = resumen_area($hacerValores);
 
-        $nRegistros = $serResumen['cantidad'];
+        $prevSerTotal = $filaPrev && $filaPrev['ser_total'] !== null ? (float)$filaPrev['ser_total'] : 0.0;
+        $prevSaberTotal = $filaPrev && $filaPrev['saber_total'] !== null ? (float)$filaPrev['saber_total'] : 0.0;
+        $prevHacerTotal = $filaPrev && $filaPrev['hacer_total'] !== null ? (float)$filaPrev['hacer_total'] : 0.0;
 
-        $stmtPrev = $conn->prepare('SELECT id_calificacion_parcial FROM calificaciones_parciales WHERE id_estudiante = ? AND id_materia = ? AND id_periodo_evaluacion = ? LIMIT 1');
-        $stmtPrev->execute([$idEstudiante, $idMateria, $idPeriodo]);
-        $filaPrev = $stmtPrev->fetch(PDO::FETCH_ASSOC);
-        $idCalificacionExistente = $filaPrev ? (int)$filaPrev['id_calificacion_parcial'] : null;
+        $serProm = $conteoSer > 0 ? ($serResumen['promedio'] ?? 0.0) : $prevSerTotal;
+        $saberProm = $conteoSaber > 0 ? ($saberResumen['promedio'] ?? 0.0) : $prevSaberTotal;
+        $hacerProm = $conteoHacer > 0 ? ($hacerResumen['promedio'] ?? 0.0) : $prevHacerTotal;
 
-        if ($nRegistros === 0) {
-            if ($idCalificacionExistente !== null) {
-                $conn->prepare('DELETE FROM calificaciones_parciales WHERE id_calificacion_parcial = ?')->execute([$idCalificacionExistente]);
-                try {
-                    $conn->prepare('DELETE FROM calificaciones_parciales_detalle WHERE id_calificacion_parcial = ?')->execute([$idCalificacionExistente]);
-                } catch (PDOException $e) {
-                    // Ignorar si no existe tabla
-                }
-            }
-
-            $conn->commit();
-            json_response([
-                'success' => true,
-                'data' => [
-                    'parcial_formatted' => '--',
-                    'es_nota_baja' => false,
-                    'promedio_materia_formatted' => null,
-                ],
-            ]);
-        }
-
-        $serProm = $serResumen['promedio'] ?? 0.0;
-        $saberProm = $saberResumen['promedio'] ?? 0.0;
-        $hacerProm = $hacerResumen['promedio'] ?? 0.0;
         $serTotal = round($serProm, 2);
         $saberTotal = round($saberProm, 2);
         $hacerTotal = round($hacerProm, 2);
@@ -381,11 +389,9 @@ if ($method === 'POST') {
             $hacerTotal,
         ]);
 
-        if ($idCalificacionExistente === null) {
-            $stmtPrev->execute([$idEstudiante, $idMateria, $idPeriodo]);
-            $filaPrev = $stmtPrev->fetch(PDO::FETCH_ASSOC);
-            $idCalificacionExistente = $filaPrev ? (int)$filaPrev['id_calificacion_parcial'] : null;
-        }
+        $stmtPrev->execute([$idEstudiante, $idMateria, $idPeriodo]);
+        $filaPrev = $stmtPrev->fetch(PDO::FETCH_ASSOC) ?: null;
+        $idCalificacionExistente = $filaPrev ? (int)$filaPrev['id_calificacion_parcial'] : null;
 
         if ($idCalificacionExistente !== null) {
             try {
@@ -395,25 +401,33 @@ if ($method === 'POST') {
                     ON DUPLICATE KEY UPDATE nota = VALUES(nota), creado_por = VALUES(creado_por)');
                 $stmtDetalleDelete = $conn->prepare('DELETE FROM calificaciones_parciales_detalle WHERE id_calificacion_parcial = ? AND area = ? AND indice = ?');
 
-                foreach ($serValores as $indice => $valor) {
-                    if ($valor !== null) {
-                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SER', $indice, $valor, $_SESSION['user_id']]);
-                    } else {
-                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'SER', $indice]);
+                if ($conteoSer > 0) {
+                    foreach ($serValores as $indice => $valor) {
+                        if ($valor !== null) {
+                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SER', $indice, $valor, $_SESSION['user_id']]);
+                        } else {
+                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'SER', $indice]);
+                        }
                     }
                 }
-                foreach ($saberValores as $indice => $valor) {
-                    if ($valor !== null) {
-                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SABER', $indice, $valor, $_SESSION['user_id']]);
-                    } else {
-                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'SABER', $indice]);
+
+                if ($conteoSaber > 0) {
+                    foreach ($saberValores as $indice => $valor) {
+                        if ($valor !== null) {
+                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SABER', $indice, $valor, $_SESSION['user_id']]);
+                        } else {
+                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'SABER', $indice]);
+                        }
                     }
                 }
-                foreach ($hacerValores as $indice => $valor) {
-                    if ($valor !== null) {
-                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'HACER', $indice, $valor, $_SESSION['user_id']]);
-                    } else {
-                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'HACER', $indice]);
+
+                if ($conteoHacer > 0) {
+                    foreach ($hacerValores as $indice => $valor) {
+                        if ($valor !== null) {
+                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'HACER', $indice, $valor, $_SESSION['user_id']]);
+                        } else {
+                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'HACER', $indice]);
+                        }
                     }
                 }
             } catch (PDOException $e) {
