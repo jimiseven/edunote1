@@ -8,6 +8,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
 }
 
 $profesor_id = $_SESSION['user_id'];
+$profesor_nombre = isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Profesor';
 $id_curso_materia = isset($_GET['curso_materia']) ? (int)$_GET['curso_materia'] : 0;
 $trimestreExportar = isset($_GET['trimestre']) ? (int)$_GET['trimestre'] : 1;
 
@@ -206,14 +207,24 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
   <Style ss:ID="Default" ss:Name="Normal">
    <Font ss:FontName="Calibri" ss:Size="11"/>
   </Style>
+  <Style ss:ID="unidadEducativa">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#1E3A5F"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
   <Style ss:ID="titulo">
-   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#11305E"/>
+   <Font ss:FontName="Calibri" ss:Size="12" ss:Bold="1" ss:Color="#11305E"/>
+  </Style>
+  <Style ss:ID="infoHeader">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#374151"/>
+  </Style>
+  <Style ss:ID="infoHeaderLabel">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#1E3A5F"/>
   </Style>
   <Style ss:ID="subtitulo">
-   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#475569"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#475569"/>
   </Style>
   <Style ss:ID="header">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#1E3A5F"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#1E3A5F"/>
    <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -223,7 +234,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hSer">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#166534"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#166534"/>
    <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -231,7 +242,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hSaber">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#1E40AF"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#1E40AF"/>
    <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -239,7 +250,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hHacer">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#9A3412"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#9A3412"/>
    <Interior ss:Color="#FFEDD5" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -247,7 +258,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hTotal">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#6B21A8"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#6B21A8"/>
    <Interior ss:Color="#F3E8FF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -255,7 +266,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hAuto">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#92400E"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#92400E"/>
    <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -263,7 +274,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hExtra">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#3730A3"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#3730A3"/>
    <Interior ss:Color="#E0E7FF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
@@ -272,30 +283,30 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
   </Style>
   <Style ss:ID="num">
    <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#94A3B8"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#94A3B8"/>
   </Style>
   <Style ss:ID="nombre">
-   <Font ss:FontName="Calibri" ss:Size="10"/>
+   <Font ss:FontName="Calibri" ss:Size="9"/>
   </Style>
   <Style ss:ID="nota">
    <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="10"/>
+   <Font ss:FontName="Calibri" ss:Size="9"/>
    <NumberFormat ss:Format="0.00"/>
   </Style>
   <Style ss:ID="notaBold">
    <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1"/>
    <NumberFormat ss:Format="0.00"/>
   </Style>
   <Style ss:ID="notaTotal">
    <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#6B21A8"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#6B21A8"/>
    <Interior ss:Color="#FAF5FF" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="0.00"/>
   </Style>
   <Style ss:ID="notaFinal">
    <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#166534"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#166534"/>
    <Interior ss:Color="#F0FDF4" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="0.00"/>
   </Style>
@@ -309,24 +320,49 @@ for ($px = 1; $px <= $maxParcial; $px++):
     $dataParcial = $notasPorParcial[$px] ?? [];
 ?>
  <Worksheet ss:Name="Parcial <?php echo $px; ?>">
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <PageSetup>
+    <Layout x:Orientation="Landscape"/>
+    <Header x:Margin="0.3"/>
+    <Footer x:Margin="0.3"/>
+    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
+   </PageSetup>
+   <FitToPage/>
+   <FitWidth>1</FitWidth>
+   <FitHeight>0</FitHeight>
+   <Print>
+    <FitWidth>1</FitWidth>
+    <FitHeight>0</FitHeight>
+   </Print>
+  </WorksheetOptions>
   <Table>
-   <Column ss:Width="30"/>
-   <Column ss:Width="220"/>
+   <Column ss:Width="25"/>
+   <Column ss:Width="180"/>
 <?php if ($es_inicial): ?>
-   <Column ss:Width="400"/>
+   <Column ss:Width="350"/>
 <?php elseif ($hasAreaColumns): ?>
-   <Column ss:Width="70"/>
-   <Column ss:Width="70"/>
-   <Column ss:Width="70"/>
-   <Column ss:Width="75"/>
+   <Column ss:Width="60"/>
+   <Column ss:Width="60"/>
+   <Column ss:Width="60"/>
+   <Column ss:Width="65"/>
 <?php else: ?>
-   <Column ss:Width="80"/>
+   <Column ss:Width="70"/>
 <?php endif; ?>
    <Row>
-    <Cell ss:StyleID="titulo"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="subtitulo"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Trimestre <?php echo $trimestreExportar; ?> — Parcial <?php echo $px; ?></Data></Cell>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEsc($profesor_nombre); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="titulo" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="subtitulo" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Trimestre <?php echo $trimestreExportar; ?> — Parcial <?php echo $px; ?></Data></Cell>
    </Row>
    <Row/>
    <Row>
@@ -376,21 +412,46 @@ for ($px = 1; $px <= $maxParcial; $px++):
 // =====================================================
 ?>
  <Worksheet ss:Name="Resumen T<?php echo $trimestreExportar; ?>">
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <PageSetup>
+    <Layout x:Orientation="Landscape"/>
+    <Header x:Margin="0.3"/>
+    <Footer x:Margin="0.3"/>
+    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
+   </PageSetup>
+   <FitToPage/>
+   <FitWidth>1</FitWidth>
+   <FitHeight>0</FitHeight>
+   <Print>
+    <FitWidth>1</FitWidth>
+    <FitHeight>0</FitHeight>
+   </Print>
+  </WorksheetOptions>
   <Table>
-   <Column ss:Width="30"/>
-   <Column ss:Width="220"/>
+   <Column ss:Width="25"/>
+   <Column ss:Width="180"/>
 <?php for ($px = 1; $px <= $maxParcial; $px++): ?>
-   <Column ss:Width="70"/>
+   <Column ss:Width="55"/>
 <?php endfor; ?>
-   <Column ss:Width="80"/>
-   <Column ss:Width="70"/>
-   <Column ss:Width="70"/>
-   <Column ss:Width="80"/>
+   <Column ss:Width="65"/>
+   <Column ss:Width="55"/>
+   <Column ss:Width="55"/>
+   <Column ss:Width="65"/>
    <Row>
-    <Cell ss:StyleID="titulo"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="subtitulo"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Resumen Trimestre <?php echo $trimestreExportar; ?></Data></Cell>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEsc($profesor_nombre); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="titulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="subtitulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Resumen Trimestre <?php echo $trimestreExportar; ?></Data></Cell>
    </Row>
    <Row/>
    <Row>
@@ -478,18 +539,43 @@ for ($px = 1; $px <= $maxParcial; $px++):
     sort($trimestresAnuales);
 ?>
  <Worksheet ss:Name="Promedio Anual">
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <PageSetup>
+    <Layout x:Orientation="Landscape"/>
+    <Header x:Margin="0.3"/>
+    <Footer x:Margin="0.3"/>
+    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
+   </PageSetup>
+   <FitToPage/>
+   <FitWidth>1</FitWidth>
+   <FitHeight>0</FitHeight>
+   <Print>
+    <FitWidth>1</FitWidth>
+    <FitHeight>0</FitHeight>
+   </Print>
+  </WorksheetOptions>
   <Table>
-   <Column ss:Width="30"/>
-   <Column ss:Width="230"/>
+   <Column ss:Width="25"/>
+   <Column ss:Width="190"/>
 <?php foreach ($trimestresAnuales as $trim): ?>
-   <Column ss:Width="80"/>
+   <Column ss:Width="70"/>
 <?php endforeach; ?>
-   <Column ss:Width="90"/>
+   <Column ss:Width="80"/>
    <Row>
-    <Cell ss:StyleID="titulo"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="subtitulo"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Promedio anual de calificaciones</Data></Cell>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEsc($profesor_nombre); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="titulo" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="subtitulo" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Promedio anual de calificaciones</Data></Cell>
    </Row>
    <Row/>
    <Row>

@@ -296,23 +296,34 @@ if ($es_inicial) {
 }
 
 $stmt = $conn->prepare("SELECT id_estudiante,
-                        CASE
-                            WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '')
-                            THEN CONCAT(apellido_materno, ' ', nombres)
-                            ELSE CONCAT(apellido_paterno, ' ', apellido_materno, ' ', nombres)
-                        END AS nombre
+                        TRIM(CONCAT_WS(' ',
+                            NULLIF(apellido_paterno, ''),
+                            NULLIF(apellido_materno, ''),
+                            NULLIF(nombres, '')
+                        )) AS nombre
                         FROM estudiantes
                         WHERE id_curso = ?
                         ORDER BY
+                        -- Primero: estudiantes con solo un apellido (paterno o materno, pero no ambos)
                         CASE
-                            WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN 0
+                            WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '')
+                            THEN 0
+                            WHEN (apellido_materno IS NULL OR apellido_materno = '') AND (apellido_paterno IS NOT NULL AND apellido_paterno != '')
+                            THEN 0
+                            WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '') THEN 0
+                            WHEN (apellido_materno IS NULL OR apellido_materno = '') AND (apellido_paterno IS NOT NULL AND apellido_paterno != '') THEN 0
                             ELSE 1
                         END,
+                        -- Ordenar por apellido paterno (o materno si no hay paterno)
                         CASE
                             WHEN apellido_paterno IS NULL OR apellido_paterno = '' THEN apellido_materno
                             ELSE apellido_paterno
                         END,
-                        apellido_materno,
+                        -- Luego por apellido materno (o paterno si no hay materno)
+                        CASE
+                            WHEN apellido_materno IS NULL OR apellido_materno = '' THEN apellido_paterno
+                            ELSE apellido_materno
+                        END,
                         nombres");
 $stmt->execute([$curso['id_curso']]);
 $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1619,10 +1630,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <a href="exportar_registro.php?curso_materia=<?php echo $id_curso_materia; ?>&trimestre=<?php echo $trimestreSeleccionado; ?>"
                                            class="btn btn-outline-primary px-3" title="Registro: desglose por parcial + resumen trimestral">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 012 2v16a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>Registro
-                                        </a>
-                                        <a href="exportar_notas_excel.php?curso_materia=<?php echo $id_curso_materia; ?>"
-                                           class="btn btn-outline-success px-3" title="Exportar todas las notas a Excel">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Excel Todo
                                         </a>
                                         <button type="submit" name="guardar_trimestral" class="btn btn-primary px-4" <?php echo !$trimestreEditableParaVistaTrimestral ? 'disabled' : ''; ?>>
                                             <?php echo $trimestreEditableParaVistaTrimestral ? 'Guardar trimestral' : 'No disponible'; ?>
