@@ -473,6 +473,12 @@ function active($str, $current)
                             <span class="nav-label">Tablón</span>
                         </a>
                     </li>
+                    <li>
+                        <a class="nav-link <?php echo active('log.php', $current); ?>" href="log.php">
+                            <span data-feather="activity"></span>
+                            <span class="nav-label">Log</span>
+                        </a>
+                    </li>
                 </ul>
                 <!-- asignacion de cursos -->
                 <div class="sidebar-section-title">ASIGNACIÓN DE PROFESORES</div>
@@ -651,6 +657,22 @@ function active($str, $current)
             if (backdrop) {
                 backdrop.addEventListener('click', closeMobileSidebar);
             }
+
+            const heartbeatUrl = '../includes/heartbeat.php';
+            const enviarHeartbeat = function() {
+                try {
+                    fetch(heartbeatUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                        },
+                        body: 'path=' + encodeURIComponent(window.location.pathname)
+                    });
+                } catch (e) {}
+            };
+
+            enviarHeartbeat();
+            setInterval(enviarHeartbeat, 30000);
 
             document.querySelectorAll('#sidebarMenu .nav-link').forEach(function(link) {
                 link.addEventListener('click', function() {

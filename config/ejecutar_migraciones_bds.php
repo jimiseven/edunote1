@@ -63,6 +63,8 @@ function edunote_aplicar_migraciones_bds(PDO $conn) {
     edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'asistencia.sql'));
     edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'asistencia_lectores.sql'));
     edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'asistencia_horarios.sql'));
+    edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'usuarios_activos.sql'));
+    edunote_ejecutar_sentencias($conn, edunote_sql_sentencias_desde_archivo($dirBds . 'usuarios_ingresos.sql'));
 
     try {
         $conn->query('SELECT 1 FROM calificaciones_parciales_detalle LIMIT 0');

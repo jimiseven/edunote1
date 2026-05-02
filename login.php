@@ -55,6 +55,30 @@ if ($stmt->rowCount() > 0) {
         $_SESSION['user_name'] = $user['nombres'] . ' ' . $user['apellidos'];
         $_SESSION['user_role'] = $user['id_rol'];
 
+        try {
+            $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+            if (strlen($ip) > 45) {
+                $ip = substr($ip, 0, 45);
+            }
+            $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+            if (strlen($ua) > 255) {
+                $ua = substr($ua, 0, 255);
+            }
+
+            $stmtIngreso = $conn->prepare("INSERT INTO usuarios_ingresos
+                (id_personal, nombre_usuario, id_rol, session_id, ip_address, user_agent, fecha_ingreso)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())");
+            $stmtIngreso->execute([
+                (int)$user['id_personal'],
+                $_SESSION['user_name'],
+                (int)$user['id_rol'],
+                session_id(),
+                $ip,
+                $ua
+            ]);
+        } catch (Throwable $e) {
+        }
+
         // Redirigir según el rol (mantenemos la lógica existente)
         if ($_SESSION['user_role'] == 1) {
             header('Location: admin/dash_iniciales.php');
