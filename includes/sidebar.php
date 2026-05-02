@@ -39,6 +39,12 @@ function active($str, $current)
             font-weight: 600;
             cursor: pointer;
             flex-shrink: 0;
+            font-size: 0.85rem;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        body.sidebar-collapsed .sidebar-toggle {
+            transform: rotate(180deg);
         }
 
         .sidebar-toggle:hover {

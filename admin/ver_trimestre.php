@@ -373,13 +373,27 @@ foreach ($estudiantes as $estudiante) {
     <style>
         :root {
             --sidebar-width: 250px;
+            --sidebar-collapsed-width: 60px;
         }
 
         body {
             background: #f8f9fa;
             margin-left: var(--sidebar-width);
-            transition: background-color 0.25s ease, color 0.25s ease;
+            transition: margin-left 0.3s ease, background-color 0.25s ease, color 0.25s ease;
             font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body.sidebar-collapsed {
+            margin-left: var(--sidebar-collapsed-width);
+        }
+
+        body.sidebar-collapsed .sidebar {
+            width: var(--sidebar-collapsed-width);
+        }
+
+        body.sidebar-collapsed .sidebar #sidebarMenu {
+            width: var(--sidebar-collapsed-width);
+            min-width: var(--sidebar-collapsed-width);
         }
 
         h3,
@@ -399,26 +413,20 @@ foreach ($estudiantes as $estudiante) {
         .sidebar {
             width: var(--sidebar-width);
             height: 100vh;
-            height: 100dvh; /* Soporte para móviles */
+            height: 100dvh;
             position: fixed;
             left: 0;
             top: 0;
-            background: #2c3e50;
-            padding: 20px;
             z-index: 1000;
-            overflow-y: auto;
-            overflow-x: hidden;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.3) transparent;
+            overflow: hidden;
+            transition: width 0.3s ease;
         }
 
-        .sidebar::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .sidebar::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.3);
-            border-radius: 3px;
+        .sidebar #sidebarMenu {
+            position: relative;
+            height: 100%;
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
         }
 
         .main-content {
