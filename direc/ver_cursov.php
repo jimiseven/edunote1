@@ -88,19 +88,45 @@ $stmt_estudiantes = $conn->prepare("
 $stmt_estudiantes->execute([$id_curso]);
 $estudiantes = $stmt_estudiantes->fetchAll(PDO::FETCH_ASSOC);
 
-// Función para obtener notas
-function obtenerNotas($conn, $id_estudiante, $id_materia)
+// Cargar notas desde el esquema actual (calificaciones_parciales + periodos_evaluacion)
+$notasPorEstMateriaTrim = [];
+if (!empty($estudiantes) && !empty($materias_raw)) {
+    $stmt_notas = $conn->prepare(" 
+        SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, cp.calificacion
+        FROM calificaciones_parciales cp
+        INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+        WHERE cp.id_estudiante IN (
+            SELECT id_estudiante FROM estudiantes WHERE id_curso = ?
+        )
+        AND cp.id_materia IN (
+            SELECT id_materia FROM cursos_materias WHERE id_curso = ?
+        )
+        AND cp.calificacion IS NOT NULL
+    ");
+    $stmt_notas->execute([$id_curso, $id_curso]);
+
+    foreach ($stmt_notas->fetchAll(PDO::FETCH_ASSOC) as $rowNota) {
+        $idEst = (int)$rowNota['id_estudiante'];
+        $idMat = (int)$rowNota['id_materia'];
+        $trim = (int)$rowNota['trimestre'];
+        $valor = $rowNota['calificacion'];
+
+        if ($trim < 1 || $trim > 3 || !is_numeric($valor)) {
+            continue;
+        }
+
+        $notasPorEstMateriaTrim[$idEst][$idMat][$trim][] = (float)$valor;
+    }
+}
+
+function obtenerNotasPromedioTrimestre(array $notasPorEstMateriaTrim, int $id_estudiante, int $id_materia): array
 {
-    $notas = [];
+    $notas = [1 => null, 2 => null, 3 => null];
     for ($trim = 1; $trim <= 3; $trim++) {
-        $stmt = $conn->prepare("
-            SELECT calificacion 
-            FROM calificaciones 
-            WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-        ");
-        $stmt->execute([$id_estudiante, $id_materia, $trim]);
-        $nota = $stmt->fetchColumn();
-        $notas[$trim] = $nota !== false ? $nota : null;
+        $valores = $notasPorEstMateriaTrim[$id_estudiante][$id_materia][$trim] ?? [];
+        if (!empty($valores)) {
+            $notas[$trim] = round(array_sum($valores) / count($valores), 2);
+        }
     }
     return $notas;
 }
@@ -117,7 +143,7 @@ foreach ($estudiantes as $est) {
         $hijas = $materias_hijas[$id_padre] ?? [];
         $notas_hijas = [];
         foreach ($hijas as $hija) {
-            $notas_hijas[$hija['id_materia']] = obtenerNotas($conn, $est['id_estudiante'], $hija['id_materia']);
+            $notas_hijas[$hija['id_materia']] = obtenerNotasPromedioTrimestre($notasPorEstMateriaTrim, (int)$est['id_estudiante'], (int)$hija['id_materia']);
         }
         // Promedio padre por trimestre y anual
         $promedios_padre = [];
@@ -167,7 +193,7 @@ foreach ($estudiantes as $est) {
     // Materias sin hijas (padres "solos")
     foreach ($materias_padres as $id_padre => $padre) {
         if (empty($materias_hijas[$id_padre])) {
-            $notas = obtenerNotas($conn, $est['id_estudiante'], $id_padre);
+            $notas = obtenerNotasPromedioTrimestre($notasPorEstMateriaTrim, (int)$est['id_estudiante'], (int)$id_padre);
             $anual = 0;
             $count = 0;
             for ($trim = 1; $trim <= 3; $trim++) {
