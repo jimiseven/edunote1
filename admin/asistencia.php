@@ -140,7 +140,7 @@ function create_gafete_png_binary($qrBinary, array $student)
     $canvas = imagecreatetruecolor($width, $height);
 
     $white = imagecolorallocate($canvas, 255, 255, 255);
-    $primary = imagecolorallocate($canvas, 34, 80, 149);
+    $primary = imagecolorallocate($canvas, 20, 20, 20);
     $dark = imagecolorallocate($canvas, 25, 25, 25);
     $gray = imagecolorallocate($canvas, 90, 90, 90);
     $border = imagecolorallocate($canvas, 210, 210, 210);
@@ -151,9 +151,11 @@ function create_gafete_png_binary($qrBinary, array $student)
     imagefilledrectangle($canvas, 0, 0, $width, 90, $primary);
     imagestring($canvas, 5, 35, 34, utf8_decode('GAFETE ESTUDIANTIL - EDUNOTE'), imagecolorallocate($canvas, 255, 255, 255));
 
-    $qrSize = 430;
-    imagecopyresampled($canvas, $qrImg, 40, 140, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
-    imagerectangle($canvas, 40, 140, 40 + $qrSize, 140 + $qrSize, $border);
+    $qrSize = 410;
+    $qrX = 60;
+    $qrY = 190;
+    imagecopyresampled($canvas, $qrImg, $qrX, $qrY, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
+    imagerectangle($canvas, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $border);
 
     $fullName = trim(($student['apellido_paterno'] ?? '') . ' ' . ($student['apellido_materno'] ?? '') . ', ' . ($student['nombres'] ?? ''));
     $curso = trim(($student['nivel'] ?? '') . ' ' . ($student['curso'] ?? '') . ' "' . ($student['paralelo'] ?? '') . '"');
@@ -169,8 +171,7 @@ function create_gafete_png_binary($qrBinary, array $student)
         $nameY += 30;
     }
 
-    imagestring($canvas, 5, $x, 330, utf8_decode('NIVEL Y CURSO'), $primary);
-    imagestring($canvas, 5, $x, 365, utf8_decode($curso), $dark);
+    imagestring($canvas, 5, $x, 350, utf8_decode($curso), $dark);
 
     imagestring($canvas, 5, $x, 440, utf8_decode($idText), $gray);
     imagestring($canvas, 3, $x, 500, utf8_decode('Uso institucional - Control de asistencia QR'), $gray);
@@ -566,36 +567,49 @@ if ($id_curso) {
             font-family: 'Segoe UI', Arial, sans-serif;
         }
         .qr-card {
-            border: 2px solid #dee2e6;
-            border-radius: 10px;
-            padding: 12px;
+            border: 1px solid #b8b8b8;
+            border-radius: 16px;
+            padding: 12px 12px 14px;
             text-align: center;
             margin: 10px;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: #ffffff;
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
         }
         .qr-card img {
-            margin: 0 auto;
+            margin: 0.35rem auto 0;
             display: block;
             width: 170px;
             height: 170px;
+            border-radius: 10px;
+            border: 1px solid #b8b8b8;
+            background: #ffffff;
+            padding: 6px;
         }
         .badge-title {
             font-weight: 700;
-            font-size: 0.78rem;
-            color: #225095;
-            border-bottom: 1px solid #dee2e6;
-            padding-bottom: 5px;
+            font-size: 0.74rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #ffffff;
+            background: #111111;
+            border-radius: 999px;
+            padding: 6px 10px;
             margin-bottom: 8px;
+            display: inline-block;
         }
         .student-name {
-            font-weight: 600;
+            font-weight: 700;
             margin-top: 10px;
-            font-size: 0.9rem;
+            font-size: 0.92rem;
+            color: #111111;
+            line-height: 1.2;
+            text-align: center;
         }
         .student-info {
             font-size: 0.8rem;
-            color: #6c757d;
+            color: #222222;
+            line-height: 1.2;
+            text-align: center;
         }
         .qr-placeholder {
             width: 150px;
@@ -661,6 +675,18 @@ if ($id_curso) {
         }
         .scan-modal .modal-footer {
             border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        .pdf-loading-modal .modal-content {
+            border-radius: 14px;
+            border: 0;
+        }
+        .pdf-loading-modal .modal-body {
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .pdf-loading-modal .spinner-border {
+            width: 3rem;
+            height: 3rem;
         }
         .manual-id-card {
             background: rgba(255,255,255,0.12);
@@ -761,7 +787,8 @@ if ($id_curso) {
                 min-height: 5.8cm;
                 margin: 0.2cm auto;
                 box-shadow: none;
-                border: 1px solid #333;
+                background: #fff;
+                border: 1px solid #24456d;
                 border-radius: 0;
                 padding: 0.25cm;
             }
@@ -912,6 +939,9 @@ if ($id_curso) {
                                 <i class="ri-download-cloud-2-line"></i> Descargar ZIP de gafetes (curso)
                             </button>
                         </form>
+                        <button type="button" class="btn btn-danger" id="btnGenerarPdf" onclick="generarPdfGafetes()">
+                            <i class="ri-file-pdf-2-line"></i> Generar PDF
+                        </button>
                     </div>
 
                     <div class="row" id="qr-container">
@@ -930,7 +960,7 @@ if ($id_curso) {
                                         <?= htmlspecialchars($est['apellido_paterno'] . ' ' . $est['apellido_materno'] . ', ' . $est['nombres']) ?>
                                     </div>
                                     <div class="student-info">
-                                        Nivel y curso: <?= htmlspecialchars($est['nivel'] . ' ' . $est['curso'] . ' "' . $est['paralelo'] . '"') ?>
+                                        <?= htmlspecialchars($est['nivel'] . ' ' . $est['curso'] . ' "' . $est['paralelo'] . '"') ?>
                                     </div>
                                     <div class="student-info mt-1">
                                         ID: <?= $est['id_estudiante'] ?>
@@ -1025,10 +1055,215 @@ if ($id_curso) {
         </div>
     </div>
 
+    <div class="modal fade pdf-loading-modal" id="pdfLoadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    <h6 class="mt-3 mb-1">Generando PDF</h6>
+                    <p class="text-muted mb-0">Por favor espere. No cierre esta ventana.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
     <script>
         feather.replace();
+
+        const datosGafetesPdf = <?php
+            $datosPdf = [];
+            if ($id_curso && !empty($estudiantes) && $isAdminAsistencia) {
+                foreach ($estudiantes as $estPdf) {
+                    $nombreMayus = strtoupper(trim(($estPdf['apellido_paterno'] ?? '') . ' ' . ($estPdf['apellido_materno'] ?? '') . ', ' . ($estPdf['nombres'] ?? '')));
+                    $qrDataPdf = 'EST:' . (int)$estPdf['id_estudiante'];
+                    $datosPdf[] = [
+                        'id_estudiante' => (int)$estPdf['id_estudiante'],
+                        'nombre' => $nombreMayus,
+                        'curso_texto' => trim(($estPdf['nivel'] ?? '') . ' ' . ($estPdf['curso'] ?? '') . ' "' . ($estPdf['paralelo'] ?? '') . '"'),
+                        'qr_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=' . urlencode($qrDataPdf),
+                    ];
+                }
+            }
+            echo json_encode($datosPdf, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ?>;
+
+        function cmToPt(cm) {
+            return (cm * 72) / 2.54;
+        }
+
+        let isGeneratingPdf = false;
+
+        function obtenerModalPdfCarga() {
+            const modalEl = document.getElementById('pdfLoadingModal');
+            if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+                return null;
+            }
+            return bootstrap.Modal.getOrCreateInstance(modalEl);
+        }
+
+        function mostrarCargaPdf() {
+            const botonPdf = document.getElementById('btnGenerarPdf');
+            if (botonPdf) {
+                botonPdf.disabled = true;
+            }
+            const modal = obtenerModalPdfCarga();
+            if (modal) {
+                modal.show();
+            }
+        }
+
+        function ocultarCargaPdf() {
+            const botonPdf = document.getElementById('btnGenerarPdf');
+            if (botonPdf) {
+                botonPdf.disabled = false;
+            }
+            const modal = obtenerModalPdfCarga();
+            if (modal) {
+                modal.hide();
+            }
+        }
+
+        async function cargarImagenComoDataUrl(url) {
+            try {
+                const response = await fetch(url, { mode: 'cors' });
+                if (!response.ok) {
+                    throw new Error('No se pudo cargar el QR');
+                }
+                const blob = await response.blob();
+                return await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function generarPdfGafetes() {
+            if (isGeneratingPdf) {
+                return;
+            }
+
+            if (!Array.isArray(datosGafetesPdf) || datosGafetesPdf.length === 0) {
+                alert('No hay estudiantes para generar el PDF.');
+                return;
+            }
+
+            isGeneratingPdf = true;
+            mostrarCargaPdf();
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+                const pageW = 612;
+                const pageH = 792;
+                const cardW = cmToPt(6);
+                const cardH = cmToPt(10);
+                const qrSize = cmToPt(4.5);
+                const cardsPerPage = 6;
+                const cursoPagina = (datosGafetesPdf[0] && datosGafetesPdf[0].curso_texto) ? datosGafetesPdf[0].curso_texto : '';
+
+                const cols = 3;
+                const rows = 2;
+                const gapX = (pageW - (cols * cardW)) / (cols + 1);
+                const gapY = (pageH - (rows * cardH)) / (rows + 1);
+
+                const slots = [];
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        slots.push({
+                            x: gapX + col * (cardW + gapX),
+                            y: gapY + row * (cardH + gapY)
+                        });
+                    }
+                }
+
+                for (let i = 0; i < datosGafetesPdf.length; i++) {
+                    if (i > 0 && i % cardsPerPage === 0) {
+                        pdf.addPage('letter', 'portrait');
+                    }
+
+                    const est = datosGafetesPdf[i];
+                    const slot = slots[i % cardsPerPage];
+                    const x = slot.x;
+                    const y = slot.y;
+
+                    if (i % cardsPerPage === 0) {
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.setFontSize(11);
+                        pdf.setTextColor(25, 25, 25);
+                        pdf.text('Curso: ' + cursoPagina, pageW / 2, 28, { align: 'center' });
+                    }
+
+                    pdf.setFillColor(255, 255, 255);
+                    pdf.setDrawColor(170, 170, 170);
+                    pdf.setLineWidth(0.5);
+                    pdf.rect(x, y, cardW, cardH, 'FD');
+
+                    pdf.setFillColor(15, 15, 15);
+                    pdf.rect(x, y, cardW, 13, 'F');
+
+                    pdf.setTextColor(0, 0, 0);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(8);
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.text('GAFETE ESTUDIANTIL', x + (cardW / 2), y + 9, { align: 'center' });
+                    pdf.setTextColor(20, 20, 20);
+                    pdf.setFontSize(7.5);
+                    pdf.text('Unidad Educativa Simon Bolivar', x + (cardW / 2), y + 20, { align: 'center' });
+
+                    const qrX = x + (cardW - qrSize) / 2;
+                    const qrY = y + 42;
+                    const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
+                    if (qrDataUrl) {
+                        pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                    } else {
+                        pdf.setDrawColor(160, 160, 160);
+                        pdf.rect(qrX, qrY, qrSize, qrSize);
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.setFontSize(8);
+                        pdf.text('QR no disponible', x + (cardW / 2), qrY + (qrSize / 2), { align: 'center' });
+                    }
+
+                    const idY = qrY + qrSize + 11;
+                    pdf.setFont('helvetica', 'normal');
+                    pdf.setFontSize(8);
+                    pdf.text('Id estudiante: ' + est.id_estudiante, x + (cardW / 2), idY, { align: 'center' });
+
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(10);
+                    const nombreBase = (est.nombre || '').toUpperCase();
+                    let nombreLineas = pdf.splitTextToSize(nombreBase, cardW - 12);
+                    if (nombreLineas.length > 2) {
+                        nombreLineas = nombreLineas.slice(0, 2);
+                        nombreLineas[1] = nombreLineas[1].slice(0, Math.max(nombreLineas[1].length - 3, 0)) + '...';
+                    }
+                    pdf.text(nombreLineas, x + (cardW / 2), idY + 14, { align: 'center', maxWidth: cardW - 12 });
+
+                    pdf.setFont('helvetica', 'normal');
+                    pdf.setFontSize(8);
+                    const pieTexto = est.curso_texto || '';
+                    let pieLineas = pdf.splitTextToSize(pieTexto, cardW - 12);
+                    if (pieLineas.length > 2) {
+                        pieLineas = pieLineas.slice(0, 2);
+                        pieLineas[1] = pieLineas[1].slice(0, Math.max(pieLineas[1].length - 3, 0)) + '...';
+                    }
+                    pdf.text(pieLineas, x + (cardW / 2), y + cardH - 20, { align: 'center', maxWidth: cardW - 12 });
+                }
+
+                const nombreCursoArchivo = <?= json_encode($id_curso ? ('curso_' . (int)$id_curso) : 'curso') ?>;
+                pdf.save('gafetes_pdf_' + nombreCursoArchivo + '.pdf');
+            } finally {
+                isGeneratingPdf = false;
+                ocultarCargaPdf();
+            }
+        }
 
         function changeLevel(select) {
             const form = select.form;
