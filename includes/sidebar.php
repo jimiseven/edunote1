@@ -23,6 +23,56 @@ function active($str, $current)
             position: sticky;
             top: 0;
             height: 100vh;
+            background: #181f2c !important;
+            color: #ffffff;
+        }
+
+        body.has-unified-sidebar {
+            --edunote-sidebar-width: 250px;
+            --edunote-sidebar-collapsed-width: 60px;
+            margin-left: 0 !important;
+            padding-left: var(--edunote-sidebar-width) !important;
+            transition: padding-left .25s ease;
+        }
+
+        body.has-unified-sidebar.sidebar-collapsed {
+            padding-left: var(--edunote-sidebar-collapsed-width) !important;
+        }
+
+        body.has-unified-sidebar .sidebar {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: var(--edunote-sidebar-width) !important;
+            max-width: var(--edunote-sidebar-width) !important;
+            min-width: var(--edunote-sidebar-width) !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            min-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 1050 !important;
+            overflow: hidden !important;
+        }
+
+        body.has-unified-sidebar #sidebarMenu {
+            background: #181f2c !important;
+            box-shadow: 4px 0 18px rgba(15, 23, 42, 0.18);
+        }
+
+        body.has-unified-sidebar.sidebar-collapsed .sidebar {
+            width: var(--edunote-sidebar-collapsed-width) !important;
+            max-width: var(--edunote-sidebar-collapsed-width) !important;
+            min-width: var(--edunote-sidebar-collapsed-width) !important;
+        }
+
+        body.has-unified-sidebar .main-content,
+        body.has-unified-sidebar main,
+        body.has-unified-sidebar .content,
+        body.has-unified-sidebar .content-panel,
+        body.has-unified-sidebar .container-fluid,
+        body.has-unified-sidebar .dashboard-content {
+            margin-left: 0 !important;
         }
 
         .sidebar-toggle {
@@ -89,13 +139,45 @@ function active($str, $current)
             overflow: hidden;
         }
 
-        body.sidebar-collapsed #sidebarMenu .sidebar-brand span,
+        body.sidebar-collapsed #sidebarMenu .brand-label,
+        body.sidebar-collapsed #sidebarMenu .nav-label,
         body.sidebar-collapsed #sidebarMenu .sidebar-section-title,
-        body.sidebar-collapsed #sidebarMenu .nav-link,
         body.sidebar-collapsed #sidebarMenu .sidebar-search-box,
-        body.sidebar-collapsed #sidebarMenu .sidebar-user,
-        body.sidebar-collapsed #sidebarMenu .sidebar-logout {
+        body.sidebar-collapsed #sidebarMenu .sidebar-user-name {
             display: none !important;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .sidebar-brand {
+            justify-content: center;
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .sidebar-toggle {
+            margin-left: 0;
+            width: 28px;
+            height: 28px;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .sidebar-brand {
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .nav-link {
+            justify-content: center;
+            padding: 0.65rem 0;
+            margin: 3px 8px;
+            border-left: 0;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .nav-link .feather {
+            margin-right: 0;
+        }
+
+        body.sidebar-collapsed #sidebarMenu .sidebar-user {
+            justify-content: center;
+            padding: 0.75rem 0;
         }
 
         /* Tamaños de fuente reducidos */
@@ -207,6 +289,9 @@ function active($str, $current)
             margin: 1px 0;
             border-left: 2px solid transparent;
             transition: all .15s;
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
         }
 
         .nav-link.active,
@@ -218,10 +303,16 @@ function active($str, $current)
         }
 
         .nav-link .feather {
-            margin-right: 0.7rem;
             opacity: .83;
             width: 16px;
             height: 16px;
+            flex: 0 0 16px;
+        }
+
+        .nav-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .sidebar-bottom {
@@ -234,13 +325,14 @@ function active($str, $current)
         }
 
         .sidebar-logout .nav-link {
-            background: linear-gradient(90deg, #0ba360 0%, #3cba92 100%);
+            background: linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
             color: #fff !important;
             font-weight: 500;
             border-radius: 6px;
             padding: 0.55rem;
             width: 72%;
             font-size: 0.82rem;
+            justify-content: center;
         }
 
         /* Ajustes responsive adicionales */
@@ -251,6 +343,10 @@ function active($str, $current)
         }
 
         @media (max-width: 991px) {
+            body.has-unified-sidebar {
+                padding-left: 0 !important;
+            }
+
             .sidebar-mobile-open-btn {
                 display: inline-flex;
             }
@@ -313,7 +409,7 @@ function active($str, $current)
         <!-- Header -->
         <div class="sidebar-brand">
             <span class="logo-icon">E</span>
-            <span>EDUNOTE</span>
+            <span class="brand-label">EDUNOTE</span>
             <button type="button" class="sidebar-toggle" id="sidebarToggleGlobal" aria-label="Contraer/expandir menú">☰</button>
         </div>
 
@@ -326,19 +422,19 @@ function active($str, $current)
                     <li>
                         <a class="nav-link <?php echo active('dash_iniciales', $current); ?>" href="dash_iniciales.php">
                             <span data-feather="user"></span>
-                            Inicial
+                            <span class="nav-label">Inicial</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('dashboard_primaria', $current); ?>" href="dashboard_primaria.php">
                             <span data-feather="book"></span>
-                            Primaria
+                            <span class="nav-label">Primaria</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('dashboard_secundaria', $current); ?>" href="dashboard_secundaria.php">
                             <span data-feather="layers"></span>
-                            Secundaria
+                            <span class="nav-label">Secundaria</span>
                         </a>
                     </li>
                 </ul>
@@ -348,58 +444,58 @@ function active($str, $current)
                     <li>
                         <a class="nav-link <?php echo active('personal', $current); ?>" href="personal.php">
                             <span data-feather="users"></span>
-                            Personal
+                            <span class="nav-label">Personal</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('control_bimestres', $current); ?>" href="control_bimestres.php">
                             <span data-feather="calendar"></span>
-                            Trimestres
+                            <span class="nav-label">Trimestres</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('monitor', $current); ?>" href="monitor.php">
                             <span data-feather="monitor"></span>
-                            Monitor
+                            <span class="nav-label">Monitor</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('tablon', $current); ?>" href="anuncios.php">
-                            <span data-feather="calendar"></span>
-                            Tablon
+                            <span data-feather="message-square"></span>
+                            <span class="nav-label">Tablón</span>
                         </a>
                     </li>
                 </ul>
                 <!-- asignacion de cursos -->
-                <div class="sidebar-section-title">ASIGNACION DE PROFESORES</div>
+                <div class="sidebar-section-title">ASIGNACIÓN DE PROFESORES</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
                         <a class="nav-link <?php echo active('asig_ini', $current); ?>" href="asig_ini.php">
-                            <span data-feather="users"></span>
-                            Inicial
+                            <span data-feather="user-plus"></span>
+                            <span class="nav-label">Inicial</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('asig_pri', $current); ?>" href="asig_pri.php">
-                            <span data-feather="calendar"></span>
-                            Primaria
+                            <span data-feather="user-check"></span>
+                            <span class="nav-label">Primaria</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('asig_sec', $current); ?>" href="asig_sec.php">
-                            <span data-feather="calendar"></span>
-                            Secundaria
+                            <span data-feather="user-check"></span>
+                            <span class="nav-label">Secundaria</span>
                         </a>
                     </li>
                 </ul>
 
                 <!-- Informacion de estudiantes -->
-                <div class="sidebar-section-title">INFORMACION DE ESTUDIANTES</div>
+                <div class="sidebar-section-title">INFORMACIÓN DE ESTUDIANTES</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
                         <a class="nav-link <?php echo active('estudiantes', $current); ?>" href="estudiantes.php">
-                            <span data-feather="info"></span>
-                            Estudiantes
+                            <span data-feather="users"></span>
+                            <span class="nav-label">Estudiantes</span>
                         </a>
                     </li>
                 </ul>
@@ -410,31 +506,31 @@ function active($str, $current)
                     <li>
                         <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="asistencia.php">
                             <span data-feather="check-circle"></span>
-                            Ver QR
+                            <span class="nav-label">Ver QR</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('lectores_asistencia.php', $current); ?>" href="lectores_asistencia.php">
-                            <span data-feather="users"></span>
-                            Lectores de asistencia
+                            <span data-feather="smartphone"></span>
+                            <span class="nav-label">Lectores de asistencia</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('ajustes_asistencia.php', $current); ?>" href="ajustes_asistencia.php">
                             <span data-feather="settings"></span>
-                            Ajustes
+                            <span class="nav-label">Ajustes</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="reporte_asistencia_curso.php">
                             <span data-feather="file-text"></span>
-                            Reporte por curso
+                            <span class="nav-label">Reporte por curso</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('estadisticas_asistencia.php', $current); ?>" href="estadisticas_asistencia.php">
                             <span data-feather="bar-chart-2"></span>
-                            Estadísticas
+                            <span class="nav-label">Estadísticas</span>
                         </a>
                     </li>
                 </ul>
@@ -446,36 +542,36 @@ function active($str, $current)
                     <li>
                         <a class="nav-link <?php echo active('dashboard', $current); ?>" href="../profesor/dashboard.php">
                             <span data-feather="book-open"></span>
-                            Ver Cursos
+                            <span class="nav-label">Ver Cursos</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="../admin/asistencia.php">
                             <span data-feather="check-square"></span>
-                            Registrar Asistencia
+                            <span class="nav-label">Registrar Asistencia</span>
                         </a>
                     </li>
                 </ul>
             <?php elseif ($role == 3): // Directora 
             ?>
-                <div class="sidebar-section-title">Centralizadores</div>
+                <div class="sidebar-section-title">CENTRALIZADORES</div>
                 <ul class="nav flex-column sidebar-group-list">
                     <li>
                         <a class="nav-link <?php echo active('iniv.php', $current); ?>" href="iniv.php">
-                            <i class="bi bi-person-circle me-2"></i>
-                            Inicial
+                            <span data-feather="user"></span>
+                            <span class="nav-label">Inicial</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('priv.php', $current); ?>" href="priv.php">
-                            <i class="bi bi-book me-2"></i>
-                            Primaria
+                            <span data-feather="book"></span>
+                            <span class="nav-label">Primaria</span>
                         </a>
                     </li>
                     <li>
                         <a class="nav-link <?php echo active('secv.php', $current); ?>" href="secv.php">
-                            <i class="bi bi-layers me-2"></i>
-                            Secundaria
+                            <span data-feather="layers"></span>
+                            <span class="nav-label">Secundaria</span>
                         </a>
                     </li>
                 </ul>
@@ -488,7 +584,7 @@ function active($str, $current)
             <?php if (isset($_SESSION['user_name'])): ?>
                 <div class="sidebar-user">
                     <span data-feather="user"></span>
-                    <?php echo htmlspecialchars($_SESSION['user_name']); ?>
+                    <span class="sidebar-user-name"><?php echo htmlspecialchars($_SESSION['user_name']); ?></span>
                 </div>
             <?php endif; ?>
             <div class="sidebar-logout">
@@ -496,7 +592,7 @@ function active($str, $current)
                     <li class="nav-item">
                         <a class="nav-link" href="../includes/logout.php">
                             <span data-feather="log-out"></span>
-                            Cerrar Sesión
+                            <span class="nav-label">Cerrar Sesión</span>
                         </a>
                     </li>
                 </ul>
@@ -505,6 +601,8 @@ function active($str, $current)
     </div>
     <script>
         (function() {
+            document.body.classList.add('has-unified-sidebar');
+
             try {
                 const collapsed = localStorage.getItem('edunote_sidebar_collapsed') === '1';
                 if (collapsed) {
@@ -560,6 +658,19 @@ function active($str, $current)
                 }
             });
         })();
-        if (window.feather) feather.replace();
+        function renderSidebarIcons() {
+            if (window.feather) {
+                window.feather.replace();
+            }
+        }
+
+        if (window.feather) {
+            renderSidebarIcons();
+        } else {
+            const featherScript = document.createElement('script');
+            featherScript.src = 'https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js';
+            featherScript.onload = renderSidebarIcons;
+            document.head.appendChild(featherScript);
+        }
     </script>
 </nav>

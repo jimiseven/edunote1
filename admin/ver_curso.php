@@ -604,7 +604,8 @@ $estudiantes_ordenados = $estudiantes;
         main {
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            min-height: 100dvh;
+            width: 100%;
             padding-left: 0.4rem;
             padding-right: 0.4rem;
         }
@@ -616,6 +617,7 @@ $estudiantes_ordenados = $estudiantes;
             padding: 0;
             margin: 0 0 8px 0;
             flex: 1;
+            min-height: 0;
             width: 100%;
         }
 
@@ -626,7 +628,8 @@ $estudiantes_ordenados = $estudiantes;
             border-radius: 8px;
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
             overflow: auto;
-            max-height: calc(100vh - 132px);
+            height: auto;
+            max-height: none;
             scrollbar-gutter: stable both-edges;
             position: relative;
             width: 100%;
@@ -1402,7 +1405,7 @@ $estudiantes_ordenados = $estudiantes;
             <!-- Incluye tu sidebar real aquí, sin rehacerlo -->
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-10 ms-sm-auto col-lg-10 px-md-2 px-lg-2">
+            <main class="w-100 px-md-2 px-lg-2">
                 <!-- Header con título y botones -->
                 <div class="header-controls no-print">
                     <div class="header-main">
@@ -1583,6 +1586,18 @@ $estudiantes_ordenados = $estudiantes;
             const themeIcon = themeToggle ? themeToggle.querySelector('i') : null;
             const themeText = themeToggle ? themeToggle.querySelector('span') : null;
             const storageKey = 'edunote-theme-dark';
+            const tableViewport = document.querySelector('.content-section .table-responsive');
+
+            function ajustarAltoTabla() {
+                if (!tableViewport) {
+                    return;
+                }
+                const tablaTop = tableViewport.getBoundingClientRect().top;
+                const margenInferior = 10;
+                const altoDisponible = Math.max(300, Math.floor(window.innerHeight - tablaTop - margenInferior));
+                tableViewport.style.height = altoDisponible + 'px';
+                tableViewport.style.maxHeight = altoDisponible + 'px';
+            }
 
             function applyTheme(isDark) {
                 document.body.classList.toggle('dark-mode', isDark);
@@ -1602,8 +1617,14 @@ $estudiantes_ordenados = $estudiantes;
                     const isDark = !document.body.classList.contains('dark-mode');
                     applyTheme(isDark);
                     localStorage.setItem(storageKey, isDark ? 'true' : 'false');
+                    requestAnimationFrame(ajustarAltoTabla);
                 });
             }
+
+            ajustarAltoTabla();
+            window.addEventListener('resize', ajustarAltoTabla);
+            window.addEventListener('orientationchange', ajustarAltoTabla);
+            requestAnimationFrame(ajustarAltoTabla);
         });
 
         function showOrderModal() {
