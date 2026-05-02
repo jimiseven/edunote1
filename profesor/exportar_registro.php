@@ -195,6 +195,36 @@ if (!empty($parcialesMap)) {
     $maxParcial = max(array_keys($parcialesMap));
 }
 
+// Ancho util aproximado para hoja carta vertical (21.5 cm) con margenes actuales
+$printableWidth = 540;
+
+$wNum = 20;
+$wNombreParcial = 260;
+$wComentario = max(170, $printableWidth - $wNum - $wNombreParcial);
+
+if ($hasAreaColumns) {
+    $wArea = max(42, (int)floor(($printableWidth - $wNum - $wNombreParcial) / 4));
+    $wParcialSimple = $wArea;
+} else {
+    $wParcialSimple = max(90, $printableWidth - $wNum - $wNombreParcial);
+    $wArea = 0;
+}
+
+$wNombreResumen = 220;
+$wProm95 = 48;
+$wAuto = 42;
+$wExtra = 42;
+$wTotal = 48;
+$remainingResumen = $printableWidth - ($wNum + $wNombreResumen + $wProm95 + $wAuto + $wExtra + $wTotal);
+$wParcialResumen = $maxParcial > 0 ? max(30, (int)floor($remainingResumen / $maxParcial)) : 36;
+
+$trimestresAnualesTmp = [1, 2, 3];
+$countTrimestresAnual = count($trimestresAnualesTmp);
+$wNombreAnual = 230;
+$wPromAnual = 56;
+$remainingAnual = $printableWidth - ($wNum + $wNombreAnual + $wPromAnual);
+$wTrimAnual = $countTrimestresAnual > 0 ? max(38, (int)floor($remainingAnual / $countTrimestresAnual)) : 42;
+
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
 ?>
@@ -205,110 +235,170 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
  xmlns:html="http://www.w3.org/TR/REC-html40">
  <Styles>
   <Style ss:ID="Default" ss:Name="Normal">
-   <Font ss:FontName="Calibri" ss:Size="11"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Alignment ss:Vertical="Center"/>
   </Style>
   <Style ss:ID="unidadEducativa">
-   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#1E3A5F"/>
+   <Font ss:FontName="Calibri" ss:Size="13" ss:Bold="1" ss:Color="#000000"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
   <Style ss:ID="titulo">
-   <Font ss:FontName="Calibri" ss:Size="12" ss:Bold="1" ss:Color="#11305E"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
   <Style ss:ID="infoHeader">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#374151"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
   <Style ss:ID="infoHeaderLabel">
-   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#1E3A5F"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
   </Style>
   <Style ss:ID="subtitulo">
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#475569"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
   </Style>
   <Style ss:ID="header">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#1E3A5F"/>
-   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
-    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
-    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hSer">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#166534"/>
-   <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hSaber">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#1E40AF"/>
-   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hHacer">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#9A3412"/>
-   <Interior ss:Color="#FFEDD5" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hTotal">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#6B21A8"/>
-   <Interior ss:Color="#F3E8FF" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hAuto">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#92400E"/>
-   <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="hExtra">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#3730A3"/>
-   <Interior ss:Color="#E0E7FF" ss:Pattern="Solid"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94A3B8"/>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
   <Style ss:ID="num">
-   <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#94A3B8"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
   <Style ss:ID="nombre">
-   <Font ss:FontName="Calibri" ss:Size="9"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
+   <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
   <Style ss:ID="nota">
-   <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="9"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
    <NumberFormat ss:Format="0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
   <Style ss:ID="notaBold">
-   <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
    <NumberFormat ss:Format="0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
   <Style ss:ID="notaTotal">
-   <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#6B21A8"/>
-   <Interior ss:Color="#FAF5FF" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
   <Style ss:ID="notaFinal">
-   <Alignment ss:Horizontal="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#166534"/>
-   <Interior ss:Color="#F0FDF4" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <NumberFormat ss:Format="0.00"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
   </Style>
  </Styles>
 
@@ -321,32 +411,35 @@ for ($px = 1; $px <= $maxParcial; $px++):
 ?>
  <Worksheet ss:Name="Parcial <?php echo $px; ?>">
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
-   <PageSetup>
-    <Layout x:Orientation="Landscape"/>
-    <Header x:Margin="0.3"/>
-    <Footer x:Margin="0.3"/>
-    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
-   </PageSetup>
+    <PageSetup>
+     <Layout x:Orientation="Portrait" x:CenterHorizontal="1"/>
+     <PageSizeIndex>1</PageSizeIndex>
+     <Header x:Margin="0.3"/>
+     <Footer x:Margin="0.3"/>
+     <PageMargins x:Bottom="0.4" x:Left="0.3" x:Right="0.3" x:Top="0.4"/>
+    </PageSetup>
    <FitToPage/>
    <FitWidth>1</FitWidth>
    <FitHeight>0</FitHeight>
-   <Print>
-    <FitWidth>1</FitWidth>
-    <FitHeight>0</FitHeight>
-   </Print>
+    <Print>
+     <FitWidth>1</FitWidth>
+     <FitHeight>0</FitHeight>
+     <BlackAndWhite/>
+     <ValidPrinterInfo/>
+    </Print>
   </WorksheetOptions>
-  <Table>
-   <Column ss:Width="25"/>
-   <Column ss:Width="180"/>
+   <Table>
+    <Column ss:Width="<?php echo $wNum; ?>"/>
+    <Column ss:Width="<?php echo $wNombreParcial; ?>"/>
 <?php if ($es_inicial): ?>
-   <Column ss:Width="350"/>
+   <Column ss:Width="<?php echo $wComentario; ?>"/>
 <?php elseif ($hasAreaColumns): ?>
-   <Column ss:Width="60"/>
-   <Column ss:Width="60"/>
-   <Column ss:Width="60"/>
-   <Column ss:Width="65"/>
+   <Column ss:Width="<?php echo $wArea; ?>"/>
+   <Column ss:Width="<?php echo $wArea; ?>"/>
+   <Column ss:Width="<?php echo $wArea; ?>"/>
+   <Column ss:Width="<?php echo $wArea; ?>"/>
 <?php else: ?>
-   <Column ss:Width="70"/>
+   <Column ss:Width="<?php echo $wParcialSimple; ?>"/>
 <?php endif; ?>
    <Row>
     <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo $es_inicial ? 2 : ($hasAreaColumns ? 4 : 2); ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
@@ -413,30 +506,33 @@ for ($px = 1; $px <= $maxParcial; $px++):
 ?>
  <Worksheet ss:Name="Resumen T<?php echo $trimestreExportar; ?>">
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
-   <PageSetup>
-    <Layout x:Orientation="Landscape"/>
-    <Header x:Margin="0.3"/>
-    <Footer x:Margin="0.3"/>
-    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
-   </PageSetup>
+    <PageSetup>
+     <Layout x:Orientation="Portrait" x:CenterHorizontal="1"/>
+     <PageSizeIndex>1</PageSizeIndex>
+     <Header x:Margin="0.3"/>
+     <Footer x:Margin="0.3"/>
+     <PageMargins x:Bottom="0.4" x:Left="0.3" x:Right="0.3" x:Top="0.4"/>
+    </PageSetup>
    <FitToPage/>
    <FitWidth>1</FitWidth>
    <FitHeight>0</FitHeight>
-   <Print>
-    <FitWidth>1</FitWidth>
-    <FitHeight>0</FitHeight>
-   </Print>
+    <Print>
+     <FitWidth>1</FitWidth>
+     <FitHeight>0</FitHeight>
+     <BlackAndWhite/>
+     <ValidPrinterInfo/>
+    </Print>
   </WorksheetOptions>
-  <Table>
-   <Column ss:Width="25"/>
-   <Column ss:Width="180"/>
+   <Table>
+    <Column ss:Width="<?php echo $wNum; ?>"/>
+    <Column ss:Width="<?php echo $wNombreResumen; ?>"/>
 <?php for ($px = 1; $px <= $maxParcial; $px++): ?>
-   <Column ss:Width="55"/>
+   <Column ss:Width="<?php echo $wParcialResumen; ?>"/>
 <?php endfor; ?>
-   <Column ss:Width="65"/>
-   <Column ss:Width="55"/>
-   <Column ss:Width="55"/>
-   <Column ss:Width="65"/>
+   <Column ss:Width="<?php echo $wProm95; ?>"/>
+   <Column ss:Width="<?php echo $wAuto; ?>"/>
+   <Column ss:Width="<?php echo $wExtra; ?>"/>
+   <Column ss:Width="<?php echo $wTotal; ?>"/>
    <Row>
     <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
@@ -537,30 +633,37 @@ for ($px = 1; $px <= $maxParcial; $px++):
     }
     $trimestresAnuales = array_keys($trimestresAnualesMapa);
     sort($trimestresAnuales);
+
+    $countTrimestresAnual = count($trimestresAnuales);
+    $remainingAnual = $printableWidth - ($wNum + $wNombreAnual + $wPromAnual);
+    $wTrimAnual = $countTrimestresAnual > 0 ? max(38, (int)floor($remainingAnual / $countTrimestresAnual)) : 42;
 ?>
  <Worksheet ss:Name="Promedio Anual">
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
-   <PageSetup>
-    <Layout x:Orientation="Landscape"/>
-    <Header x:Margin="0.3"/>
-    <Footer x:Margin="0.3"/>
-    <PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/>
-   </PageSetup>
+    <PageSetup>
+     <Layout x:Orientation="Portrait" x:CenterHorizontal="1"/>
+     <PageSizeIndex>1</PageSizeIndex>
+     <Header x:Margin="0.3"/>
+     <Footer x:Margin="0.3"/>
+     <PageMargins x:Bottom="0.4" x:Left="0.3" x:Right="0.3" x:Top="0.4"/>
+    </PageSetup>
    <FitToPage/>
    <FitWidth>1</FitWidth>
    <FitHeight>0</FitHeight>
-   <Print>
-    <FitWidth>1</FitWidth>
-    <FitHeight>0</FitHeight>
-   </Print>
+    <Print>
+     <FitWidth>1</FitWidth>
+     <FitHeight>0</FitHeight>
+     <BlackAndWhite/>
+     <ValidPrinterInfo/>
+    </Print>
   </WorksheetOptions>
-  <Table>
-   <Column ss:Width="25"/>
-   <Column ss:Width="190"/>
+   <Table>
+    <Column ss:Width="<?php echo $wNum; ?>"/>
+    <Column ss:Width="<?php echo $wNombreAnual; ?>"/>
 <?php foreach ($trimestresAnuales as $trim): ?>
-   <Column ss:Width="70"/>
+   <Column ss:Width="<?php echo $wTrimAnual; ?>"/>
 <?php endforeach; ?>
-   <Column ss:Width="80"/>
+   <Column ss:Width="<?php echo $wPromAnual; ?>"/>
    <Row>
     <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 1 + count($trimestresAnuales) + 1; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
