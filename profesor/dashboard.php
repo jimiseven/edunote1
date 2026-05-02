@@ -304,7 +304,7 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <?php include '../includes/sidebar.php'; ?>
 
             <!-- Contenido principal -->
-            <main class="col-md-9 col-lg-10 px-0 main-content">
+            <main class="w-100 px-0 main-content">
                 <!-- Encabezado -->
                 <header class="d-flex flex-column flex-md-row justify-content-between align-items-center p-3 bg-light border-bottom">
                     <h1 class="header-title h5 mb-3 mb-md-0 text-primary fw-bold">Cursos Asignados</h1>

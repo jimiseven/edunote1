@@ -75,6 +75,14 @@ function active($str, $current)
             margin-left: 0 !important;
         }
 
+        body.has-unified-sidebar main,
+        body.has-unified-sidebar .main-content,
+        body.has-unified-sidebar .content-panel,
+        body.has-unified-sidebar .dashboard-content {
+            width: 100% !important;
+            max-width: none !important;
+        }
+
         .sidebar-toggle {
             margin-left: auto;
             width: 30px;

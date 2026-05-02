@@ -784,7 +784,7 @@ foreach ($periodosPorTrimestre as $trimestre => $periodosTrimestre) {
     <div class="container-fluid g-0">
         <div class="row g-0">
             <?php include '../includes/sidebar.php'; ?>
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <main class="w-100 px-md-4">
                 <div class="content-wrapper">
                     <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
                         <h1 class="main-title">Control de Carga de Notas</h1>

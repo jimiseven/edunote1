@@ -316,7 +316,7 @@ $detalleCursos = $stmtDetalle->fetchAll(PDO::FETCH_ASSOC);
         <div class="row position-relative">
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4">
+            <main class="w-100 px-md-4 position-relative py-4">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h1 class="h3 mb-0">Estadísticas de Asistencia</h1>
                     <form method="GET" class="d-flex gap-2 align-items-center" id="statsForm">

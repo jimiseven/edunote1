@@ -796,7 +796,7 @@ if ($id_curso) {
             <?php include '../includes/sidebar.php'; ?>
 
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4 asistencia-main">
+            <main class="w-100 px-md-4 position-relative py-4 asistencia-main">
                 <?php if (isset($_SESSION['asistencia_flash'])): ?>
                     <?php $flash = $_SESSION['asistencia_flash']; unset($_SESSION['asistencia_flash']); ?>
                     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?> no-print" role="alert">

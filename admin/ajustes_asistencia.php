@@ -95,7 +95,7 @@ $vigenteHoy = $stmtVigente->fetch(PDO::FETCH_ASSOC) ?: null;
         <div class="row position-relative">
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative py-4">
+            <main class="w-100 px-md-4 position-relative py-4">
                 <?php if (isset($_SESSION['ajustes_asistencia_flash'])): ?>
                     <?php $flash = $_SESSION['ajustes_asistencia_flash']; unset($_SESSION['ajustes_asistencia_flash']); ?>
                     <div class="alert alert-<?= htmlspecialchars($flash['type']) ?>" role="alert">

@@ -198,7 +198,7 @@ $personal = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="container-fluid g-0">
         <div class="row g-0">
             <?php include '../includes/sidebar.php'; ?>
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <main class="w-100 px-md-4">
                 <div class="header-section">
                     <h1 class="main-title">Listado de Personal</h1>
                     <div class="d-flex gap-3 align-items-center">

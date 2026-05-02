@@ -1434,7 +1434,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="container-fluid page-shell">
         <div class="row">
             <?php include '../includes/sidebar.php'; ?>
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 content-panel">
+            <main class="w-100 px-md-4 content-panel">
                 <div class="container-card mt-4">
                     <div class="page-header">
                         <h3><?php echo $curso['curso_nombre']; ?></h3>

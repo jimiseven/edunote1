@@ -141,12 +141,31 @@ if (!empty($cursos)) {
             color: #eaeaea;
         }
 
+        .container-fluid { min-height: 100dvh; }
+
+        main {
+            display: flex;
+            flex-direction: column;
+            min-height: 100dvh;
+            width: 100%;
+        }
+
         .content-wrapper {
             background: var(--content-bg, #1f1f1f);
             border-radius: 10px;
             padding: 2rem;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
             margin-top: 25px;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-responsive.js-dashboard-table {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
         }
 
         .table-cursos {
@@ -293,7 +312,7 @@ if (!empty($cursos)) {
         <div class="row position-relative">
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 position-relative">
+            <main class="w-100 px-md-4 position-relative">
 
                 <!-- Toggle Modo Claro/Oscuro -->
                 <div class="toggle-switch">
@@ -309,7 +328,7 @@ if (!empty($cursos)) {
                     </div>
 
                     <!-- Tabla de Cursos -->
-                    <div class="table-responsive">
+                    <div class="table-responsive js-dashboard-table">
                         <table class="table table-cursos table-bordered align-middle">
                             <thead>
                                 <tr>
@@ -653,6 +672,15 @@ if (!empty($cursos)) {
     <script>
         // Modo claro/oscuro con persistencia en cookie
         const toggle = document.getElementById('toggleMode');
+        const tableViewport = document.querySelector('.table-responsive.js-dashboard-table');
+
+        function ajustarAltoTabla() {
+            if (!tableViewport) return;
+            const top = tableViewport.getBoundingClientRect().top;
+            const alto = Math.max(260, Math.floor(window.innerHeight - top - 12));
+            tableViewport.style.height = alto + 'px';
+            tableViewport.style.maxHeight = alto + 'px';
+        }
 
         function setMode(dark) {
             if (dark) {
@@ -665,6 +693,7 @@ if (!empty($cursos)) {
         }
         toggle.addEventListener('change', function() {
             setMode(this.checked);
+            requestAnimationFrame(ajustarAltoTabla);
         });
         // Estado inicial al cargar
         window.onload = function() {
@@ -672,7 +701,10 @@ if (!empty($cursos)) {
                 document.body.classList.add('dark-mode');
                 toggle.checked = true;
             }
+            ajustarAltoTabla();
         }
+        window.addEventListener('resize', ajustarAltoTabla);
+        window.addEventListener('orientationchange', ajustarAltoTabla);
     </script>
     <script>
         const modalCambiarCursoGlobal = document.getElementById('modalCambiarCursoGlobal');
