@@ -2022,9 +2022,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                                 <div class="action-buttons">
                                     <a href="dashboard.php" class="btn btn-outline-secondary">← Volver al panel</a>
-                                    <button type="submit" name="guardar_notas" class="btn btn-primary px-4" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
-                                        <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
-                                    </button>
+                                    <div class="d-flex gap-2">
+                                        <?php if (!$es_inicial): ?>
+                                        <a href="exportar_parcial_desglose_excel.php?curso_materia=<?php echo $id_curso_materia; ?>&trimestre=<?php echo $trimestreSeleccionado; ?>&parcial=<?php echo $parcialSeleccionado; ?>"
+                                           class="btn btn-outline-success px-3"
+                                           title="Exportar Excel del parcial con desglose SER/SABER/HACER">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l4 6"/><path d="M14 12l-4 6"/></svg>Excel parcial
+                                        </a>
+                                        <?php endif; ?>
+                                        <button type="submit" name="guardar_notas" class="btn btn-primary px-4" <?php echo !$periodoEditable ? 'disabled' : ''; ?>>
+                                            <?php echo $periodoEditable ? 'Guardar notas' : 'No disponible'; ?>
+                                        </button>
+                                    </div>
                                 </div>
                                 <?php endif; ?>
                             </form>
