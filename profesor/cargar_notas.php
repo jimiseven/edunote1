@@ -45,21 +45,42 @@ function tablaDetalleCalificacionesDisponible(PDO $conn) {
 
 function asegurarTablaEtiquetasActividades(PDO $conn): void {
     $conn->exec("CREATE TABLE IF NOT EXISTS `parciales_etiquetas_actividades` (
+        `id_curso` int(11) NOT NULL,
         `id_materia` int(11) NOT NULL,
         `id_periodo_evaluacion` int(11) NOT NULL,
         `area` enum('SER','SABER','HACER') NOT NULL,
         `indice` tinyint unsigned NOT NULL,
         `etiqueta` varchar(120) NOT NULL DEFAULT '',
         `actualizado_en` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-        PRIMARY KEY (`id_materia`,`id_periodo_evaluacion`,`area`,`indice`),
-        KEY `idx_periodo_materia` (`id_materia`,`id_periodo_evaluacion`)
+        PRIMARY KEY (`id_curso`,`id_materia`,`id_periodo_evaluacion`,`area`,`indice`),
+        KEY `idx_periodo_materia` (`id_curso`,`id_materia`,`id_periodo_evaluacion`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+
+    $stmtCol = $conn->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'parciales_etiquetas_actividades' AND COLUMN_NAME = 'id_curso'");
+    $stmtCol->execute();
+    if ((int)$stmtCol->fetchColumn() === 0) {
+        $conn->exec("ALTER TABLE `parciales_etiquetas_actividades` ADD COLUMN `id_curso` int(11) NOT NULL DEFAULT 0 FIRST");
+    }
+
+    $stmtPk = $conn->query("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'parciales_etiquetas_actividades'
+          AND CONSTRAINT_NAME = 'PRIMARY'
+        ORDER BY ORDINAL_POSITION");
+    $pkCols = $stmtPk ? $stmtPk->fetchAll(PDO::FETCH_COLUMN) : [];
+    $pkEsperada = ['id_curso', 'id_materia', 'id_periodo_evaluacion', 'area', 'indice'];
+    if ($pkCols !== $pkEsperada) {
+        $conn->exec("ALTER TABLE `parciales_etiquetas_actividades`
+            DROP PRIMARY KEY,
+            ADD PRIMARY KEY (`id_curso`,`id_materia`,`id_periodo_evaluacion`,`area`,`indice`)");
+    }
 }
 
 /**
  * @return array{SER: array<int, string>, SABER: array<int, string>, HACER: array<int, string>}
  */
-function cargarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo): array {
+function cargarEtiquetasActividades(PDO $conn, int $idCurso, int $idMateria, int $idPeriodo): array {
     $default = ['SER' => [], 'SABER' => [], 'HACER' => []];
     for ($i = 1; $i <= 4; $i++) {
         $default['SER'][$i] = '';
@@ -69,8 +90,8 @@ function cargarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo): 
         $default['HACER'][$i] = '';
     }
     $stmt = $conn->prepare('SELECT area, indice, etiqueta FROM parciales_etiquetas_actividades
-        WHERE id_materia = ? AND id_periodo_evaluacion = ?');
-    $stmt->execute([$idMateria, $idPeriodo]);
+        WHERE id_curso = ? AND id_materia = ? AND id_periodo_evaluacion = ?');
+    $stmt->execute([$idCurso, $idMateria, $idPeriodo]);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $a = $row['area'];
         $idx = (int)$row['indice'];
@@ -81,12 +102,12 @@ function cargarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo): 
     return $default;
 }
 
-function guardarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo, array $postEtiquetas): void {
+function guardarEtiquetasActividades(PDO $conn, int $idCurso, int $idMateria, int $idPeriodo, array $postEtiquetas): void {
     // No llamar a asegurarTablaEtiquetasActividades() aquí: CREATE TABLE hace COMMIT implícito en MySQL y rompe la transacción activa.
-    $stmtDel = $conn->prepare('DELETE FROM parciales_etiquetas_actividades WHERE id_materia = ? AND id_periodo_evaluacion = ?');
-    $stmtDel->execute([$idMateria, $idPeriodo]);
+    $stmtDel = $conn->prepare('DELETE FROM parciales_etiquetas_actividades WHERE id_curso = ? AND id_materia = ? AND id_periodo_evaluacion = ?');
+    $stmtDel->execute([$idCurso, $idMateria, $idPeriodo]);
     $stmtIns = $conn->prepare('INSERT INTO parciales_etiquetas_actividades
-        (id_materia, id_periodo_evaluacion, area, indice, etiqueta) VALUES (?, ?, ?, ?, ?)');
+        (id_curso, id_materia, id_periodo_evaluacion, area, indice, etiqueta) VALUES (?, ?, ?, ?, ?, ?)');
     $areas = ['SER' => 4, 'SABER' => 8, 'HACER' => 8];
     foreach ($areas as $area => $max) {
         $bloque = $postEtiquetas[$area] ?? null;
@@ -97,7 +118,7 @@ function guardarEtiquetasActividades(PDO $conn, int $idMateria, int $idPeriodo, 
             $texto = isset($bloque[$i]) ? trim((string)$bloque[$i]) : '';
             $texto = mb_substr($texto, 0, 120);
             if ($texto !== '') {
-                $stmtIns->execute([$idMateria, $idPeriodo, $area, $i, $texto]);
+                $stmtIns->execute([$idCurso, $idMateria, $idPeriodo, $area, $i, $texto]);
             }
         }
     }
@@ -475,7 +496,7 @@ $etiquetasActividades = [
 if (!$es_inicial) {
     try {
         asegurarTablaEtiquetasActividades($conn);
-        $etiquetasActividades = cargarEtiquetasActividades($conn, (int)$curso['id_materia'], $idPeriodoSeleccionado);
+        $etiquetasActividades = cargarEtiquetasActividades($conn, (int)$curso['id_curso'], (int)$curso['id_materia'], $idPeriodoSeleccionado);
     } catch (PDOException $e) {
         // Sin tabla o sin permisos: solo placeholders en la vista
     }
@@ -579,7 +600,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$es_inicial && !empty($periodoEditable) && isset($_POST['guardar_notas'])) {
                 $etiPost = $_POST['etiquetas_actividades'] ?? [];
                 if (is_array($etiPost)) {
-                    guardarEtiquetasActividades($conn, (int)$curso['id_materia'], $idPeriodoSeleccionado, $etiPost);
+                    guardarEtiquetasActividades($conn, (int)$curso['id_curso'], (int)$curso['id_materia'], $idPeriodoSeleccionado, $etiPost);
                 }
             }
 
