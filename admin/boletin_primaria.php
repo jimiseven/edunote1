@@ -252,8 +252,31 @@ foreach ($estudiantes as $est) {
         }
     }
 
-    $promedios[$est['id_estudiante']] = $contador_notas > 0 ?
+$promedios[$est['id_estudiante']] = $contador_notas > 0 ?
         number_format($total_notas / $contador_notas, 2) : '-';
+}
+
+function claseNotaBoletin($nota)
+{
+    if (!is_numeric($nota)) {
+        return '';
+    }
+    $valor = round((float)$nota, 2);
+    if ($valor == 50.0) {
+        return ' nota-trim-50';
+    }
+    if ($valor < 50.0) {
+        return ' nota-trim-aplazado';
+    }
+    return ' nota-trim-aprobado';
+}
+
+function formatearNotaBoletin($nota)
+{
+    if (!is_numeric($nota)) {
+        return '-';
+    }
+    return (string)round((float)$nota);
 }
 ?>
 <!DOCTYPE html>
@@ -273,6 +296,7 @@ foreach ($estudiantes as $est) {
         .boletin-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: auto;
         }
 
         .boletin-table th,
@@ -332,6 +356,24 @@ foreach ($estudiantes as $est) {
             font-weight: bold;
         }
 
+        .nota-trim-50 {
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 700;
+        }
+
+        .nota-trim-aplazado {
+            background: #fee2e2;
+            color: #b91c1c;
+            font-weight: 700;
+        }
+
+        .nota-trim-aprobado {
+            background: #dcfce7;
+            color: #166534;
+            font-weight: 700;
+        }
+
         .selector-container {
             display: flex;
             gap: 15px;
@@ -349,6 +391,28 @@ foreach ($estudiantes as $est) {
         .curso-titulo {
             flex-grow: 1;
             text-align: center;
+        }
+
+        .annual-layout {
+            overflow-x: auto;
+        }
+
+        .boletin-table.boletin-anual th,
+        .boletin-table.boletin-anual td {
+            padding: 4px;
+            font-size: 0.8rem;
+        }
+
+        .boletin-table.boletin-anual .encabezado-submateria.materia-block {
+            font-size: 0.72rem;
+            letter-spacing: 0.2px;
+            line-height: 1.15;
+            min-width: 120px;
+        }
+
+        .boletin-table.boletin-anual .trim-col {
+            min-width: 42px;
+            font-weight: 700;
         }
 
         @media print {
@@ -381,9 +445,14 @@ foreach ($estudiantes as $est) {
                 <i class="ri-arrow-left-line"></i> Atrás
             </a>
             <h1 class="h3 text-primary curso-titulo"><?= htmlspecialchars($nombre_curso) ?></h1>
-            <button onclick="generarBoletinesPDF()" class="btn btn-primary">
-                <i class="ri-file-pdf-line"></i> Boletines PDF
-            </button>
+            <div class="d-flex gap-2">
+                <button onclick="generarResumenOficioPDF()" class="btn btn-outline-primary">
+                    <i class="ri-file-chart-line"></i> Resumen PDF Oficio
+                </button>
+                <button onclick="generarBoletinesPDF()" class="btn btn-primary">
+                    <i class="ri-file-pdf-line"></i> Boletines PDF
+                </button>
+            </div>
 
         </div>
 
@@ -431,8 +500,8 @@ foreach ($estudiantes as $est) {
                 No hay estudiantes matriculados en este curso.
             </div>
         <?php else: ?>
-            <div class="table-responsive">
-                <table class="boletin-table">
+            <div class="table-responsive <?php echo $vista == 'anual' ? 'annual-layout' : ''; ?>">
+                <table class="boletin-table <?php echo $vista == 'anual' ? 'boletin-anual' : ''; ?>">
                     <?php if ($vista == 'trimestral'): ?>
                         <!-- VISTA TRIMESTRAL -->
                         <thead>
@@ -490,16 +559,18 @@ foreach ($estudiantes as $est) {
 
                                     <!-- PRIMERO: Notas de materias individuales -->
                                     <?php foreach ($materias_individuales as $mat): ?>
-                                        <td>
-                                            <?= $calificaciones[$est['id_estudiante']][$mat['id_materia']][$trimestre] ?? '-' ?>
+                                        <?php $notaTrim = $calificaciones[$est['id_estudiante']][$mat['id_materia']][$trimestre] ?? '-'; ?>
+                                        <td class="<?= claseNotaBoletin($notaTrim) ?>">
+                                            <?= formatearNotaBoletin($notaTrim) ?>
                                         </td>
                                     <?php endforeach; ?>
 
                                     <!-- DESPUÉS: Notas de submaterias -->
                                     <?php foreach ($materias_padre as $padre): ?>
                                         <?php foreach ($padre['hijas'] as $hija): ?>
-                                            <td>
-                                                <?= $calificaciones[$est['id_estudiante']][$hija['id_materia']][$trimestre] ?? '-' ?>
+                                            <?php $notaTrim = $calificaciones[$est['id_estudiante']][$hija['id_materia']][$trimestre] ?? '-'; ?>
+                                            <td class="<?= claseNotaBoletin($notaTrim) ?>">
+                                                <?= formatearNotaBoletin($notaTrim) ?>
                                             </td>
                                         <?php endforeach; ?>
                                     <?php endforeach; ?>
@@ -515,8 +586,8 @@ foreach ($estudiantes as $est) {
                         <!-- VISTA ANUAL -->
                         <thead>
                             <tr>
-                                <th rowspan="2" class="numero-estudiante">#</th>
-                                <th rowspan="2" class="nombre-estudiante">Estudiante</th>
+                                <th rowspan="3" class="numero-estudiante">#</th>
+                                <th rowspan="3" class="nombre-estudiante">Estudiante</th>
 
                                 <!-- PRIMERO: Materias individuales -->
                                 <?php if (!empty($materias_individuales)): ?>
@@ -533,22 +604,33 @@ foreach ($estudiantes as $est) {
                                 <?php endforeach; ?>
 
                                 <!-- Promedio general -->
-                                <th rowspan="2" class="promedio-general">PROM. GRAL</th>
+                                <th rowspan="3" class="promedio-general">PROM. GRAL</th>
                             </tr>
                             <tr>
-                                <!-- PRIMERO: Materias individuales con tres trimestres cada una -->
+                                <!-- PRIMERO: Bloque por materia individual -->
                                 <?php foreach ($materias_individuales as $mat): ?>
-                                    <th class="encabezado-submateria"><?= $mat['abreviatura'] ?> T1</th>
-                                    <th class="encabezado-submateria"><?= $mat['abreviatura'] ?> T2</th>
-                                    <th class="encabezado-submateria"><?= $mat['abreviatura'] ?> T3</th>
+                                    <th colspan="3" class="encabezado-submateria materia-block"><?= $mat['abreviatura'] ?></th>
                                 <?php endforeach; ?>
 
-                                <!-- DESPUÉS: Para cada submateria, mostrar 3 columnas (Trim 1, 2, 3) -->
+                                <!-- DESPUÉS: Bloque por submateria -->
                                 <?php foreach ($materias_padre as $padre): ?>
                                     <?php foreach ($padre['hijas'] as $hija): ?>
-                                        <th class="encabezado-submateria"><?= $hija['abreviatura'] ?> T1</th>
-                                        <th class="encabezado-submateria"><?= $hija['abreviatura'] ?> T2</th>
-                                        <th class="encabezado-submateria"><?= $hija['abreviatura'] ?> T3</th>
+                                        <th colspan="3" class="encabezado-submateria materia-block"><?= $hija['abreviatura'] ?></th>
+                                    <?php endforeach; ?>
+                                <?php endforeach; ?>
+                            </tr>
+                            <tr>
+                                <?php foreach ($materias_individuales as $mat): ?>
+                                    <th class="encabezado-submateria trim-col">T1</th>
+                                    <th class="encabezado-submateria trim-col">T2</th>
+                                    <th class="encabezado-submateria trim-col">T3</th>
+                                <?php endforeach; ?>
+
+                                <?php foreach ($materias_padre as $padre): ?>
+                                    <?php foreach ($padre['hijas'] as $hija): ?>
+                                        <th class="encabezado-submateria trim-col">T1</th>
+                                        <th class="encabezado-submateria trim-col">T2</th>
+                                        <th class="encabezado-submateria trim-col">T3</th>
                                     <?php endforeach; ?>
                                 <?php endforeach; ?>
                             </tr>
@@ -569,8 +651,9 @@ foreach ($estudiantes as $est) {
                                     <!-- PRIMERO: Notas de materias individuales (3 trimestres) -->
                                     <?php foreach ($materias_individuales as $mat): ?>
                                         <?php for ($t = 1; $t <= 3; $t++): ?>
-                                            <td>
-                                                <?= $calificaciones[$est['id_estudiante']][$mat['id_materia']][$t] ?? '-' ?>
+                                            <?php $notaTrim = $calificaciones[$est['id_estudiante']][$mat['id_materia']][$t] ?? '-'; ?>
+                                            <td class="<?= claseNotaBoletin($notaTrim) ?>">
+                                                <?= formatearNotaBoletin($notaTrim) ?>
                                             </td>
                                         <?php endfor; ?>
                                     <?php endforeach; ?>
@@ -579,8 +662,9 @@ foreach ($estudiantes as $est) {
                                     <?php foreach ($materias_padre as $padre): ?>
                                         <?php foreach ($padre['hijas'] as $hija): ?>
                                             <?php for ($t = 1; $t <= 3; $t++): ?>
-                                                <td>
-                                                    <?= $calificaciones[$est['id_estudiante']][$hija['id_materia']][$t] ?? '-' ?>
+                                                <?php $notaTrim = $calificaciones[$est['id_estudiante']][$hija['id_materia']][$t] ?? '-'; ?>
+                                                <td class="<?= claseNotaBoletin($notaTrim) ?>">
+                                                    <?= formatearNotaBoletin($notaTrim) ?>
                                                 </td>
                                             <?php endfor; ?>
                                         <?php endforeach; ?>
@@ -600,6 +684,207 @@ foreach ($estudiantes as $est) {
     </div>
 
     <script>
+        function formatearNotaBoletinJs(valor) {
+            const n = Number.parseFloat(String(valor).replace(',', '.'));
+            if (!Number.isFinite(n)) return '-';
+            return String(Math.round(n));
+        }
+
+        function generarResumenOficioPDF() {
+            const estudiantes = <?= json_encode($estudiantes) ?>;
+            const materiasIndividuales = <?= json_encode($materias_individuales) ?>;
+            const materiasPadreObj = <?= json_encode($materias_padre) ?>;
+            const materiasPadre = Object.keys(materiasPadreObj).map(key => materiasPadreObj[key]);
+            const calificaciones = <?= json_encode($calificaciones) ?>;
+            const promedios = <?= json_encode($promedios) ?>;
+            const nombreCurso = <?= json_encode(htmlspecialchars_decode($nombre_curso)) ?>;
+            const vistaActual = <?= json_encode($vista) ?>;
+            const trimestreActual = <?= (int)$trimestre ?>;
+            const anioGestionBoletin = <?= json_encode($anioBoletinPdf) ?>;
+
+            if (!Array.isArray(estudiantes) || estudiantes.length === 0) {
+                alert('No hay estudiantes para generar el resumen');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({
+                orientation: 'landscape',
+                unit: 'pt',
+                format: 'a4'
+            });
+
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageMargin = 12;
+
+            const todasMaterias = [];
+            materiasIndividuales.forEach(m => {
+                todasMaterias.push({ id: m.id_materia, etiqueta: m.abreviatura || m.nombre_materia, nombre: m.nombre_materia });
+            });
+            materiasPadre.forEach(p => {
+                (p.hijas || []).forEach(h => {
+                    todasMaterias.push({ id: h.id_materia, etiqueta: h.abreviatura || h.nombre_materia, nombre: h.nombre_materia });
+                });
+            });
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(13);
+            doc.text('RESUMEN DE NOTAS - ' + nombreCurso, pageWidth / 2, 34, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            const subtitulo = vistaActual === 'trimestral' ? ('Trimestre ' + trimestreActual) : 'Vista Anual';
+            doc.text('Gestion: ' + anioGestionBoletin + ' - ' + subtitulo, pageWidth / 2, 52, { align: 'center' });
+
+            let head;
+            if (vistaActual === 'trimestral') {
+                head = [['#', 'Estudiante']];
+                todasMaterias.forEach(m => head[0].push(m.etiqueta));
+                head[0].push('PROM. GRAL');
+            } else {
+                const filaMaterias = [
+                    { content: '#', rowSpan: 2 },
+                    { content: 'Estudiante', rowSpan: 2 }
+                ];
+                const filaTrimestres = [];
+                todasMaterias.forEach(m => {
+                    const nombreMateria = m.nombre || m.nombre_materia || m.etiqueta;
+                    filaMaterias.push({ content: nombreMateria, colSpan: 3 });
+                    filaTrimestres.push('T1', 'T2', 'T3');
+                });
+                filaMaterias.push({ content: 'PROM. GRAL', rowSpan: 2 });
+                head = [filaMaterias, filaTrimestres];
+            }
+            const totalColumns = vistaActual === 'anual' ? (2 + (todasMaterias.length * 3) + 1) : head[0].length;
+            const lastCol = totalColumns - 1;
+            const noteCols = Math.max(lastCol - 2, 1);
+            const availableWidth = pageWidth - (pageMargin * 2);
+            const numberWidth = 20;
+            const averageWidth = 48;
+            const studentWidth = vistaActual === 'anual'
+                ? Math.max(118, Math.min(170, availableWidth * 0.22))
+                : Math.max(150, Math.min(190, availableWidth * 0.24));
+            const fixedWidth = numberWidth + studentWidth + averageWidth;
+            const noteCellWidth = vistaActual === 'anual'
+                ? Math.max(10, (availableWidth - fixedWidth) / noteCols)
+                : Math.max(24, (availableWidth - fixedWidth) / noteCols);
+            const headerHeight = vistaActual === 'anual' ? 24 : 36;
+            const headerBaseFontSize = vistaActual !== 'anual'
+                ? 8
+                : (noteCols >= 36 ? 4.8 : (noteCols >= 27 ? 5.2 : (noteCols >= 18 ? 5.8 : 6.2)));
+
+            function fitRotatedHeaderText(text, maxWidth, baseFontSize) {
+                let fontSize = baseFontSize;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(fontSize);
+
+                while (fontSize > 4.5 && doc.getTextWidth(text) > maxWidth) {
+                    fontSize -= 0.3;
+                    doc.setFontSize(fontSize);
+                }
+
+                let fittedText = text;
+                if (doc.getTextWidth(fittedText) > maxWidth) {
+                    const ellipsis = '...';
+                    while (fittedText.length > 1 && doc.getTextWidth(fittedText + ellipsis) > maxWidth) {
+                        fittedText = fittedText.slice(0, -1);
+                    }
+                    fittedText = fittedText.length > 1 ? fittedText.trimEnd() + ellipsis : ellipsis;
+                }
+
+                return { text: fittedText, fontSize };
+            }
+
+            function obtenerTextoCeldaHeader(raw) {
+                if (raw && typeof raw === 'object' && raw.content !== undefined) {
+                    return String(raw.content);
+                }
+                return String(raw || '');
+            }
+
+            const columnStyles = {
+                0: { cellWidth: numberWidth, halign: 'center' },
+                1: { cellWidth: studentWidth, halign: 'left' },
+                [lastCol]: { cellWidth: averageWidth, halign: 'center' }
+            };
+
+            for (let c = 2; c < lastCol; c++) {
+                columnStyles[c] = { cellWidth: noteCellWidth, halign: 'center' };
+            }
+
+            const body = estudiantes.map((est, index) => {
+                const fila = [
+                    String(index + 1),
+                    `${est.apellido_paterno || ''} ${est.apellido_materno || ''}, ${est.nombres || ''}`.replace(/\s+/g, ' ').trim()
+                ];
+
+                if (vistaActual === 'trimestral') {
+                    todasMaterias.forEach(m => {
+                        const nota = calificaciones?.[est.id_estudiante]?.[m.id]?.[trimestreActual] ?? '-';
+                        fila.push(formatearNotaBoletinJs(nota));
+                    });
+                } else {
+                    todasMaterias.forEach(m => {
+                        for (let t = 1; t <= 3; t++) {
+                            const nota = calificaciones?.[est.id_estudiante]?.[m.id]?.[t] ?? '-';
+                            fila.push(formatearNotaBoletinJs(nota));
+                        }
+                    });
+                }
+
+                fila.push(String(promedios?.[est.id_estudiante] ?? '-'));
+                return fila;
+            });
+
+            doc.autoTable({
+                head,
+                body,
+                startY: 66,
+                margin: { left: pageMargin, right: pageMargin },
+                tableWidth: availableWidth,
+                styles: { fontSize: 6.5, cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 }, lineWidth: 0.25, lineColor: [150, 150, 150], halign: 'center', valign: 'middle', overflow: 'linebreak' },
+                headStyles: { fillColor: [47, 117, 181], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: { top: 4, right: 2.5, bottom: 4, left: 2.5 } },
+                columnStyles,
+                didParseCell: function(data) {
+                    if (data.section === 'head' && vistaActual === 'anual') {
+                        const textoHeader = obtenerTextoCeldaHeader(data.cell.raw);
+                        const fittedHeader = fitRotatedHeaderText(textoHeader, Math.max(18, data.cell.width - 4), headerBaseFontSize);
+                        data.cell.text = [fittedHeader.text];
+                        data.cell.styles.fontSize = fittedHeader.fontSize;
+                        data.cell.styles.minCellHeight = data.row.index === 0 ? headerHeight : 18;
+                        data.cell.styles.cellPadding = { top: 6, right: 2, bottom: 6, left: 2 };
+                        data.cell.styles.halign = 'center';
+                        data.cell.styles.valign = 'middle';
+                        data.cell.styles.overflow = 'hidden';
+                    } else if (data.section === 'head') {
+                        data.cell.styles.halign = 'center';
+                        data.cell.styles.valign = 'middle';
+                        data.cell.styles.cellPadding = { top: 4, right: 2, bottom: 4, left: 2 };
+                    }
+
+                    if (data.section !== 'body') return;
+                    if (data.column.index > 1 && data.column.index < lastCol) {
+                        const v = parseFloat(String(data.cell.raw).replace(',', '.'));
+                        if (!Number.isNaN(v)) {
+                            if (v < 50) {
+                                data.cell.styles.fillColor = [254, 226, 226];
+                                data.cell.styles.textColor = [185, 28, 28];
+                            } else if (v === 50) {
+                                data.cell.styles.fillColor = [219, 234, 254];
+                                data.cell.styles.textColor = [29, 78, 216];
+                            } else {
+                                data.cell.styles.fillColor = [220, 252, 231];
+                                data.cell.styles.textColor = [22, 101, 52];
+                            }
+                        }
+                    }
+                },
+                didDrawCell: function(data) {
+                },
+            });
+
+            doc.save(`Resumen_Oficio_${nombreCurso.replace(/\s+/g, '_')}.pdf`);
+        }
+
         function generarBoletinesPDF() {
             const estudiantes = <?= json_encode($estudiantes) ?>;
             const materiasIndividuales = <?= json_encode($materias_individuales) ?>;
@@ -726,13 +1011,16 @@ foreach ($estudiantes as $est) {
 
                     try {
                         const notas = calificaciones?.[estudiante.id_estudiante]?.[materia.id] || {};
-                        nota1 = notas[1] ?? '-';
-                        nota2 = notas[2] ?? '-';
-                        nota3 = notas[3] ?? '-';
+                        const nota1Raw = notas[1] ?? '-';
+                        const nota2Raw = notas[2] ?? '-';
+                        const nota3Raw = notas[3] ?? '-';
+                        nota1 = formatearNotaBoletinJs(nota1Raw);
+                        nota2 = formatearNotaBoletinJs(nota2Raw);
+                        nota3 = formatearNotaBoletinJs(nota3Raw);
 
-                        const validas = [nota1, nota2, nota3].map(n => parseFloat(n)).filter(n => !isNaN(n));
+                        const validas = [nota1Raw, nota2Raw, nota3Raw].map(n => parseFloat(n)).filter(n => !isNaN(n));
                         if (validas.length > 0) {
-                            promedio = (validas.reduce((a, b) => a + b, 0) / validas.length).toFixed(2);
+                            promedio = String(Math.round(validas.reduce((a, b) => a + b, 0) / validas.length));
                         }
                     } catch (e) {
                         console.error(e);
