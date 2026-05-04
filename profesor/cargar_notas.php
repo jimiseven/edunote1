@@ -919,6 +919,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($conn->inTransaction()) {
             $conn->commit();
         }
+
+        $navRedirect = isset($_POST['nav_redirect']) ? trim((string)$_POST['nav_redirect']) : '';
+        if ($navRedirect !== '' && strpos($navRedirect, 'cargar_notas.php?') === 0) {
+            header('Location: ' . $navRedirect);
+            exit();
+        }
+
         $redirectExtra = ['success' => 1, 'confirmar' => 1];
         if ($vistaActual === 'trimestral') {
             $redirectExtra['vista'] = 'trimestral';
@@ -1287,11 +1294,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .saber-total { background: #eff6ff; color: #1d4ed8; }
         .hacer-total { background: #fff7ed; color: #c2410c; }
         .total-95    { background: #faf5ff; color: #7c3aed; font-weight: 800; font-size: 0.82rem; }
+        .nota-ref.total-final-50 { background: #dbeafe !important; color: #1d4ed8 !important; }
+        .nota-ref.total-final-aplazado { background: #fee2e2 !important; color: #b91c1c !important; }
+        .nota-ref.total-final-aprobado { background: #dcfce7 !important; color: #166534 !important; }
         /* Filas zebra y hover */
         .table-container tbody tr:nth-child(even) td { background-color: #fafbfc; }
         .table-container tbody tr:nth-child(even) td:first-child,
         .table-container tbody tr:nth-child(even) td:nth-child(2) { background-color: #fafbfc; }
         .table-container tbody tr:hover td { background-color: #eef2ff !important; }
+        .table-container tbody tr:hover td.total-final-50 { background: #dbeafe !important; color: #1d4ed8 !important; }
+        .table-container tbody tr:hover td.total-final-aplazado { background: #fee2e2 !important; color: #b91c1c !important; }
+        .table-container tbody tr:hover td.total-final-aprobado { background: #dcfce7 !important; color: #166534 !important; }
+        #saveSwitchModal .modal-content {
+            border-radius: 14px;
+            border: 1px solid #dbeafe;
+        }
+        #saveSwitchModal .modal-body {
+            text-align: center;
+            padding: 2rem 1.25rem;
+        }
+        #saveSwitchModal .spinner-border {
+            width: 2.2rem;
+            height: 2.2rem;
+            color: #2563eb;
+        }
+        #saveSwitchModal .loading-text {
+            margin-top: 0.85rem;
+            font-weight: 600;
+            color: #1e3a8a;
+        }
         body.sidebar-collapsed main.content-panel {
             flex: 0 0 calc(100% - 60px) !important;
             max-width: calc(100% - 60px) !important;
@@ -1540,10 +1571,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <?php if ($periodoConfirmado): ?>
                         <?php if ($vistaActual === 'trimestral' && !$es_inicial): ?>
-                            <form method="post">
+                            <form method="post" class="grade-form" data-save-action="guardar_trimestral">
                                 <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
                                 <input type="hidden" name="vista" value="trimestral">
+                                <input type="hidden" name="nav_redirect" value="">
 
                                 <?php if (!$trimestreEditableParaVistaTrimestral): ?>
                                     <div class="alert alert-warning">
@@ -1588,6 +1620,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 $autoNum = ($autoVal !== '' && $autoVal !== null) ? (float)$autoVal : null;
                                                 $extraNum = ($extraVal !== '' && $extraVal !== null) ? (float)$extraVal : null;
                                                 $totalFinal = ($prom95 !== null ? $prom95 : 0) + ($autoNum ?? 0) + ($extraNum ?? 0);
+                                                $totalFinalRedondeado = round($totalFinal, 2);
+                                                $claseTotalFinal = '';
+                                                if ($totalFinalRedondeado == 50.0) {
+                                                    $claseTotalFinal = ' total-final-50';
+                                                } elseif ($totalFinalRedondeado < 50.0) {
+                                                    $claseTotalFinal = ' total-final-aplazado';
+                                                } else {
+                                                    $claseTotalFinal = ' total-final-aprobado';
+                                                }
                                                 ?>
                                                 <tr>
                                                     <td class="col-num"><?php echo $contador++; ?></td>
@@ -1616,7 +1657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                                    <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td class="nota-ref total-final" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? number_format($extraNum, 2) : '0'; ?>">
+                                                    <td class="nota-ref total-final<?php echo $claseTotalFinal; ?>" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? number_format($extraNum, 2) : '0'; ?>">
                                                         <?php echo number_format($totalFinal, 2); ?>
                                                     </td>
                                                 </tr>
@@ -1638,9 +1679,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                             </form>
                         <?php else: ?>
-                            <form method="post">
+                            <form method="post" class="grade-form" data-save-action="guardar_notas">
                                 <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
+                                <input type="hidden" name="nav_redirect" value="">
                                 <?php if ($es_inicial): ?>
                                 <div class="inicial-rules-bar">
                                     <span>&#128203; Máximo <strong>250 caracteres</strong> por comentario</span>
@@ -2032,6 +2074,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
     <?php endif; ?>
+    <div class="modal fade" id="saveSwitchModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-body">
+                    <div class="spinner-border" role="status" aria-hidden="true"></div>
+                    <div class="loading-text">Guardando notas, espera un momento...</div>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
         function parseNumber(value) {
@@ -2099,10 +2151,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else if (totalCell.dataset.bonus !== undefined) {
                 extraVal = parseNumber(totalCell.dataset.bonus) ?? 0;
             }
-            totalCell.textContent = (prom95 + autoVal + extraVal).toFixed(2);
+            const totalFinal = +(prom95 + autoVal + extraVal).toFixed(2);
+            totalCell.textContent = totalFinal.toFixed(2);
+            totalCell.classList.remove('total-final-50', 'total-final-aplazado', 'total-final-aprobado');
+            if (totalFinal === 50) {
+                totalCell.classList.add('total-final-50');
+            } else if (totalFinal < 50) {
+                totalCell.classList.add('total-final-aplazado');
+            } else {
+                totalCell.classList.add('total-final-aprobado');
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const saveSwitchModalEl = document.getElementById('saveSwitchModal');
+            const saveSwitchModal = saveSwitchModalEl ? new bootstrap.Modal(saveSwitchModalEl) : null;
+
+            const trackedFieldSelector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select';
+            document.querySelectorAll('form.grade-form').forEach(form => {
+                form.querySelectorAll(trackedFieldSelector).forEach(field => {
+                    field.dataset.initialValue = field.value;
+                });
+            });
+
+            function hasUnsavedChanges(form) {
+                if (!form) return false;
+                const fields = form.querySelectorAll(trackedFieldSelector);
+                for (let i = 0; i < fields.length; i++) {
+                    const field = fields[i];
+                    if ((field.dataset.initialValue ?? '') !== field.value) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            document.querySelectorAll('.periodo-toolbar a.pill-btn').forEach(link => {
+                link.addEventListener('click', function(event) {
+                    const targetUrl = this.getAttribute('href');
+                    if (!targetUrl) return;
+
+                    const activeForm = document.querySelector('form.grade-form');
+                    if (!activeForm) return;
+
+                    event.preventDefault();
+
+                    const redirectInput = activeForm.querySelector('input[name="nav_redirect"]');
+                    if (redirectInput) {
+                        redirectInput.value = targetUrl;
+                    }
+
+                    const saveAction = activeForm.dataset.saveAction;
+                    const saveButton = saveAction ? activeForm.querySelector(`button[name="${saveAction}"]`) : null;
+                    const canSave = !saveButton || !saveButton.disabled;
+                    const hasChanges = hasUnsavedChanges(activeForm);
+
+                    if (!hasChanges) {
+                        window.location.href = targetUrl;
+                        return;
+                    }
+
+                    if (!canSave) {
+                        window.location.href = targetUrl;
+                        return;
+                    }
+
+                    if (saveAction && !activeForm.querySelector(`input[name="${saveAction}"]`)) {
+                        const actionInput = document.createElement('input');
+                        actionInput.type = 'hidden';
+                        actionInput.name = saveAction;
+                        actionInput.value = '1';
+                        activeForm.appendChild(actionInput);
+                    }
+
+                    if (saveSwitchModal) {
+                        saveSwitchModal.show();
+                    }
+
+                    setTimeout(() => {
+                        activeForm.submit();
+                    }, 1000);
+                });
+            });
+
             document.querySelectorAll('tbody tr').forEach(tr => {
                 updateRowTotals(tr);
                 updateTrimestralRow(tr);
