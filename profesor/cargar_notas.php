@@ -1613,11 +1613,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <th class="th-sub-total" style="min-width:50px">P2</th>
                                                 <th class="th-sub-total" style="min-width:50px">P3</th>
                                                 <th class="th-total" style="min-width:55px">Promedio</th>
-                                                <th style="background:#fef3c7!important;color:#92400e!important;min-width:55px">Auto (5)</th>
+                                                <th style="background:#fef3c7!important;color:#92400e!important;min-width:55px">
+                                                    Auto (5)
+                                                    <?php if ($trimestreEditableParaVistaTrimestral): ?>
+                                                                <button type="button"
+                                                                    class="paste-col-btn btn-paste-column"
+                                                                    data-area="AUTO"
+                                                                    data-index="1"
+                                                                    data-min="0"
+                                                                    data-max="5"
+                                                                    title="Pegar columna en AUTO">
+                                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2"/><rect x="4" y="2" width="12" height="12" rx="2" ry="2"/></svg>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                </th>
                                                 <?php if ($es_materia_principal_complementada): ?>
                                                 <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Bonus Inglés (<?php echo $porcentajeTransferenciaPrincipal; ?>)</th>
                                                 <?php else: ?>
-                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Extra</th>
+                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">
+                                                    Extra
+                                                    <?php if ($trimestreEditableParaVistaTrimestral): ?>
+                                                                <button type="button"
+                                                                    class="paste-col-btn btn-paste-column"
+                                                                    data-area="EXTRA"
+                                                                    data-index="1"
+                                                                    data-min="0"
+                                                                    data-max="5"
+                                                                    title="Pegar columna en EXTRA">
+                                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2"/><rect x="4" y="2" width="12" height="12" rx="2" ry="2"/></svg>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                </th>
                                                 <?php endif; ?>
                                                 <th class="th-total" style="min-width:55px">TOTAL</th>
                                             </tr>
@@ -1662,6 +1688,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                         <input type="number" name="auto[<?php echo $idEst; ?>]"
                                                                class="form-control nota-input area-auto <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
                                                                value="<?php echo htmlspecialchars($autoVal === null ? '' : $autoVal); ?>"
+                                                               data-area="AUTO"
+                                                               data-index="1"
                                                                step="0.01" min="0" max="5"
                                                                <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                     </td>
@@ -1674,6 +1702,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                             <input type="number" name="extra[<?php echo $idEst; ?>]"
                                                                    class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
                                                                    value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
+                                                                   data-area="EXTRA"
+                                                                   data-index="1"
                                                                    step="0.01" min="0" max="5"
                                                                    <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                         <?php endif; ?>
@@ -2358,7 +2388,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             inputs: Array.from(document.querySelectorAll(`input[data-area="${area}"][data-index="${index}"]`))
                         };
 
-                        pasteTargetLabel.textContent = `${area} ${index}`;
+                        pasteTargetLabel.textContent = area === 'AUTO' || area === 'EXTRA' ? area : `${area} ${index}`;
                         pasteTextarea.value = '';
                         pasteModal.show();
                         setTimeout(() => pasteTextarea.focus(), 150);
