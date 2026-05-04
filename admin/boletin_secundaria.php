@@ -9,6 +9,23 @@ if (!isset($_SESSION['user_id'])) {
 
 $conn = (new Database())->connect();
 
+$anioBoletinPdf = (string)date('Y');
+$gestionActual = $anioBoletinPdf;
+try {
+    $stmtGestionBoletin = $conn->query('SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1');
+    if ($stmtGestionBoletin) {
+        $gestBoletin = trim((string)$stmtGestionBoletin->fetchColumn());
+        if ($gestBoletin !== '') {
+            $gestionActual = $gestBoletin;
+            if (preg_match('/\b(20\d{2})\b/', $gestBoletin, $mAnio)) {
+                $anioBoletinPdf = $mAnio[1];
+            }
+        }
+    }
+} catch (PDOException $e) {
+    // Mantener valores por defecto
+}
+
 // Detectar curso desde GET
 $id_curso = $_GET['id_curso'] ?? 0;
 if (!$id_curso) {
@@ -87,19 +104,72 @@ $stmt_estudiantes = $conn->prepare("
 $stmt_estudiantes->execute([$id_curso]);
 $estudiantes = $stmt_estudiantes->fetchAll(PDO::FETCH_ASSOC);
 
-// Calificaciones
+// Calificaciones (modelo actual: parciales + trimestrales)
 $calificaciones = [];
-foreach ($estudiantes as $est) {
-    foreach ($todas_materias as $mat) {
-        $stmt = $conn->prepare("
-            SELECT bimestre, calificacion 
-            FROM calificaciones 
-            WHERE id_estudiante = ? AND id_materia = ?
-        ");
-        $stmt->execute([$est['id_estudiante'], $mat['id_materia']]);
-        $notas = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-        for ($bim = 1; $bim <= 3; $bim++) {
-            $calificaciones[$est['id_estudiante']][$mat['id_materia']][$bim] = $notas[$bim] ?? '-';
+$idsEstudiantes = array_map(static fn($e) => (int)$e['id_estudiante'], $estudiantes);
+$idsMaterias = array_map(static fn($m) => (int)$m['id_materia'], $todas_materias);
+
+if (!empty($idsEstudiantes) && !empty($idsMaterias)) {
+    $placeholdersEst = implode(',', array_fill(0, count($idsEstudiantes), '?'));
+    $placeholdersMat = implode(',', array_fill(0, count($idsMaterias), '?'));
+
+    $paramsBase = array_merge([$gestionActual], $idsEstudiantes, $idsMaterias);
+
+    $sqlParciales = "
+        SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, AVG(cp.calificacion) AS promedio_parcial
+        FROM calificaciones_parciales cp
+        INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+        WHERE pe.gestion = ?
+          AND cp.id_estudiante IN ($placeholdersEst)
+          AND cp.id_materia IN ($placeholdersMat)
+        GROUP BY cp.id_estudiante, cp.id_materia, pe.trimestre
+    ";
+    $stmtParciales = $conn->prepare($sqlParciales);
+    $stmtParciales->execute($paramsBase);
+
+    $parcialesPorTrim = [];
+    foreach ($stmtParciales->fetchAll(PDO::FETCH_ASSOC) as $rowParcial) {
+        $idEst = (int)$rowParcial['id_estudiante'];
+        $idMat = (int)$rowParcial['id_materia'];
+        $trim = (int)$rowParcial['trimestre'];
+        $parcialesPorTrim[$idEst][$idMat][$trim] = $rowParcial['promedio_parcial'] !== null
+            ? (float)$rowParcial['promedio_parcial'] : null;
+    }
+
+    $sqlTrim = "
+        SELECT id_estudiante, id_materia, trimestre, autoevaluacion, nota_extra
+        FROM calificaciones_trimestrales
+        WHERE gestion = ?
+          AND id_estudiante IN ($placeholdersEst)
+          AND id_materia IN ($placeholdersMat)
+    ";
+    $stmtTrim = $conn->prepare($sqlTrim);
+    $stmtTrim->execute($paramsBase);
+
+    $extrasPorTrim = [];
+    foreach ($stmtTrim->fetchAll(PDO::FETCH_ASSOC) as $rowTrim) {
+        $idEst = (int)$rowTrim['id_estudiante'];
+        $idMat = (int)$rowTrim['id_materia'];
+        $trim = (int)$rowTrim['trimestre'];
+        $extrasPorTrim[$idEst][$idMat][$trim] = [
+            'auto' => $rowTrim['autoevaluacion'] !== null ? (float)$rowTrim['autoevaluacion'] : 0.0,
+            'extra' => $rowTrim['nota_extra'] !== null ? (float)$rowTrim['nota_extra'] : 0.0,
+        ];
+    }
+
+    foreach ($idsEstudiantes as $idEst) {
+        foreach ($idsMaterias as $idMat) {
+            for ($trim = 1; $trim <= 3; $trim++) {
+                $base = $parcialesPorTrim[$idEst][$idMat][$trim] ?? null;
+                $auto = $extrasPorTrim[$idEst][$idMat][$trim]['auto'] ?? 0.0;
+                $extra = $extrasPorTrim[$idEst][$idMat][$trim]['extra'] ?? 0.0;
+                if ($base === null && $auto == 0.0 && $extra == 0.0) {
+                    $calificaciones[$idEst][$idMat][$trim] = '-';
+                    continue;
+                }
+                $total = ($base ?? 0.0) + $auto + $extra;
+                $calificaciones[$idEst][$idMat][$trim] = number_format($total, 2, '.', '');
+            }
         }
     }
 }
@@ -555,7 +625,7 @@ foreach ($estudiantes as $est) {
                 doc.setFont('helvetica', 'bold');
                 doc.text("GESTIÓN :", 460, 85);
                 doc.setFont('helvetica', 'normal');
-                doc.text("2025", 520, 85);
+                doc.text(<?= json_encode($anioBoletinPdf) ?>, 520, 85);
 
                 doc.line(40, 95, 570, 95); // Línea separadora
 
