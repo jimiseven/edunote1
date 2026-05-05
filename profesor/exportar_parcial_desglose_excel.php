@@ -7,6 +7,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     exit();
 }
 
+$profesor_nombre = isset($_SESSION['user_name']) ? $_SESSION['user_name'] : 'Profesor';
 $id_curso_materia = isset($_GET['curso_materia']) ? (int)$_GET['curso_materia'] : 0;
 $trimestre = isset($_GET['trimestre']) ? (int)$_GET['trimestre'] : 0;
 $parcial = isset($_GET['parcial']) ? (int)$_GET['parcial'] : 0;
@@ -141,12 +142,20 @@ echo "\xEF\xBB\xBF";
     .th-hacer { background:#ffedd5; color:#9a3412; }
     .th-total { background:#f3e8ff; color:#6b21a8; }
     .num { width: 36px; }
+    .unidad { font-size: 14px; font-weight: bold; text-align: center; }
+    .info { font-size: 12px; text-align: center; }
+    .titulo { font-size: 13px; font-weight: bold; text-align: center; }
+    .subtitulo { font-size: 12px; text-align: center; }
 </style>
 </head>
 <body>
 <table>
-    <tr><td colspan="27" style="font-size:14px;font-weight:bold;text-align:left;"><?php echo htmlspecialchars($curso['curso_nombre']); ?> - <?php echo htmlspecialchars($curso['nombre_materia']); ?></td></tr>
-    <tr><td colspan="27" style="font-size:12px;text-align:left;">Gestion <?php echo htmlspecialchars($gestion); ?> - Trimestre <?php echo (int)$trimestre; ?> Parcial <?php echo (int)$parcial; ?></td></tr>
+    <tr><td colspan="27" class="unidad">Unidad Educativa "Simón Bolívar"</td></tr>
+    <tr><td colspan="27" class="info">Nombre del profesor/a: <?php echo htmlspecialchars($profesor_nombre); ?></td></tr>
+    <tr><td colspan="27" class="info">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</td></tr>
+    <tr><td colspan="27"></td></tr>
+    <tr><td colspan="27" class="titulo"><?php echo htmlspecialchars($curso['curso_nombre']); ?> - <?php echo htmlspecialchars($curso['nombre_materia']); ?></td></tr>
+    <tr><td colspan="27" class="subtitulo">Gestion <?php echo htmlspecialchars($gestion); ?> - Trimestre <?php echo (int)$trimestre; ?> - Parcial <?php echo (int)$parcial; ?></td></tr>
     <tr><td colspan="27"></td></tr>
     <tr>
         <th rowspan="2">#</th>
