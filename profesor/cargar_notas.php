@@ -311,6 +311,25 @@ $materiaComplementariaId = $es_materia_principal_complementada ? (int)$relacionC
 $materiaPrincipalDesdeComplementariaId = $es_materia_complementaria ? (int)$relacionComplementariaComoSub['materia_relacionada'] : 0;
 $porcentajeTransferenciaPrincipal = $es_materia_principal_complementada ? (float)$relacionComplementariaPrincipal['porcentaje_transferencia'] : 0.0;
 $porcentajeTransferenciaComoComplementaria = $es_materia_complementaria ? (float)$relacionComplementariaComoSub['porcentaje_transferencia'] : 0.0;
+$materiasCompartibles = [];
+if (!$es_inicial) {
+    $stmtMateriasMismoCurso = $conn->prepare("SELECT cm.id_materia, m.nombre_materia
+                                              FROM profesores_materias_cursos pmc
+                                              INNER JOIN cursos_materias cm ON pmc.id_curso_materia = cm.id_curso_materia
+                                              INNER JOIN materias m ON cm.id_materia = m.id_materia
+                                              WHERE pmc.id_personal = ?
+                                                AND cm.id_curso = ?
+                                                AND cm.id_materia <> ?
+                                                AND pmc.estado = 'activo'
+                                              ORDER BY m.nombre_materia ASC");
+    $stmtMateriasMismoCurso->execute([$profesor_id, (int)$curso['id_curso'], (int)$curso['id_materia']]);
+    foreach ($stmtMateriasMismoCurso->fetchAll(PDO::FETCH_ASSOC) as $filaMateria) {
+        $idMat = (int)$filaMateria['id_materia'];
+        if ($idMat > 0) {
+            $materiasCompartibles[$idMat] = (string)$filaMateria['nombre_materia'];
+        }
+    }
+}
 $campo = $es_inicial ? 'comentario' : 'calificacion';
 if ($es_inicial) {
     $modalidadCarga = 'trimestres';
@@ -910,6 +929,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          ->execute([$idEst, $curso['id_materia'], $gestionActual, $trimestreSeleccionado, $autoNum, $extraNum, $profesor_id]);
                 }
             }
+
+            $materiasCompartidasPost = $_POST['materias_compartidas'] ?? [];
+            if (!is_array($materiasCompartidasPost)) {
+                $materiasCompartidasPost = [];
+            }
+            $idsMateriasCompartidas = [];
+            foreach ($materiasCompartidasPost as $idMateriaPost) {
+                $idMateriaInt = (int)$idMateriaPost;
+                if ($idMateriaInt > 0 && isset($materiasCompartibles[$idMateriaInt])) {
+                    $idsMateriasCompartidas[$idMateriaInt] = $idMateriaInt;
+                }
+            }
+
+            if (!empty($idsMateriasCompartidas)) {
+                $stmtDeleteTrimestralCompartida = $conn->prepare("DELETE FROM calificaciones_trimestrales
+                                                                  WHERE id_estudiante = ? AND id_materia = ? AND gestion = ? AND trimestre = ?");
+                $stmtUpsertTrimestralCompartida = $conn->prepare("INSERT INTO calificaciones_trimestrales
+                                                                  (id_estudiante, id_materia, gestion, trimestre, autoevaluacion, nota_extra, id_profesor)
+                                                                  VALUES (?, ?, ?, ?, ?, ?, ?)
+                                                                  ON DUPLICATE KEY UPDATE autoevaluacion = VALUES(autoevaluacion),
+                                                                                          nota_extra = VALUES(nota_extra),
+                                                                                          id_profesor = VALUES(id_profesor)");
+
+                foreach ($idsMateriasCompartidas as $idMateriaCompartida) {
+                    foreach ($estudiantes as $estudiante) {
+                        $idEst = (int)$estudiante['id_estudiante'];
+                        $autoNum = $trimestralAGuardar[$idEst]['auto'];
+                        $extraNum = $trimestralAGuardar[$idEst]['extra'];
+
+                        if ($autoNum === null && $extraNum === null) {
+                            $stmtDeleteTrimestralCompartida->execute([$idEst, $idMateriaCompartida, $gestionActual, $trimestreSeleccionado]);
+                        } else {
+                            $stmtUpsertTrimestralCompartida->execute([$idEst, $idMateriaCompartida, $gestionActual, $trimestreSeleccionado, $autoNum, $extraNum, $profesor_id]);
+                        }
+                    }
+                }
+            }
         }
 
         if (!$es_inicial && $es_primaria_basica) {
@@ -979,19 +1035,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         body {
             background: #f4f8fa;
-            overflow: hidden;
+            overflow: auto;
         }
         .page-shell {
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
+            height: auto;
+            overflow: visible;
         }
         .page-shell > .row {
-            height: 100%;
+            min-height: 100vh;
+            height: auto;
         }
         .content-panel {
-            height: 100vh;
-            overflow-y: auto;
-            overflow-x: hidden;
+            height: auto;
+            overflow: visible;
             padding-top: 0.5rem;
             padding-bottom: 1.5rem;
             scroll-behavior: smooth;
@@ -1007,6 +1064,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 0.75rem;
             padding-bottom: 0.5rem;
             border-bottom: 2px solid #e5e7eb;
             margin-bottom: 0.75rem;
@@ -1020,6 +1078,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #4682B4;
             font-weight: 600;
             margin: 0;
+        }
+        .expand-table-btn {
+            flex-shrink: 0;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 0.35rem 0.75rem;
+        }
+        body.table-expanded .container-card {
+            padding: 10px 12px;
+        }
+        body.table-expanded .page-header {
+            margin-bottom: 0.45rem;
+            padding-bottom: 0.35rem;
+        }
+        body.table-expanded .top-row,
+        body.table-expanded .shared-subjects-box,
+        body.table-expanded .helper-alert,
+        body.table-expanded .inicial-rules-bar {
+            display: none !important;
+        }
+        body.table-expanded .table-container {
+            min-height: 420px;
+        }
+        body.table-expanded .action-buttons {
+            margin-top: 0.65rem;
+            padding-top: 0.65rem;
         }
         .top-row {
             display: flex; gap: 0.75rem; margin-bottom: 0.75rem; align-items: stretch;
@@ -1186,21 +1270,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .inicial-dup-badge.over-limit{background:#fee2e2;color:#991b1b}
         /* ---- Tabla ultra-compacta ---- */
         .table-container {
-            max-height: 74vh;
+            max-height: var(--table-max-height, calc(100vh - 250px));
+            min-height: 260px;
             overflow: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable both-edges;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
             border: 1px solid #d1d5db;
             border-radius: 8px;
             margin-bottom: 14px;
             box-shadow: 0 1px 4px rgba(0,0,0,0.06);
         }
+        .table-container:focus {
+            outline: 2px solid rgba(37,99,235,.25);
+            outline-offset: 2px;
+        }
+        .table-container::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 999px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border: 3px solid #f1f5f9;
+            border-radius: 999px;
+        }
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        .table-scroll-tools {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 0.35rem;
+            margin: 0 0 0.45rem;
+        }
+        .table-scroll-tools .scroll-tool-btn {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            border-radius: 7px;
+            padding: 0.18rem 0.45rem;
+            font-size: 0.73rem;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+        .table-scroll-tools .scroll-tool-btn:hover,
+        .table-scroll-tools .scroll-tool-btn:focus {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
         .table-container table {
             margin-bottom: 0;
             border-collapse: collapse;
             font-size: 0.78rem;
+            width: max-content;
+            min-width: 100%;
         }
         .table-container thead th {
-            position: sticky;
-            top: 0;
+            position: static;
             z-index: 10;
             font-size: 0.72rem;
             text-transform: uppercase;
@@ -1210,9 +1343,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             vertical-align: middle;
             border-bottom: 2px solid #94a3b8;
         }
-        .table-container thead tr:first-child th { top: 0; }
-        .table-container thead tr:nth-child(2) th { top: 32px; }
-        .table-container thead tr:nth-child(3) th { top: 124px; }
+        .table-container.sticky-header-enhanced thead th {
+            position: sticky;
+            top: var(--sticky-top, 0px);
+            background-clip: padding-box;
+            z-index: 25;
+            box-shadow: 0 1px 0 #94a3b8;
+        }
         .table-container thead th,
         .table-container tbody td {
             padding: 3px 2px;
@@ -1227,23 +1364,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center; font-size: 0.72rem; color: #94a3b8;
         }
         .col-nombre {
-            min-width: 140px; max-width: 180px;
+            min-width: 230px; max-width: 340px;
             text-align: left !important;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
             font-weight: 500; font-size: 0.76rem; padding-left: 6px !important;
         }
         .table-container tbody td:first-child,
         .table-container thead th:first-child {
-            position: sticky; left: 0; background-color: #fff; z-index: 5;
+            background-color: #fff;
+            z-index: 5;
         }
         .table-container tbody td:nth-child(2),
         .table-container thead th:nth-child(2) {
-            position: sticky; left: 28px; background-color: #fff; z-index: 5;
+            background-color: #fff;
+            z-index: 5;
             border-right: 2px solid #cbd5e1;
         }
-        .table-container thead th:first-child,
-        .table-container thead th:nth-child(2) {
-            z-index: 15; background-color: #f1f5f9;
+        .table-container.sticky-columns-enhanced tbody td:first-child,
+        .table-container.sticky-columns-enhanced thead th:first-child {
+            position: sticky;
+            left: 0;
+        }
+        .table-container.sticky-columns-enhanced tbody td:nth-child(2),
+        .table-container.sticky-columns-enhanced thead th:nth-child(2) {
+            position: sticky;
+            left: 28px;
+        }
+        .table-container.sticky-columns-enhanced thead th:first-child,
+        .table-container.sticky-columns-enhanced thead th:nth-child(2) {
+            z-index: 15;
+            background-color: #f1f5f9;
+        }
+        .table-container.sticky-header-enhanced.sticky-columns-enhanced thead th:first-child,
+        .table-container.sticky-header-enhanced.sticky-columns-enhanced thead th:nth-child(2) {
+            z-index: 35;
         }
         /* Bandas de color por area */
         .th-ser   { background: #dcfce7 !important; color: #166534 !important; }
@@ -1360,6 +1514,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .helper-alert strong {
             color: #11305e;
         }
+        .shared-subjects-box {
+            background: linear-gradient(135deg, #f8fbff, #eef6ff);
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            padding: 0.75rem 0.85rem;
+            margin-bottom: 0.85rem;
+        }
+        .shared-subjects-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #11305e;
+            margin-bottom: 0.45rem;
+        }
+        .shared-subjects-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.75rem;
+        }
+        .shared-subject-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.78rem;
+            color: #334155;
+            background: #fff;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            padding: 0.2rem 0.45rem;
+        }
+        .shared-subjects-info {
+            margin-top: 0.5rem;
+            font-size: 0.76rem;
+            color: #1d4ed8;
+        }
+        .shared-subjects-empty {
+            font-size: 0.76rem;
+            color: #64748b;
+            margin: 0;
+        }
         .action-buttons {
             display: flex;
             justify-content: space-between;
@@ -1461,6 +1654,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 padding-top: 0;
                 padding-bottom: 1rem;
             }
+            .table-container {
+                max-height: none;
+            }
             .page-header {
                 flex-direction: column;
                 align-items: flex-start;
@@ -1489,8 +1685,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <main class="w-100 px-md-4 content-panel">
                 <div class="container-card mt-4">
                     <div class="page-header">
-                        <h3><?php echo $curso['curso_nombre']; ?></h3>
-                        <h4><?php echo $curso['nombre_materia']; ?></h4>
+                        <div>
+                            <h3><?php echo $curso['curso_nombre']; ?></h3>
+                            <h4><?php echo $curso['nombre_materia']; ?></h4>
+                        </div>
+                        <?php if ($periodoConfirmado): ?>
+                            <button type="button" class="btn btn-outline-primary btn-sm expand-table-btn" id="toggleTableExpand" aria-pressed="false">
+                                Ampliar
+                            </button>
+                        <?php endif; ?>
                     </div>
 
                     <?php if (isset($error)): ?>
@@ -1603,6 +1806,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         <strong>Modo consulta:</strong> Ningún parcial de este trimestre está habilitado.
                                     </div>
                                 <?php endif; ?>
+                                <div class="shared-subjects-box">
+                                    <div class="shared-subjects-title">Materias con misma autoevaluación y nota extra (solo para este guardado)</div>
+                                    <?php if (!empty($materiasCompartibles)): ?>
+                                        <div class="shared-subjects-grid" id="sharedSubjectsBox">
+                                            <?php foreach ($materiasCompartibles as $idMateriaComp => $nombreMateriaComp): ?>
+                                                <label class="shared-subject-check">
+                                                    <input type="checkbox" name="materias_compartidas[]" value="<?php echo (int)$idMateriaComp; ?>" class="shared-subject-toggle">
+                                                    <span><?php echo htmlspecialchars($nombreMateriaComp); ?></span>
+                                                </label>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <div class="shared-subjects-info" id="sharedSubjectsInfo">No hay materias seleccionadas para replicar.</div>
+                                    <?php else: ?>
+                                        <p class="shared-subjects-empty">No tienes otras materias activas en este curso para aplicar el mismo valor.</p>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="table-container">
                                     <table class="table table-bordered">
                                         <thead class="table-light">
@@ -2224,6 +2443,127 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const tableContainers = Array.from(document.querySelectorAll('.table-container'));
+            const stickySoportado = typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+                ? (CSS.supports('position', 'sticky') || CSS.supports('position', '-webkit-sticky'))
+                : false;
+
+            function scrollTabla(container, left, top) {
+                if (typeof container.scrollTo === 'function') {
+                    try {
+                        container.scrollTo({ left: left, top: top, behavior: 'smooth' });
+                        return;
+                    } catch (e) {
+                        container.scrollTo(left, top);
+                        return;
+                    }
+                }
+                container.scrollLeft = left;
+                container.scrollTop = top;
+            }
+
+            function ajustarAltoTablas() {
+                tableContainers.forEach(container => {
+                    if (window.innerWidth <= 768) {
+                        container.style.removeProperty('--table-max-height');
+                    } else {
+                        const rect = container.getBoundingClientRect();
+                        const margenInferior = 18;
+                        const minimo = 280;
+                        const maximoViewport = Math.max(minimo, window.innerHeight - 80);
+                        const disponible = window.innerHeight - rect.top - margenInferior;
+                        const alto = Math.max(minimo, Math.min(maximoViewport, disponible));
+                        container.style.setProperty('--table-max-height', Math.floor(alto) + 'px');
+                    }
+
+                    ajustarEncabezadoFijo(container);
+                });
+            }
+
+            function ajustarEncabezadoFijo(container) {
+                if (!container.classList.contains('sticky-header-enhanced')) return;
+
+                let acumulado = 0;
+                const filas = container.querySelectorAll('thead tr');
+                filas.forEach(fila => {
+                    fila.querySelectorAll('th').forEach(th => {
+                        th.style.setProperty('--sticky-top', acumulado + 'px');
+                    });
+                    acumulado += fila.getBoundingClientRect().height;
+                });
+            }
+
+            let resizePendiente = false;
+            function programarAjusteTablas() {
+                if (resizePendiente) return;
+                resizePendiente = true;
+                const ejecutar = function() {
+                    resizePendiente = false;
+                    ajustarAltoTablas();
+                };
+                if (typeof window.requestAnimationFrame === 'function') {
+                    window.requestAnimationFrame(ejecutar);
+                } else {
+                    setTimeout(ejecutar, 80);
+                }
+            }
+
+            tableContainers.forEach(container => {
+                container.setAttribute('tabindex', '0');
+                container.setAttribute('aria-label', 'Tabla de notas con desplazamiento');
+
+                if (stickySoportado) {
+                    container.classList.add('sticky-columns-enhanced');
+                    container.classList.add('sticky-header-enhanced');
+                }
+
+                if (!container.previousElementSibling || !container.previousElementSibling.classList.contains('table-scroll-tools')) {
+                    const tools = document.createElement('div');
+                    tools.className = 'table-scroll-tools';
+                    tools.innerHTML = '<button type="button" class="scroll-tool-btn" data-scroll="top">Inicio</button>'
+                        + '<button type="button" class="scroll-tool-btn" data-scroll="bottom">Fin</button>'
+                        + '<button type="button" class="scroll-tool-btn" data-scroll="left">Izq.</button>'
+                        + '<button type="button" class="scroll-tool-btn" data-scroll="right">Der.</button>';
+                    container.parentNode.insertBefore(tools, container);
+
+                    tools.querySelectorAll('[data-scroll]').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            const accion = this.dataset.scroll;
+                            if (accion === 'top') scrollTabla(container, container.scrollLeft, 0);
+                            if (accion === 'bottom') scrollTabla(container, container.scrollLeft, container.scrollHeight);
+                            if (accion === 'left') scrollTabla(container, 0, container.scrollTop);
+                            if (accion === 'right') scrollTabla(container, container.scrollWidth, container.scrollTop);
+                            try {
+                                container.focus({ preventScroll: true });
+                            } catch (e) {
+                                container.focus();
+                            }
+                        });
+                    });
+                }
+
+                container.scrollTop = 0;
+                container.scrollLeft = 0;
+            });
+            ajustarAltoTablas();
+            window.addEventListener('resize', programarAjusteTablas);
+            window.addEventListener('orientationchange', programarAjusteTablas);
+            setTimeout(ajustarAltoTablas, 250);
+
+            const toggleTableExpand = document.getElementById('toggleTableExpand');
+            if (toggleTableExpand) {
+                const aplicarModoAmpliado = function(expandido) {
+                    document.body.classList.toggle('table-expanded', expandido);
+                    toggleTableExpand.textContent = expandido ? 'Restaurar' : 'Ampliar';
+                    toggleTableExpand.setAttribute('aria-pressed', expandido ? 'true' : 'false');
+                    setTimeout(ajustarAltoTablas, 50);
+                };
+
+                toggleTableExpand.addEventListener('click', function() {
+                    aplicarModoAmpliado(!document.body.classList.contains('table-expanded'));
+                });
+            }
+
             const saveSwitchModalEl = document.getElementById('saveSwitchModal');
             const saveSwitchModal = saveSwitchModalEl ? new bootstrap.Modal(saveSwitchModalEl) : null;
 
@@ -2315,6 +2655,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     updateTrimestralRow(this.closest('tr'));
                 });
             });
+
+            const sharedToggles = Array.from(document.querySelectorAll('.shared-subject-toggle'));
+            const sharedInfo = document.getElementById('sharedSubjectsInfo');
+            if (sharedToggles.length && sharedInfo) {
+                const updateSharedInfo = function() {
+                    const selected = sharedToggles.filter(chk => chk.checked).map(chk => {
+                        const wrapper = chk.closest('label');
+                        return wrapper ? wrapper.textContent.trim() : '';
+                    }).filter(Boolean);
+
+                    if (!selected.length) {
+                        sharedInfo.textContent = 'No hay materias seleccionadas para replicar.';
+                        return;
+                    }
+
+                    sharedInfo.textContent = 'Estas notas trimestrales tambien se guardaran en: ' + selected.join(', ') + '.';
+                };
+
+                sharedToggles.forEach(chk => chk.addEventListener('change', updateSharedInfo));
+                updateSharedInfo();
+            }
 
             <?php if ($es_inicial && $periodoEditable): ?>
             (function(){
