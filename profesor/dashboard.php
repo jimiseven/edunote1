@@ -374,9 +374,6 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </table>
                             </div>
                         </div>
-                        <div class="card-footer bg-white border-top-0 text-center text-md-end">
-                            <a href="generar_respaldo.php" class="btn btn-secondary">Generar Respaldo</a>
-                        </div>
                     </div>
                 </div>
             </main>
