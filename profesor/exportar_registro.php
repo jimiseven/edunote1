@@ -400,6 +400,41 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
    </Borders>
   </Style>
+  <Style ss:ID="notaEntera">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
+   <NumberFormat ss:Format="0"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="notaTotalEntera">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="0"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="notaFinalEntera">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="0"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
  </Styles>
 
 <?php
@@ -592,24 +627,24 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php endif; ?>
 <?php endfor; ?>
 <?php if ($prom95 !== null): ?>
-    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo round($prom95, 2); ?></Data></Cell>
+    <Cell ss:StyleID="notaTotalEntera"><Data ss:Type="Number"><?php echo round($prom95); ?></Data></Cell>
 <?php else: ?>
-    <Cell ss:StyleID="notaTotal"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="notaTotalEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
 <?php if ($autoVal !== null): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo round($autoVal, 2); ?></Data></Cell>
+    <Cell ss:StyleID="notaEntera"><Data ss:Type="Number"><?php echo round($autoVal); ?></Data></Cell>
 <?php else: ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
 <?php if ($extraVal !== null): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo round($extraVal, 2); ?></Data></Cell>
+    <Cell ss:StyleID="notaEntera"><Data ss:Type="Number"><?php echo round($extraVal); ?></Data></Cell>
 <?php else: ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
 <?php if ($hasAnyData): ?>
-    <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo round($total, 2); ?></Data></Cell>
+    <Cell ss:StyleID="notaFinalEntera"><Data ss:Type="Number"><?php echo round($total); ?></Data></Cell>
 <?php else: ?>
-    <Cell ss:StyleID="notaFinal"><Data ss:Type="String"></Data></Cell>
+    <Cell ss:StyleID="notaFinalEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
    </Row>
 <?php endforeach; ?>

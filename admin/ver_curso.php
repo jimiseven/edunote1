@@ -321,7 +321,7 @@ foreach ($parcialesPorTrimestre as $idEstudiante => $materiasParciales) {
     foreach ($materiasParciales as $idMateria => $trimestresParciales) {
         foreach ($trimestresParciales as $numeroTrimestre => $notasParciales) {
             if (!empty($notasParciales)) {
-                $calificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = number_format(array_sum($notasParciales) / count($notasParciales), 2);
+                $calificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = (string)round(array_sum($notasParciales) / count($notasParciales));
             }
         }
     }
@@ -383,7 +383,7 @@ $recalcularNotasPadre = static function (&$matrizCalificaciones) use ($estudiant
                     }
                 }
                 if ($contador > 0) {
-                    $matrizCalificaciones[$estudiante['id_estudiante']][$padre['id_materia']][$t] = number_format($suma / $contador, 2);
+                    $matrizCalificaciones[$estudiante['id_estudiante']][$padre['id_materia']][$t] = (string)round($suma / $contador);
                 }
             }
         }
@@ -411,7 +411,7 @@ $aplicarNotasTrimestrales = static function (&$matrizCalificaciones, array $dato
                 }
 
                 $total = ($baseNum ?? 0) + ($autoNum ?? 0) + ($extraNum ?? 0);
-                $matrizCalificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = number_format($total, 2);
+                $matrizCalificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = (string)round($total);
             }
         }
     }
@@ -501,7 +501,7 @@ foreach ($estudiantes as $estudiante) {
             return $v !== '' && $v !== null;
         });
         $promedios_materias[$estudiante['id_estudiante']][$materia['id_materia']] =
-            (count($notas_validas) > 0) ? number_format(array_sum($notas_validas) / count($notas_validas), 2) : '';
+            (count($notas_validas) > 0) ? (string)round(array_sum($notas_validas) / count($notas_validas)) : '';
     }
     if ($mostrarLenguajeComunicacion) {
         $promedioVirtual = $promedios_materias[$estudiante['id_estudiante']][$materiaVirtualLenguajeComunicacionId] ?? '';
@@ -533,7 +533,7 @@ foreach ($estudiantes as $estudiante) {
         }
     }
     $promedios_generales[$estudiante['id_estudiante']] = ($contador > 0)
-        ? number_format($suma_promedios / $contador, 2) : '-';
+        ? (string)round($suma_promedios / $contador) : '-';
 
     $suma_trimestre = 0;
     $contador_trimestre = 0;
@@ -547,7 +547,7 @@ foreach ($estudiantes as $estudiante) {
         }
     }
     $promedios_trimestre[$estudiante['id_estudiante']] = ($contador_trimestre > 0)
-        ? number_format($suma_trimestre / $contador_trimestre, 2) : '-';
+        ? (string)round($suma_trimestre / $contador_trimestre) : '-';
 }
 // Posiciones
 $promedios_ordenados = $promedios_generales;
@@ -2085,20 +2085,22 @@ $estudiantes_ordenados = $estudiantes;
                     for (var j = 0; j < info.parciales.length; j++) sum += parseFloat(info.parciales[j]);
                     var avg = sum / info.parciales.length;
                     headRow.innerHTML += '<th class="col-prom">Prom</th>';
-                    bodyRow.innerHTML += '<td class="col-prom">' + avg.toFixed(2) + '</td>';
+                    bodyRow.innerHTML += '<td class="col-prom">' + Math.round(avg) + '</td>';
 
                     var autoVal = (info.autoevaluacion !== null && info.autoevaluacion !== '' && info.autoevaluacion !== undefined) ? parseFloat(info.autoevaluacion) : 0;
                     var extraVal = (info.nota_extra !== null && info.nota_extra !== '' && info.nota_extra !== undefined) ? parseFloat(info.nota_extra) : 0;
+                    var autoValRedondeado = Math.round(autoVal);
+                    var extraValRedondeado = Math.round(extraVal);
 
                     headRow.innerHTML += '<th class="col-auto">Autoev</th>';
-                    bodyRow.innerHTML += '<td class="col-auto">' + (autoVal ? autoVal : '-') + '</td>';
+                    bodyRow.innerHTML += '<td class="col-auto">' + (autoVal ? autoValRedondeado : '-') + '</td>';
 
                     headRow.innerHTML += '<th class="col-extra">Extra</th>';
-                    bodyRow.innerHTML += '<td class="col-extra">' + (extraVal ? extraVal : '-') + '</td>';
+                    bodyRow.innerHTML += '<td class="col-extra">' + (extraVal ? extraValRedondeado : '-') + '</td>';
 
                     var total = avg + autoVal + extraVal;
                     headRow.innerHTML += '<th class="col-total">Total</th>';
-                    bodyRow.innerHTML += '<td class="col-total">' + total.toFixed(2) + '</td>';
+                    bodyRow.innerHTML += '<td class="col-total">' + Math.round(total) + '</td>';
                 } else {
                     headRow.innerHTML = '<th colspan="4">Sin datos</th>';
                     bodyRow.innerHTML = '<td colspan="4">—</td>';

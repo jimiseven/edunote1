@@ -276,7 +276,7 @@ foreach ($estudiantes as $estudiante) {
             return $valor !== '' && $valor !== null;
         });
         if (!empty($parcialesValidos)) {
-            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$materia['id_materia']] = number_format(array_sum(array_map('floatval', $parcialesValidos)) / count($parcialesValidos), 2);
+            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$materia['id_materia']] = (string)round(array_sum(array_map('floatval', $parcialesValidos)) / count($parcialesValidos));
         }
     }
 }
@@ -299,13 +299,13 @@ foreach ($estudiantes as $estudiante) {
             $baseNum = $tieneBase ? (float)$promedioBase : 0.0;
             $autoNum = $tieneAuto ? (float)$autoVal : 0.0;
             $extraNum = $tieneExtra ? (float)$extraVal : 0.0;
-            $promediosMateriaTrimestre[$idEstudiante][$idMateria] = number_format($baseNum + $autoNum + $extraNum, 2);
+            $promediosMateriaTrimestre[$idEstudiante][$idMateria] = (string)round($baseNum + $autoNum + $extraNum);
         } else {
             $promediosMateriaTrimestre[$idEstudiante][$idMateria] = '';
         }
 
         if (isset($materiasBonusInfo[$idMateria])) {
-            $bonusComplementarios[$idEstudiante][$idMateria] = $tieneExtra ? number_format((float)$extraVal, 2) : '';
+            $bonusComplementarios[$idEstudiante][$idMateria] = $tieneExtra ? (string)round((float)$extraVal) : '';
         }
     }
 }
@@ -338,7 +338,7 @@ foreach ($estudiantes as $estudiante) {
         }
 
         if ($contadorHijas > 0) {
-            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$idPadre] = number_format($sumatoriaPromediosHijas / $contadorHijas, 2);
+            $promediosMateriaTrimestre[$estudiante['id_estudiante']][$idPadre] = (string)round($sumatoriaPromediosHijas / $contadorHijas);
         } else {
             $promediosMateriaTrimestre[$estudiante['id_estudiante']][$idPadre] = '';
         }
@@ -358,7 +358,9 @@ foreach ($estudiantes as $estudiante) {
             $contador++;
         }
     }
-    $promedios_trimestre[$estudiante['id_estudiante']] = $contador > 0 ? number_format($suma / $contador, 2) : '-';
+    $promedios_trimestre[$estudiante['id_estudiante']] = $contador > 0
+        ? number_format($suma / $contador, 2, '.', '')
+        : '-';
 }
 ?>
 <!DOCTYPE html>

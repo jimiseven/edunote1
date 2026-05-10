@@ -255,7 +255,7 @@ try {
                     $contador++;
                 }
             }
-            $promediosMateriaTrimestre[$idEst][$idPadre] = $contador > 0 ? round($sumatoria / $contador, 2) : '';
+            $promediosMateriaTrimestre[$idEst][$idPadre] = $contador > 0 ? round($sumatoria / $contador) : '';
         }
     }
 
@@ -365,7 +365,7 @@ try {
             $idMateria = (int)$matInfo['id_materia'];
 
             $nota = $promediosMateriaTrimestre[$idEst][$idMateria] ?? '';
-            $nota = (is_numeric($nota)) ? round((float)$nota, 2) : '';
+            $nota = (is_numeric($nota)) ? round((float)$nota) : '';
 
             if ($nota !== '') {
                 $sheet->setCellValue($cell, $nota);
@@ -383,11 +383,12 @@ try {
             $sheet->getStyle($cell)->applyFromArray($cellStyle);
         }
 
-        $promedioFinal = $count > 0 ? round($sum / $count, 2) : '';
+        $promedioFinal = $count > 0 ? ($sum / $count) : '';
         $colLetter = Coordinate::stringFromColumnIndex($colPromedioFinal);
         $cell = $colLetter . $row;
         if ($promedioFinal !== '') {
             $sheet->setCellValue($cell, $promedioFinal);
+            $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('0.00');
         }
         $sheet->getStyle($cell)->applyFromArray($cellStyle);
         $row++;
