@@ -1,5 +1,5 @@
 <?php
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
 error_reporting(E_ALL);
 session_start();
 
@@ -64,6 +64,11 @@ try {
     $curso = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$curso) exit("Curso no encontrado.");
     $nombre_curso = "{$curso['nivel']} {$curso['curso']} \"{$curso['paralelo']}\"";
+    $nombreArchivoCurso = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim("{$curso['nivel']} {$curso['curso']} {$curso['paralelo']}"));
+    $nombreArchivoCurso = trim($nombreArchivoCurso, '_');
+    if ($nombreArchivoCurso === '') {
+        $nombreArchivoCurso = 'curso';
+    }
 
     // ESTUDIANTES
     $stmt = $conn->prepare("
@@ -394,9 +399,13 @@ try {
         $row++;
     }
 
+    if (ob_get_length()) {
+        ob_clean();
+    }
+
     if (isset($_GET['pdf'])) {
         header('Content-Type: application/pdf');
-        header("Content-Disposition: attachment;filename=\"Centralizador_{$nombre_curso}_T{$trimestre}.pdf\"");
+        header("Content-Disposition: attachment;filename=\"Centralizador_{$nombreArchivoCurso}_T{$trimestre}.pdf\"");
         header('Cache-Control: max-age=0');
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Pdf\Tcpdf($spreadsheet);
         $writer->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_LETTER);
@@ -404,7 +413,7 @@ try {
         $writer->save('php://output');
     } else {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header("Content-Disposition: attachment;filename=\"Centralizador_{$nombre_curso}_T{$trimestre}.xlsx\"");
+        header("Content-Disposition: attachment;filename=\"Centralizador_{$nombreArchivoCurso}_T{$trimestre}.xlsx\"");
         header('Cache-Control: max-age=0');
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
