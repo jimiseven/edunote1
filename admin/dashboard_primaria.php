@@ -325,6 +325,11 @@ if (!empty($cursos)) {
                     <div class="title-box mb-4">
                         <h2 class="mb-0" style="color:#99b898;">Cursos de Primaria</h2>
                         <small class="text-secondary">Seleccione el curso que desea visualizar:</small>
+                        <div class="mt-3">
+                            <button type="button" id="btnDescargarZipPrimaria" class="btn btn-danger btn-sm">
+                                <i class="ri-file-zip-line"></i> Descargar ZIP Boletines Primaria
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Tabla de Cursos -->
@@ -705,6 +710,111 @@ if (!empty($cursos)) {
         }
         window.addEventListener('resize', ajustarAltoTabla);
         window.addEventListener('orientationchange', ajustarAltoTabla);
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        const cursosZipPrimaria = <?php echo json_encode(array_map(static function ($c) {
+            return [
+                'id_curso' => (int)$c['id_curso'],
+                'curso' => (string)($c['curso'] ?? ''),
+                'paralelo' => (string)($c['paralelo'] ?? '')
+            ];
+        }, $cursos), JSON_UNESCAPED_UNICODE); ?>;
+
+        function sanitizarNombreArchivo(nombre) {
+            return String(nombre || 'archivo').replace(/[^a-z0-9-_ ]/gi, '_').replace(/\s+/g, '_');
+        }
+
+        function obtenerPdfBoletinPrimaria(idCurso) {
+            return new Promise((resolve, reject) => {
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `boletin_primaria.php?id_curso=${encodeURIComponent(idCurso)}`;
+
+                const limpiar = () => {
+                    if (iframe.parentNode) {
+                        iframe.parentNode.removeChild(iframe);
+                    }
+                };
+
+                const timeoutId = window.setTimeout(() => {
+                    limpiar();
+                    reject(new Error('Tiempo de espera agotado al generar PDF de primaria'));
+                }, 90000);
+
+                iframe.onload = () => {
+                    try {
+                        const win = iframe.contentWindow;
+                        if (!win || typeof win.generarBoletinesPDF !== 'function') {
+                            throw new Error('No se encontró generador de boletines en primaria');
+                        }
+                        const blob = win.generarBoletinesPDF({ download: false });
+                        const esBlobValido = blob && typeof blob === 'object' && typeof blob.size === 'number' && typeof blob.type === 'string';
+                        if (!esBlobValido) {
+                            throw new Error('No se pudo obtener el PDF del curso');
+                        }
+                        window.clearTimeout(timeoutId);
+                        limpiar();
+                        resolve(blob);
+                    } catch (err) {
+                        window.clearTimeout(timeoutId);
+                        limpiar();
+                        reject(err);
+                    }
+                };
+
+                document.body.appendChild(iframe);
+            });
+        }
+
+        async function descargarZipBoletinesPrimaria() {
+            if (typeof JSZip === 'undefined') {
+                alert('No se pudo cargar la librería para generar el ZIP.');
+                return;
+            }
+
+            if (!Array.isArray(cursosZipPrimaria) || cursosZipPrimaria.length === 0) {
+                alert('No hay cursos de primaria para exportar.');
+                return;
+            }
+
+            const btn = document.getElementById('btnDescargarZipPrimaria');
+            const textoOriginal = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Generando ZIP...';
+            }
+
+            try {
+                const zip = new JSZip();
+                const raiz = zip.folder('Boletines_Primaria');
+                for (const curso of cursosZipPrimaria) {
+                    const nombreCurso = sanitizarNombreArchivo(`${curso.curso}_${curso.paralelo}`);
+                    const pdfBlob = await obtenerPdfBoletinPrimaria(curso.id_curso);
+                    const carpetaCurso = raiz.folder(nombreCurso);
+                    carpetaCurso.file(`Boletines_${nombreCurso}.pdf`, pdfBlob);
+                }
+
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const enlace = document.createElement('a');
+                const url = URL.createObjectURL(zipBlob);
+                enlace.href = url;
+                enlace.download = `Boletines_Primaria_${new Date().getFullYear()}.zip`;
+                document.body.appendChild(enlace);
+                enlace.click();
+                enlace.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                alert(`Error al generar ZIP de primaria: ${error.message}`);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = textoOriginal;
+                }
+            }
+        }
+
+        document.getElementById('btnDescargarZipPrimaria')?.addEventListener('click', descargarZipBoletinesPrimaria);
     </script>
     <script>
         const modalCambiarCursoGlobal = document.getElementById('modalCambiarCursoGlobal');

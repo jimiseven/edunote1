@@ -276,6 +276,11 @@ if (!empty($cursos)) {
                     <div class="title-box mb-4">
                         <h2 class="mb-0" style="color:#4682B4;">Cursos de Nivel Inicial</h2>
                         <small class="text-secondary">Seleccione el curso que desea visualizar:</small>
+                        <div class="mt-3">
+                            <button type="button" id="btnDescargarZipInicial" class="btn btn-danger btn-sm">
+                                <i class="ri-file-zip-line"></i> Descargar ZIP Boletines Inicial
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Tabla de Cursos -->
@@ -339,11 +344,12 @@ if (!empty($cursos)) {
             document.getElementById('loadingOverlay').classList.remove('active');
         }
 
-        function generarBoletinPDF(data) {
+        function generarBoletinPDF(data, options = {}) {
             mostrarLoading();
 
-            setTimeout(() => {
-                try {
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    try {
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF({
                         orientation: 'portrait',
@@ -621,14 +627,23 @@ if (!empty($cursos)) {
                     });
 
                     const safeCurso = (data.curso || 'curso').replace(/[^a-z0-9-_]+/gi, '_');
+                    if (options && options.download === false) {
+                        ocultarLoading();
+                        resolve(doc.output('blob'));
+                        return;
+                    }
+
                     doc.save(`boletines_inicial_${safeCurso}.pdf`);
                     ocultarLoading();
+                    resolve(null);
                 } catch (error) {
                     console.error('Error al generar PDF:', error);
                     ocultarLoading();
                     alert('Ocurrió un error al generar el PDF. Por favor, intente nuevamente.');
+                    reject(error);
                 }
-            }, 100);
+                }, 100);
+            });
         }
 
         /** Texto centrado en la página */
@@ -697,6 +712,73 @@ if (!empty($cursos)) {
             });
         });
 
+        const cursosZipInicial = <?php echo json_encode(array_map(static function ($c) {
+            return [
+                'id_curso' => (int)$c['id_curso'],
+                'curso' => (string)($c['curso'] ?? ''),
+                'paralelo' => (string)($c['paralelo'] ?? '')
+            ];
+        }, $cursos), JSON_UNESCAPED_UNICODE); ?>;
+
+        function sanitizarNombreArchivo(nombre) {
+            return String(nombre || 'archivo').replace(/[^a-z0-9-_ ]/gi, '_').replace(/\s+/g, '_');
+        }
+
+        async function descargarZipBoletinesInicial() {
+            if (typeof JSZip === 'undefined') {
+                alert('No se pudo cargar la librería para generar el ZIP.');
+                return;
+            }
+
+            if (!Array.isArray(cursosZipInicial) || cursosZipInicial.length === 0) {
+                alert('No hay cursos de inicial para exportar.');
+                return;
+            }
+
+            const btn = document.getElementById('btnDescargarZipInicial');
+            const textoOriginal = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Generando ZIP...';
+            }
+
+            try {
+                const zip = new JSZip();
+                for (const curso of cursosZipInicial) {
+                    const idCurso = Number(curso.id_curso || 0);
+                    const lista = Array.isArray(estudiantesPorCurso[idCurso]) ? estudiantesPorCurso[idCurso] : [];
+                    const valoraciones = evaluacionesPorCurso[idCurso] || {};
+                    const blob = await generarBoletinPDF({
+                        curso: `${curso.curso} ${curso.paralelo}`.trim(),
+                        gestion: gestionActual,
+                        estudiantes: lista,
+                        valoraciones
+                    }, { download: false });
+                    const nombreCurso = sanitizarNombreArchivo(`${curso.curso}_${curso.paralelo}`);
+                    zip.file(`${nombreCurso}.pdf`, blob);
+                }
+
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const enlace = document.createElement('a');
+                const url = URL.createObjectURL(zipBlob);
+                enlace.href = url;
+                enlace.download = `Boletines_Inicial_${new Date().getFullYear()}.zip`;
+                document.body.appendChild(enlace);
+                enlace.click();
+                enlace.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                alert(`Error al generar ZIP de inicial: ${error.message}`);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = textoOriginal;
+                }
+            }
+        }
+
+        document.getElementById('btnDescargarZipInicial')?.addEventListener('click', descargarZipBoletinesInicial);
+
         function ajustarAltoTabla() {
             if (!tableViewport) return;
             const top = tableViewport.getBoundingClientRect().top;
@@ -732,5 +814,6 @@ if (!empty($cursos)) {
         window.addEventListener('resize', ajustarAltoTabla);
         window.addEventListener('orientationchange', ajustarAltoTabla);
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </body>
 </html>

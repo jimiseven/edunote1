@@ -885,7 +885,7 @@ function formatearNotaBoletin($nota)
             doc.save(`Resumen_Oficio_${nombreCurso.replace(/\s+/g, '_')}.pdf`);
         }
 
-        function generarBoletinesPDF() {
+        function generarBoletinesPDF(options = {}) {
             const estudiantes = <?= json_encode($estudiantes) ?>;
             const materiasIndividuales = <?= json_encode($materias_individuales) ?>;
             const materiasPadreObj = <?= json_encode($materias_padre) ?>;
@@ -1098,7 +1098,12 @@ function formatearNotaBoletin($nota)
                 });
             });
 
-            doc.save(`Boletines_${nombreCurso.replace(/\s+/g, '_')}.pdf`);
+            const nombreArchivo = `Boletines_${nombreCurso.replace(/\s+/g, '_')}.pdf`;
+            if (options && options.download === false) {
+                return doc.output('blob');
+            }
+            doc.save(nombreArchivo);
+            return null;
         }
     </script>
 
