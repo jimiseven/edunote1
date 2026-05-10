@@ -22,6 +22,19 @@ $cursos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmtGestion = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
 $gestionActual = trim((string)($stmtGestion->fetchColumn() ?: date('Y')));
 
+$logoBoletinBase64 = '';
+$boletinPrimariaPath = __DIR__ . '/boletin_primaria.php';
+if (is_file($boletinPrimariaPath)) {
+    $contenidoPrimaria = @file_get_contents($boletinPrimariaPath);
+    if ($contenidoPrimaria !== false && $contenidoPrimaria !== '') {
+        if (preg_match('/const\s+LOGO_BASE64\s*=\s*"([^"]+)"\s*;/', $contenidoPrimaria, $coincidenciaLogo)) {
+            $logoBoletinBase64 = $coincidenciaLogo[1];
+        }
+    }
+}
+
+
+
 $stmtEstudiantes = $conn->query("SELECT id_estudiante, id_curso, apellido_paterno, apellido_materno, nombres
                                  FROM estudiantes
                                  ORDER BY id_curso, apellido_paterno, apellido_materno, nombres");
@@ -316,6 +329,7 @@ if (!empty($cursos)) {
         const estudiantesPorCurso = <?php echo json_encode($estudiantesPorCurso, JSON_UNESCAPED_UNICODE); ?>;
         const evaluacionesPorCurso = <?php echo json_encode($evaluacionesPorCurso, JSON_UNESCAPED_UNICODE); ?>;
         const gestionActual = <?php echo json_encode($gestionActual, JSON_UNESCAPED_UNICODE); ?>;
+        const LOGO_BASE64 = <?php echo json_encode($logoBoletinBase64, JSON_UNESCAPED_UNICODE); ?>;
 
         function mostrarLoading() {
             document.getElementById('loadingOverlay').classList.add('active');
@@ -327,197 +341,283 @@ if (!empty($cursos)) {
 
         function generarBoletinPDF(data) {
             mostrarLoading();
-            
+
             setTimeout(() => {
                 try {
                     const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF({ 
-                        orientation: 'portrait', 
-                        unit: 'pt', 
+                    const doc = new jsPDF({
+                        orientation: 'portrait',
+                        unit: 'pt',
                         format: 'letter',
                         compress: true
                     });
 
+                    // ── LAYOUT ────────────────────────────────────────────────
                     const layout = {
-                        pageWidth: 612,
-                        pageHeight: 792,
-                        halfHeight: 396,
-                        marginX: 45,
-                        headerTop: 30,
-                        studentY: 90,
-                        courseY: 112,
-                        tableTop: 128,
-                        tableHeaderH1: 22,
-                        tableHeaderH2: 19,
-                        bodyRowH: 154,
-                        signatureLineY: 360,
-                        signatureTextY: 374,
-                        footerY: 388
+                        pageWidth:      612,
+                        pageHeight:     792,
+                        halfHeight:     396,
+                        marginX:        36,
+                        // encabezado
+                        headerLineY:    22,   // línea decorativa superior
+                        headerTitleY:   40,   // "UNIDAD EDUCATIVA..."
+                        headerSubY:     56,   // "BOLETÍN INFORMATIVO"
+                        headerSubtitleY:70,   // "Educación Inicial..."
+                        headerLineY2:   78,   // línea decorativa inferior
+                        // datos del estudiante
+                        studentY:       94,
+                        courseY:        110,
+                        dateY:          124,
+                        // tabla
+                        tableTop:       122,
+                        tableHeaderH1:  28,
+                        tableHeaderH2:  20,
+                        bodyRowH:       148,
+                        // firma
+                        signatureLineY: 356,
+                        signatureNameY: 368,
+                        signatureRoleY: 378,
                     };
 
-                    const col = {
-                        area: 220,
-                        t1: 110,
-                        t2: 110,
-                        t3: 110
-                    };
+                    const col = { area: 228, t1: 108, t2: 108, t3: 108 };
 
-                    const tableX = layout.marginX;
-                    const tableW = col.area + col.t1 + col.t2 + col.t3;
-                    const xArea = tableX;
-                    const xT1 = xArea + col.area;
-                    const xT2 = xT1 + col.t1;
-                    const xT3 = xT2 + col.t2;
+                    const tableX  = layout.marginX;
+                    const tableW  = col.area + col.t1 + col.t2 + col.t3;
+                    const xArea   = tableX;
+                    const xT1     = xArea + col.area;
+                    const xT2     = xT1 + col.t1;
+                    const xT3     = xT2 + col.t2;
                     const yHeader1 = layout.tableTop;
                     const yHeader2 = yHeader1 + layout.tableHeaderH1;
-                    const yRows = yHeader2 + layout.tableHeaderH2;
+                    const yRows    = yHeader2 + layout.tableHeaderH2;
 
-                    // Es una sola area de evaluacion anual; no se divide en filas internas.
-                    const camposSaberes = 'COMUNIDAD Y SOCIEDAD\nDESARROLLO DE LA COMUNICACIÓN, LENGUAJES Y ARTES (MÚSICA, ARTES PLÁSTICAS Y VISUALES, CIENCIAS SOCIALES-RECREACIÓN).\n\nCIENCIA TECNOLOGÍA Y PRODUCCIÓN\nDESARROLLO DEL CONOCIMIENTO Y DE LA PRODUCCIÓN (MATEMATICA- TÉCNICA TECNOLÓGICA).\n\nVIDA TIERRA TERRITORIO\nDESARROLLOBIOSICOMOTRIZ (CIENCIAS NATURALES).\n\nCOSMOS Y PENSAMIENTO\nDESARROLLOSOCIOCULTURAL, AFECTIVO Y ESPIRITUAL.';
+                    // Campos de saberes: [{ titulo, descripcion }]
+                    const camposData = [
+                        {
+                            titulo: 'COMUNIDAD Y SOCIEDAD',
+                            desc:   'Desarrollo de la Comunicación, Lenguajes y Artes (Música, Artes Plásticas y Visuales, Ciencias Sociales - Recreación).'
+                        },
+                        {
+                            titulo: 'CIENCIA TECNOLOGÍA Y PRODUCCIÓN',
+                            desc:   'Desarrollo del Conocimiento y de la Producción (Matemática - Técnica Tecnológica).'
+                        },
+                        {
+                            titulo: 'VIDA TIERRA TERRITORIO',
+                            desc:   'Desarrollo Biopsicomotriz (Ciencias Naturales).'
+                        },
+                        {
+                            titulo: 'COSMOS Y PENSAMIENTO',
+                            desc:   'Desarrollo Sociocultural, Afectivo y Espiritual.'
+                        }
+                    ];
 
                     const estudiantes = (data.estudiantes && data.estudiantes.length)
                         ? data.estudiantes
                         : [{ id_estudiante: 0, nombre: 'Sin estudiantes registrados' }];
 
+                    let totalPages = 0;
+
                     estudiantes.forEach((estudiante, index) => {
                         const nombreEstudiante = estudiante?.nombre || '';
-                        const idEstudiante = Number(estudiante?.id_estudiante || 0);
-                        const slot = index % 2;
+                        const idEstudiante     = Number(estudiante?.id_estudiante || 0);
+                        const slot    = index % 2;
                         const yOffset = slot * layout.halfHeight;
-                        
+
                         if (index > 0 && slot === 0) {
                             doc.addPage('letter', 'portrait');
+                            totalPages++;
+                        } else if (index === 0) {
+                            totalPages = 1;
                         }
 
-                        // Configuración blanco y negro para impresión
                         doc.setDrawColor(0, 0, 0);
                         doc.setFillColor(255, 255, 255);
-                        doc.setLineWidth(0.75);
 
-                        if (slot === 0 && index > 0) {
-                            doc.setLineWidth(0.3);
-                            doc.line(layout.marginX, layout.halfHeight, layout.pageWidth - layout.marginX, layout.halfHeight);
-                            doc.setLineWidth(0.5);
+                        // ── ENCABEZADO ────────────────────────────────────────
+                        doc.setTextColor(0, 0, 0);
+                        doc.setFont('times', 'bold');
+                        doc.setFontSize(12);
+                        drawCenteredText(doc, 'UNIDAD EDUCATIVA SIMÓN BOLÍVAR', yOffset + layout.headerTitleY, 12, 'bold');
+
+                        doc.setFontSize(15);
+                        drawCenteredText(doc, 'BOLETÍN INFORMATIVO', yOffset + layout.headerSubY, 15, 'bold');
+
+                        doc.setFont('times', 'italic');
+                        doc.setFontSize(8.5);
+                        doc.setTextColor(60, 60, 60);
+                        drawCenteredText(doc, 'Educación Inicial en Familia Comunitaria', yOffset + layout.headerSubtitleY, 8.5, 'italic');
+
+                        if (LOGO_BASE64) {
+                            doc.addImage(LOGO_BASE64, 'PNG', layout.pageWidth - layout.marginX - 58, yOffset + 22, 58, 58);
                         }
 
-                        // Encabezado del boletín sin recuadro, solo texto centrado.
-                        doc.setFont('times', 'bold');
-                        doc.setFontSize(13);
-                        drawCenteredText(doc, 'UNIDAD EDUCATIVA SIMÓN BOLÍVAR', yOffset + layout.headerTop + 5, 13, 'bold');
-                        doc.setFontSize(15);
-                        drawCenteredText(doc, 'BOLETÍN INFORMATIVO', yOffset + layout.headerTop + 22, 15, 'bold');
-                        doc.setFontSize(8);
-                        drawCenteredText(doc, 'Educación Inicial en Familia Comunitaria', yOffset + layout.headerTop + 35, 8, 'normal');
+                        // ── DATOS DEL ESTUDIANTE ──────────────────────────────
+                        doc.setTextColor(0, 0, 0);
+                        doc.setLineWidth(0.75);
 
-                        // Información del estudiante
-                        doc.setFont('times', 'bold');
-                        doc.setFontSize(9);
-                        doc.text('ESTUDIANTE:', layout.marginX, yOffset + layout.studentY);
-                        doc.setFont('times', 'normal');
-                        doc.text(nombreEstudiante || '', layout.marginX + 80, yOffset + layout.studentY);
-                        doc.line(layout.marginX + 78, yOffset + layout.studentY + 2, layout.pageWidth - layout.marginX, yOffset + layout.studentY + 2);
+                        // Fila: ESTUDIANTE (ancho completo)
+                        drawDataRow(doc, layout, yOffset + layout.studentY,
+                            [
+                                { label: 'ESTUDIANTE:', value: nombreEstudiante, labelW: 72 }
+                            ]
+                        );
 
-                        doc.setFont('times', 'bold');
-                        doc.text('CURSO:', layout.marginX, yOffset + layout.courseY);
-                        doc.setFont('times', 'normal');
-                        doc.text(data.curso || 'No especificado', layout.marginX + 50, yOffset + layout.courseY);
-                        
-                        doc.setFont('times', 'bold');
-                        doc.text('GESTIÓN:', layout.pageWidth - layout.marginX - 85, yOffset + layout.courseY);
-                        doc.setFont('times', 'normal');
-                        doc.text(data.gestion || '2026', layout.pageWidth - layout.marginX - 25, yOffset + layout.courseY, { align: 'right' });
+                        // Fila: CURSO + GESTIÓN
+                        drawDataRow(doc, layout, yOffset + layout.courseY,
+                            [
+                                { label: 'CURSO:', value: data.curso || 'No especificado', labelW: 44 },
+                                { label: 'GESTIÓN:', value: String(data.gestion || '2026'), labelW: 55, rightAlign: true }
+                            ]
+                        );
 
-                        // Tabla principal
+                        // ── TABLA ─────────────────────────────────────────────
                         const y1 = yOffset + yHeader1;
                         const y2 = yOffset + yHeader2;
                         const yBody = yOffset + yRows;
                         const tableHeight = layout.tableHeaderH1 + layout.tableHeaderH2 + layout.bodyRowH;
-                        
-                        // Bordes de la tabla con jerarquia visual clara.
-                        doc.setLineWidth(0.75);
+
+                        // Borde exterior grueso
+                        doc.setDrawColor(0, 0, 0);
+                        doc.setLineWidth(1.2);
                         doc.rect(tableX, y1, tableW, tableHeight);
+
+                        // Divisor vertical principal (área | valoraciones)
+                        doc.setLineWidth(1.2);
                         doc.line(xT1, y1, xT1, y1 + tableHeight);
-                        doc.line(tableX, y2, tableX + tableW, y2);
-                        doc.line(tableX, yBody, tableX + tableW, yBody);
-                        doc.setLineWidth(0.45);
+
+                        // Divisores verticales de trimestres (solo desde h2 hacia abajo)
+                        doc.setLineWidth(0.5);
                         doc.line(xT2, y2, xT2, y1 + tableHeight);
                         doc.line(xT3, y2, xT3, y1 + tableHeight);
-                        doc.setLineWidth(0.75);
 
-                        // Encabezados principales
-                        doc.setFillColor(230, 230, 230);
+                        // Línea entre h1 y h2
+                        doc.setLineWidth(0.8);
+                        doc.line(xT1, y2, xArea + tableW, y2);
+
+                        // Encabezado principal (h1) — fondo gris oscuro
+                        doc.setFillColor(210, 210, 210);
                         doc.rect(tableX, y1, tableW, layout.tableHeaderH1, 'F');
-                        
-                        doc.setFont('times', 'bold');
-                        doc.setFontSize(8.2);
-                        drawCenteredTextInRect(doc, 'CAMPOS DE SABERES\nY CONOCIMIENTOS', xArea, y1, col.area, layout.tableHeaderH1, 8.2, 8.2);
-                        drawCenteredTextInRect(doc, 'VALORACIÓN CUALITATIVA', xT1, y1, col.t1 + col.t2 + col.t3, layout.tableHeaderH1, 9, 9);
-
-                        // Encabezados de trimestres
-                        doc.setFillColor(245, 245, 245);
-                        doc.rect(xT1, y2, col.t1 + col.t2 + col.t3, layout.tableHeaderH2, 'F');
-                        
-                        doc.setFontSize(8.3);
-                        drawCenteredTextInRect(doc, '1er TRIMESTRE', xT1, y2, col.t1, layout.tableHeaderH2, 8.3, 8.3);
-                        drawCenteredTextInRect(doc, '2do TRIMESTRE', xT2, y2, col.t2, layout.tableHeaderH2, 8.3, 8.3);
-                        drawCenteredTextInRect(doc, '3er TRIMESTRE', xT3, y2, col.t3, layout.tableHeaderH2, 8.3, 8.3);
-
-                        // Contenido de los campos de saberes
-                        const yContenido = yBody;
-                        const yContenidoMax = yContenido + layout.bodyRowH - 8;
+                        doc.setTextColor(0, 0, 0);
                         doc.setFont('times', 'bold');
                         doc.setFontSize(8);
-                        const campoLines = camposSaberes.split('\n').flatMap(line => doc.splitTextToSize(line, col.area - 18));
-                        const campoLineHeight = 10;
-                        const campoBlockHeight = campoLines.length * campoLineHeight;
-                        const campoStartY = yContenido + ((layout.bodyRowH - campoBlockHeight) / 2) + campoLineHeight - 2;
-                        doc.text(campoLines, xArea + (col.area / 2), campoStartY, { align: 'center' });
+                        drawCenteredTextInRect(doc, 'CAMPOS DE SABERES\nY CONOCIMIENTOS', xArea, y1, col.area, layout.tableHeaderH1, 8, 9.5);
+                        drawCenteredTextInRect(doc, 'VALORACIÓN CUALITATIVA', xT1, y1, col.t1 + col.t2 + col.t3, layout.tableHeaderH1, 9, 10);
 
-                        // Valoraciones por trimestre
-                        const valTrim = (data.valoraciones && data.valoraciones[idEstudiante]) ? data.valoraciones[idEstudiante] : {};
+                        // Encabezado trimestres (h2) — fondo gris claro
+                        doc.setFillColor(235, 235, 235);
+                        doc.rect(xT1, y2, col.t1 + col.t2 + col.t3, layout.tableHeaderH2, 'F');
+                        doc.setTextColor(0, 0, 0);
+                        doc.setFontSize(8);
+                        drawCenteredTextInRect(doc, '1er TRIMESTRE', xT1, y2, col.t1, layout.tableHeaderH2, 8, 9);
+                        drawCenteredTextInRect(doc, '2do TRIMESTRE', xT2, y2, col.t2, layout.tableHeaderH2, 8, 9);
+                        drawCenteredTextInRect(doc, '3er TRIMESTRE', xT3, y2, col.t3, layout.tableHeaderH2, 8, 9);
+
+                        // ── CUERPO: campos de saberes ─────────────────────────
+                        // Renderizar título (bold) + descripción (normal) en columna izquierda
+                        const padL   = 8;
+                        const colW   = col.area - padL - 4;
+                        const lhBold = 9.5;
+                        const lhNorm = 8.5;
+                        const gap    = 4;   // espacio entre campos
+
+                        // Pre-calcular líneas de cada campo para centrado vertical
+                        const campoBlocks = camposData.map(c => {
+                            doc.setFont('times', 'bold');
+                            doc.setFontSize(7.5);
+                            const tLines = doc.splitTextToSize(c.titulo, colW);
+                            doc.setFont('times', 'normal');
+                            doc.setFontSize(7);
+                            const dLines = doc.splitTextToSize(c.desc, colW);
+                            return { tLines, dLines };
+                        });
+
+                        const totalTextH = campoBlocks.reduce((sum, b) =>
+                            sum + b.tLines.length * lhBold + b.dLines.length * lhNorm + gap, 0) - gap;
+
+                        let cy = yBody + (layout.bodyRowH - totalTextH) / 2 + lhBold - 2;
+
+                        campoBlocks.forEach(b => {
+                            doc.setFont('times', 'bold');
+                            doc.setFontSize(7.5);
+                            doc.setTextColor(0, 0, 0);
+                            b.tLines.forEach(line => {
+                                doc.text(line, xArea + padL, cy);
+                                cy += lhBold;
+                            });
+                            doc.setFont('times', 'normal');
+                            doc.setFontSize(7);
+                            doc.setTextColor(50, 50, 50);
+                            b.dLines.forEach(line => {
+                                doc.text(line, xArea + padL, cy);
+                                cy += lhNorm;
+                            });
+                            doc.setTextColor(0, 0, 0);
+                            cy += gap;
+                        });
+
+                        // ── CUERPO: valoraciones por trimestre ────────────────
+                        const valTrim = (data.valoraciones && data.valoraciones[idEstudiante])
+                            ? data.valoraciones[idEstudiante] : {};
                         const zonas = [
-                            { x: xT1 + 8, w: col.t1 - 16, t: String(valTrim[1] || '').trim(), columna: 1 },
-                            { x: xT2 + 8, w: col.t2 - 16, t: String(valTrim[2] || '').trim(), columna: 2 },
-                            { x: xT3 + 8, w: col.t3 - 16, t: String(valTrim[3] || '').trim(), columna: 3 }
+                            { x: xT1, w: col.t1, t: String(valTrim[1] || '').trim() },
+                            { x: xT2, w: col.t2, t: String(valTrim[2] || '').trim() },
+                            { x: xT3, w: col.t3, t: String(valTrim[3] || '').trim() }
                         ];
-                        
+
                         zonas.forEach(z => {
-                            const yContenidoStart = yBody;
-                            const contenidoHeight = layout.bodyRowH;
-                            
+                            const padH = 10;
+                            const innerW = z.w - padH * 2;
+                            const centerX = z.x + z.w / 2;
+
                             if (z.t) {
                                 doc.setFont('times', 'normal');
-                                doc.setFontSize(7.3);
-                                const lines = doc.splitTextToSize(z.t, z.w);
-                                const lineHeight = 8.2;
-                                const maxLines = Math.min(lines.length, Math.floor((contenidoHeight - 18) / lineHeight));
-                                const linesToDraw = lines.slice(0, maxLines);
-                                const textHeight = linesToDraw.length * lineHeight;
-                                const startY = yContenidoStart + ((contenidoHeight - textHeight) / 2) + lineHeight - 2;
-                                
-                                linesToDraw.forEach((line, idx) => {
-                                    const lineY = startY + (idx * lineHeight);
-                                    if (lineY < yContenidoStart + contenidoHeight - 10) {
-                                        doc.text(line, z.x + (z.w / 2), lineY, { align: 'center' });
-                                    }
+                                doc.setFontSize(7.5);
+                                doc.setTextColor(0, 0, 0);
+                                const lines = doc.splitTextToSize(z.t, innerW);
+                                const lh    = 9;
+                                const maxL  = Math.floor((layout.bodyRowH - 14) / lh);
+                                const drawn = lines.slice(0, maxL);
+                                const blockH = drawn.length * lh;
+                                let ty = yBody + (layout.bodyRowH - blockH) / 2 + lh - 2;
+                                drawn.forEach(line => {
+                                    doc.text(line, centerX, ty, { align: 'center' });
+                                    ty += lh;
                                 });
+                            } else {
+                                // Sin valoración: guión largo centrado, discreto
+                                doc.setFont('times', 'normal');
+                                doc.setFontSize(9);
+                                doc.setTextColor(180, 180, 180);
+                                doc.text('\u2014', centerX, yBody + layout.bodyRowH / 2, { align: 'center' });
+                                doc.setTextColor(0, 0, 0);
                             }
                         });
 
-                        // Líneas de firma
-                        const lineLen = 170;
-                        const firmaY = yOffset + layout.signatureLineY;
-                        const direccionY = yOffset + layout.signatureLineY;
-                        
-                        doc.setLineWidth(0.5);
-                        doc.line(layout.marginX + 25, firmaY, layout.marginX + 25 + lineLen, firmaY);
-                        doc.line(layout.pageWidth - layout.marginX - 25 - lineLen, direccionY, layout.pageWidth - layout.marginX - 25, direccionY);
-                        
+                        // ── FIRMAS ────────────────────────────────────────────
+                        const lineLen  = 165;
+                        const firmaY   = yOffset + layout.signatureLineY;
+                        const nameY    = yOffset + layout.signatureNameY;
+                        const roleY    = yOffset + layout.signatureRoleY;
+                        const firmaLX  = layout.marginX + 30;
+                        const dirLX    = layout.pageWidth - layout.marginX - 30 - lineLen;
+
+                        doc.setDrawColor(0, 0, 0);
+                        doc.setLineWidth(0.6);
+                        doc.line(firmaLX, firmaY, firmaLX + lineLen, firmaY);
+                        doc.line(dirLX,   firmaY, dirLX + lineLen,   firmaY);
+
+                        doc.setFont('times', 'bold');
                         doc.setFontSize(7.5);
+                        doc.setTextColor(0, 0, 0);
+                        doc.text('FIRMA DEL MAESTRO/A', firmaLX + lineLen / 2, nameY, { align: 'center' });
+                        doc.text('DIRECCIÓN', dirLX + lineLen / 2, nameY, { align: 'center' });
+
                         doc.setFont('times', 'normal');
-                        doc.text('FIRMA DEL MAESTRO/A', layout.marginX + 25 + (lineLen / 2), yOffset + layout.signatureTextY, { align: 'center' });
-                        doc.text('DIRECCIÓN', layout.pageWidth - layout.marginX - 25 - (lineLen / 2), yOffset + layout.signatureTextY, { align: 'center' });
-                        
+                        doc.setFontSize(7);
+                        doc.setTextColor(80, 80, 80);
+                        doc.text('Docente de Nivel Inicial', firmaLX + lineLen / 2, roleY, { align: 'center' });
+                        doc.text('Director/a de la Unidad Educativa', dirLX + lineLen / 2, roleY, { align: 'center' });
+                        doc.setTextColor(0, 0, 0);
                     });
 
                     const safeCurso = (data.curso || 'curso').replace(/[^a-z0-9-_]+/gi, '_');
@@ -531,21 +631,50 @@ if (!empty($cursos)) {
             }, 100);
         }
 
+        /** Texto centrado en la página */
         function drawCenteredText(doc, text, y, size, style = 'normal') {
             doc.setFont('times', style);
             doc.setFontSize(size);
             doc.text(text, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
         }
 
+        /** Texto centrado dentro de un rectángulo (soporta \n) */
         function drawCenteredTextInRect(doc, text, x, y, width, height, fontSize = 8.5, lineHeight = 9) {
             const lines = text.split('\n');
-            const totalHeight = lines.length * lineHeight;
-            const startY = y + (height - totalHeight) / 2 + lineHeight - 1;
-            
+            const totalH = lines.length * lineHeight;
+            const startY = y + (height - totalH) / 2 + lineHeight - 1;
             doc.setFont('times', 'bold');
             doc.setFontSize(fontSize);
             lines.forEach((line, idx) => {
-                doc.text(line, x + (width / 2), startY + (idx * lineHeight), { align: 'center' });
+                doc.text(line, x + width / 2, startY + idx * lineHeight, { align: 'center' });
+            });
+        }
+
+        /**
+         * Dibuja una fila de datos (label + valor) con soporte para múltiples pares en la misma línea.
+         * items: [{ label, value, labelW, rightAlign? }]
+         */
+        function drawDataRow(doc, layout, y, items) {
+            doc.setFontSize(9);
+            // Si hay un ítem con rightAlign, lo posicionamos desde la derecha
+            const normal = items.filter(i => !i.rightAlign);
+            const right  = items.filter(i =>  i.rightAlign);
+
+            normal.forEach(item => {
+                const x = layout.marginX;
+                doc.setFont('times', 'bold');
+                doc.text(item.label, x, y);
+                doc.setFont('times', 'normal');
+                doc.text(item.value, x + item.labelW, y);
+            });
+
+            right.forEach(item => {
+                const valX = layout.pageWidth - layout.marginX;
+                doc.setFont('times', 'normal');
+                doc.text(item.value, valX, y, { align: 'right' });
+                const valW = doc.getTextWidth(item.value);
+                doc.setFont('times', 'bold');
+                doc.text(item.label, valX - valW - 4, y, { align: 'right' });
             });
         }
 
