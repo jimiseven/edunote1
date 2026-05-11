@@ -2736,14 +2736,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             })();
             <?php endif; ?>
 
-            <?php if (!$es_inicial && $periodoEditable): ?>
+            <?php if (!$es_inicial): ?>
             const pasteModalEl = document.getElementById('pasteColumnModal');
             const pasteTextarea = document.getElementById('pasteColumnTextarea');
             const pasteTargetLabel = document.getElementById('pasteColumnTarget');
             const pasteForm = document.getElementById('pasteColumnForm');
             let pasteContext = null;
 
-            if (pasteModalEl && pasteTextarea && pasteForm) {
+            const navigationSelector = 'input.nota-input, textarea.actividad-etiqueta-input';
+
+            const getNavigables = function(baseContainer) {
+                const root = baseContainer || document;
+                return Array.from(root.querySelectorAll(navigationSelector)).filter(el => !el.disabled && !el.readOnly);
+            };
+
+            const focusCell = function(el) {
+                if (!el) return;
+                el.focus();
+                try {
+                    el.select();
+                } catch (e) {
+                }
+            };
+
+            const pickBest = function(candidates, scoreFn) {
+                if (!candidates.length) return null;
+                let best = candidates[0];
+                let bestScore = scoreFn(candidates[0]);
+                for (let i = 1; i < candidates.length; i++) {
+                    const s = scoreFn(candidates[i]);
+                    if (s < bestScore) {
+                        best = candidates[i];
+                        bestScore = s;
+                    }
+                }
+                return best;
+            };
+
+            const moveFocusGeometric = function(current, direction) {
+                const container = current.closest('.table-container') || document;
+                const cells = getNavigables(container);
+                if (!cells.length) return;
+
+                const currentRect = current.getBoundingClientRect();
+                const cx = currentRect.left + currentRect.width / 2;
+                const cy = currentRect.top + currentRect.height / 2;
+
+                const candidates = cells.filter(el => el !== current).map(el => {
+                    const r = el.getBoundingClientRect();
+                    const x = r.left + r.width / 2;
+                    const y = r.top + r.height / 2;
+                    return { el, x, y, dx: x - cx, dy: y - cy };
+                });
+
+                if (!candidates.length) return;
+
+                let target = null;
+                if (direction === 'left') {
+                    const left = candidates.filter(c => c.dx < -2);
+                    target = pickBest(left, c => Math.abs(c.dy) * 5 + Math.abs(c.dx));
+                } else if (direction === 'right') {
+                    const right = candidates.filter(c => c.dx > 2);
+                    target = pickBest(right, c => Math.abs(c.dy) * 5 + Math.abs(c.dx));
+                } else if (direction === 'up') {
+                    const up = candidates.filter(c => c.dy < -2);
+                    target = pickBest(up, c => Math.abs(c.dx) * 3 + Math.abs(c.dy));
+                } else if (direction === 'down') {
+                    const down = candidates.filter(c => c.dy > 2);
+                    target = pickBest(down, c => Math.abs(c.dx) * 3 + Math.abs(c.dy));
+                }
+
+                if (target) {
+                    focusCell(target.el);
+                }
+            };
+
+            document.addEventListener('keydown', function(event) {
+                const target = event.target;
+                if (!target || !(target.matches && target.matches(navigationSelector))) return;
+
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    moveFocusGeometric(target, 'up');
+                    return;
+                }
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    moveFocusGeometric(target, 'down');
+                    return;
+                }
+                if (event.key === 'ArrowLeft') {
+                    event.preventDefault();
+                    moveFocusGeometric(target, 'left');
+                    return;
+                }
+                if (event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    moveFocusGeometric(target, 'right');
+                    return;
+                }
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    moveFocusGeometric(target, 'down');
+                }
+            });
+
+            if ($periodoEditable && pasteModalEl && pasteTextarea && pasteForm) {
                 const pasteModal = new bootstrap.Modal(pasteModalEl);
 
                 document.querySelectorAll('.btn-paste-column').forEach(btn => {
