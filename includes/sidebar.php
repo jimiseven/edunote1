@@ -1,5 +1,21 @@
 <?php
 $role = $_SESSION['user_role'] ?? null;
+$sidebarPuedeRegistrarAsistencia = ((int)$role === 1);
+$sidebarPuedeVerReportesAsistencia = ((int)$role === 1);
+
+if (isset($_SESSION['user_id']) && (int)$role !== 1) {
+    try {
+        require_once __DIR__ . '/../config/database.php';
+        require_once __DIR__ . '/asistencia_auth.php';
+
+        $sidebarConn = (new Database())->connect();
+        $sidebarLectorInfo = asistencia_auth_get_lector($sidebarConn, (int)$_SESSION['user_id']);
+        $sidebarPuedeRegistrarAsistencia = $sidebarLectorInfo !== null;
+        $sidebarPuedeVerReportesAsistencia = asistencia_auth_puede_ver_reportes((int)$role, $sidebarLectorInfo);
+    } catch (Throwable $e) {
+    }
+}
+
 $current = basename($_SERVER['PHP_SELF']);
 function active($str, $current)
 {
@@ -355,6 +371,13 @@ function active($str, $current)
                 padding-left: 0 !important;
             }
 
+            body.has-unified-sidebar .sidebar {
+                width: 270px !important;
+                max-width: 270px !important;
+                min-width: 270px !important;
+                left: -285px !important;
+            }
+
             .sidebar-mobile-open-btn {
                 display: inline-flex;
             }
@@ -362,7 +385,7 @@ function active($str, $current)
             #sidebarMenu {
                 position: fixed;
                 top: 0;
-                left: -285px;
+                left: -285px !important;
                 width: 270px !important;
                 max-width: 270px !important;
                 min-height: 100vh !important;
@@ -384,7 +407,11 @@ function active($str, $current)
             }
 
             body.sidebar-mobile-open #sidebarMenu {
-                left: 0;
+                left: 0 !important;
+            }
+
+            body.sidebar-mobile-open .sidebar-mobile-backdrop {
+                display: block;
             }
 
             .sidebar-brand {
@@ -547,6 +574,24 @@ function active($str, $current)
                             <span class="nav-label">Estadísticas</span>
                         </a>
                     </li>
+                    <li>
+                        <a class="nav-link <?php echo active('reporte_desayuno_escolar.php', $current); ?>" href="reporte_desayuno_escolar.php">
+                            <span data-feather="clipboard"></span>
+                            <span class="nav-label">Desayuno escolar</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('permisos_inasistencia.php', $current); ?>" href="permisos_inasistencia.php">
+                            <span data-feather="file-plus"></span>
+                            <span class="nav-label">Permisos inasistencia</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('reporte_estudiantil_asistencia.php', $current); ?>" href="reporte_estudiantil_asistencia.php">
+                            <span data-feather="user-check"></span>
+                            <span class="nav-label">Reporte estudiantil</span>
+                        </a>
+                    </li>
                 </ul>
 
             <?php elseif ($role == 2): // Profesor 
@@ -559,12 +604,46 @@ function active($str, $current)
                             <span class="nav-label">Ver Cursos</span>
                         </a>
                     </li>
-                    <li>
-                        <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="../admin/asistencia.php">
-                            <span data-feather="check-square"></span>
-                            <span class="nav-label">Registrar Asistencia</span>
-                        </a>
-                    </li>
+                    <?php if ($sidebarPuedeRegistrarAsistencia): ?>
+                        <li>
+                            <a class="nav-link <?php echo active('asistencia.php', $current); ?>" href="../admin/asistencia.php">
+                                <span data-feather="check-square"></span>
+                                <span class="nav-label">Registrar Asistencia</span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
+                    <?php if ($sidebarPuedeVerReportesAsistencia): ?>
+                        <li>
+                            <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="../admin/reporte_asistencia_curso.php">
+                                <span data-feather="file-text"></span>
+                                <span class="nav-label">Reporte por curso</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="nav-link <?php echo active('estadisticas_asistencia.php', $current); ?>" href="../admin/estadisticas_asistencia.php">
+                                <span data-feather="bar-chart-2"></span>
+                                <span class="nav-label">Estadísticas</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="nav-link <?php echo active('reporte_desayuno_escolar.php', $current); ?>" href="../admin/reporte_desayuno_escolar.php">
+                                <span data-feather="clipboard"></span>
+                                <span class="nav-label">Desayuno escolar</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="nav-link <?php echo active('permisos_inasistencia.php', $current); ?>" href="../admin/permisos_inasistencia.php">
+                                <span data-feather="file-plus"></span>
+                                <span class="nav-label">Permisos inasistencia</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="nav-link <?php echo active('reporte_estudiantil_asistencia.php', $current); ?>" href="../admin/reporte_estudiantil_asistencia.php">
+                                <span data-feather="user-check"></span>
+                                <span class="nav-label">Reporte estudiantil</span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
                 </ul>
             <?php elseif ($role == 3): // Directora 
             ?>

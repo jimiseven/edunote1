@@ -1,9 +1,22 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/asistencia_auth.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
+    exit();
+}
+
+$database = new Database();
+$conn = $database->connect();
+$userRole = (int)($_SESSION['user_role'] ?? 0);
+$userId = (int)($_SESSION['user_id'] ?? 0);
+$lectorInfo = asistencia_auth_get_lector($conn, $userId);
+
+if (!asistencia_auth_puede_ver_reportes($userRole, $lectorInfo)) {
+    http_response_code(403);
+    echo 'Acceso denegado';
     exit();
 }
 
@@ -13,9 +26,6 @@ if (!isset($_GET['id_curso'])) {
 }
 
 $id_curso = intval($_GET['id_curso']);
-
-$database = new Database();
-$conn = $database->connect();
 
 $stmt_curso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ?");
 $stmt_curso->execute([$id_curso]);

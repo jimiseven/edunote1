@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/asistencia_auth.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
@@ -14,7 +15,7 @@ $isAdminAsistencia = $userRole === 1;
 
 function asistencia_get_lector(PDO $conn, $userId)
 {
-    $stmt = $conn->prepare("SELECT id_lector, id_personal, alcance, estado FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
+    $stmt = $conn->prepare("SELECT id_lector, id_personal, alcance, tipo_lector, estado FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
     $stmt->execute([(int)$userId]);
     $lector = $stmt->fetch(PDO::FETCH_ASSOC);
     return $lector ?: null;
@@ -870,6 +871,10 @@ if ($id_curso) {
                                     </div>
                                 <?php endif; ?>
                             <?php endif; ?>
+
+                            <div class="mt-3">
+                                <span class="badge bg-dark">Tipo: <?= htmlspecialchars(($lectorInfo['tipo_lector'] ?? 'LECTURADOR')) ?></span>
+                            </div>
 
                             <div class="mt-3">
                                 <button type="button" class="btn btn-success" onclick="openScanner()">

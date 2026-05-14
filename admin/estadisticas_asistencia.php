@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/asistencia_auth.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
@@ -8,6 +9,15 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $conn = (new Database())->connect();
+$userRole = (int)($_SESSION['user_role'] ?? 0);
+$userId = (int)($_SESSION['user_id'] ?? 0);
+$lectorInfo = asistencia_auth_get_lector($conn, $userId);
+
+if (!asistencia_auth_puede_ver_reportes($userRole, $lectorInfo)) {
+    http_response_code(403);
+    echo '<h3>Acceso denegado</h3><p>No tienes permisos para ver estadisticas de asistencia.</p>';
+    exit();
+}
 $modo = ($_GET['modo'] ?? 'dia') === 'rango' ? 'rango' : 'dia';
 $tipo = ($_GET['tipo'] ?? 'llegada') === 'puntualidad' ? 'puntualidad' : 'llegada';
 $fecha = $_GET['fecha'] ?? date('Y-m-d');

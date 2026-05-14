@@ -1,0 +1,35 @@
+-- =========================================================
+-- MIGRACION MANUAL: Permisos por inasistencia
+-- Base: wiredcom_uni3t
+-- Ejecutar una sola vez
+-- =========================================================
+
+START TRANSACTION;
+
+CREATE TABLE IF NOT EXISTS asistencia_permisos (
+  id_permiso INT(11) NOT NULL AUTO_INCREMENT,
+  id_estudiante INT(11) NOT NULL,
+  fecha DATE NOT NULL,
+  motivo VARCHAR(150) NOT NULL,
+  detalle TEXT DEFAULT NULL,
+  estado ENUM('APROBADO','RECHAZADO') NOT NULL DEFAULT 'APROBADO',
+  registrado_por INT(11) DEFAULT NULL,
+  fecha_registro TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_permiso),
+  UNIQUE KEY uk_permiso_estudiante_fecha (id_estudiante, fecha),
+  KEY idx_permiso_fecha (fecha),
+  KEY idx_permiso_estado (estado),
+  KEY idx_permiso_estudiante (id_estudiante),
+  KEY idx_permiso_registrado_por (registrado_por),
+  CONSTRAINT fk_asistencia_permisos_estudiante
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes (id_estudiante)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_asistencia_permisos_registrado_por
+    FOREIGN KEY (registrado_por) REFERENCES personal (id_personal)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+COMMIT;
+
+-- Verificacion rapida
+DESCRIBE asistencia_permisos;
