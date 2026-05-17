@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS `asistencia_horarios_ingreso` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id_horario`),
   KEY `idx_rango` (`fecha_inicio`,`fecha_fin`),
-  KEY `idx_estado` (`estado`)
+  KEY `idx_estado` (`estado`),
+  KEY `idx_horario_estado_rango` (`estado`,`fecha_inicio`,`fecha_fin`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 ALTER TABLE `asistencia`

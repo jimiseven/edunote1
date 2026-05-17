@@ -650,9 +650,14 @@ if ($id_curso) {
         #reader {
             border-radius: 10px;
             overflow: hidden;
+            height: 360px;
+            background: rgba(0, 0, 0, 0.25);
         }
         #reader video {
             border-radius: 10px;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
         }
         .result-card {
             animation: slideIn 0.3s ease-out;
@@ -705,8 +710,19 @@ if ($id_curso) {
             margin-top: 6px;
         }
         .reader-pane {
+            position: relative;
             border-radius: 10px;
+            overflow: hidden;
+            min-height: 360px;
             transition: all 0.25s ease;
+        }
+        .scan-result-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 30;
+            pointer-events: none;
         }
         .reader-collapsed-hint {
             display: none;
@@ -720,16 +736,20 @@ if ($id_curso) {
         .scan-layout.manual-mode #reader {
             display: none;
         }
+        .scan-layout.manual-mode .scan-result-overlay {
+            display: none;
+        }
         .scan-layout.manual-mode .reader-collapsed-hint {
             display: block;
         }
-        .scan-result-box {
-            position: sticky;
-            top: 0;
-            z-index: 6;
-        }
         #scan-result .alert {
-            margin-bottom: 0.75rem;
+            margin-bottom: 0;
+            min-height: 96px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+            border-radius: 10px;
         }
         @media (max-width: 991.98px) {
             .asistencia-main {
@@ -756,6 +776,12 @@ if ($id_curso) {
                 right: 16px;
                 bottom: 16px;
                 font-size: 24px;
+            }
+            #reader {
+                height: 300px;
+            }
+            .reader-pane {
+                min-height: 300px;
             }
             .qr-card {
                 margin: 6px;
@@ -1024,13 +1050,13 @@ if ($id_curso) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="scan-result-box">
-                        <div id="scan-result"></div>
-                    </div>
                     <div class="row g-3 align-items-start scan-layout" id="scanLayout">
                         <div class="col-lg-8">
                             <div class="reader-pane">
                                 <div id="reader"></div>
+                                <div class="scan-result-overlay">
+                                    <div id="scan-result"></div>
+                                </div>
                                 <div id="readerCollapsedHint" class="reader-collapsed-hint" onclick="setManualMode(false)">
                                     <i class="ri-qr-scan-line"></i>
                                     Lector QR minimizado. Toca aquí para volver al tamaño grande.
@@ -1301,6 +1327,21 @@ if ($id_curso) {
         let isScanning = false;
         let isProcessingScan = false;
         const RESULT_DISPLAY_MS = 1000;
+        let beepAudioContext = null;
+
+        function ensureBeepContext() {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+                return null;
+            }
+            if (!beepAudioContext) {
+                beepAudioContext = new AudioCtx();
+            }
+            if (beepAudioContext.state === 'suspended') {
+                beepAudioContext.resume().catch(() => {});
+            }
+            return beepAudioContext;
+        }
 
         function setManualMode(enabled) {
             const layout = document.getElementById('scanLayout');
@@ -1316,7 +1357,6 @@ if ($id_curso) {
 
         function renderScanResult(data) {
             const resultDiv = document.getElementById('scan-result');
-            const modalBody = document.querySelector('#scannerModal .modal-body');
 
             if (data.success) {
                 resultDiv.innerHTML = `
@@ -1338,17 +1378,9 @@ if ($id_curso) {
                 playErrorSound();
             }
 
-            if (modalBody) {
-                modalBody.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
             setTimeout(() => {
                 resultDiv.innerHTML = '';
                 isProcessingScan = false;
-                if (html5QrCode) {
-                    html5QrCode.resume();
-                }
             }, RESULT_DISPLAY_MS);
         }
 
@@ -1358,10 +1390,6 @@ if ($id_curso) {
             }
 
             isProcessingScan = true;
-
-            if (html5QrCode) {
-                html5QrCode.pause();
-            }
 
             fetch('asistencia.php', {
                 method: 'POST',
@@ -1385,9 +1413,6 @@ if ($id_curso) {
                 setTimeout(() => {
                     resultDiv.innerHTML = '';
                     isProcessingScan = false;
-                    if (html5QrCode) {
-                        html5QrCode.resume();
-                    }
                 }, RESULT_DISPLAY_MS);
             });
         }
@@ -1395,6 +1420,7 @@ if ($id_curso) {
         function openScanner() {
             const modal = new bootstrap.Modal(document.getElementById('scannerModal'));
             setManualMode(false);
+            ensureBeepContext();
             modal.show();
             
             // Iniciar el escáner después de que el modal se muestre
@@ -1522,39 +1548,49 @@ if ($id_curso) {
         }
 
         function playSuccessSound() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioContext = ensureBeepContext();
+            if (!audioContext) {
+                return;
+            }
+
+            const now = audioContext.currentTime;
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 800;
+
+            oscillator.frequency.setValueAtTime(920, now);
             oscillator.type = 'sine';
-            gainNode.gain.value = 0.6;
-            
-            oscillator.start();
-            setTimeout(() => {
-                oscillator.stop();
-            }, 200);
+            gainNode.gain.setValueAtTime(0.0001, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.45, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+
+            oscillator.start(now);
+            oscillator.stop(now + 0.21);
         }
 
         function playErrorSound() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioContext = ensureBeepContext();
+            if (!audioContext) {
+                return;
+            }
+
+            const now = audioContext.currentTime;
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 300;
+
+            oscillator.frequency.setValueAtTime(320, now);
             oscillator.type = 'square';
-            gainNode.gain.value = 0.5;
-            
-            oscillator.start();
-            setTimeout(() => {
-                oscillator.stop();
-            }, 300);
+            gainNode.gain.setValueAtTime(0.0001, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.38, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+            oscillator.start(now);
+            oscillator.stop(now + 0.29);
         }
 
         // Detener el escáner cuando se cierra el modal
@@ -1564,6 +1600,10 @@ if ($id_curso) {
         });
 
         document.addEventListener('DOMContentLoaded', function() {
+            const activateAudio = () => ensureBeepContext();
+            document.addEventListener('click', activateAudio, { once: true });
+            document.addEventListener('touchstart', activateAudio, { once: true });
+
             const input = document.getElementById('manualStudentId');
             if (input) {
                 input.addEventListener('focus', function() {

@@ -50,6 +50,11 @@ function escaneo_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lectorI
 
 function escaneo_resolver_puntualidad(PDO $conn, $fecha, $horaActual)
 {
+    static $cache = [];
+    $cacheKey = (string)$fecha;
+    if (isset($cache[$cacheKey])) {
+        $horario = $cache[$cacheKey];
+    } else {
     $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
         FROM asistencia_horarios_ingreso
         WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
@@ -57,6 +62,8 @@ function escaneo_resolver_puntualidad(PDO $conn, $fecha, $horaActual)
         LIMIT 1");
     $stmt->execute([$fecha]);
     $horario = $stmt->fetch(PDO::FETCH_ASSOC);
+        $cache[$cacheKey] = $horario ?: null;
+    }
 
     if (!$horario) {
         return [
@@ -98,9 +105,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
     }
 
     if ($id_estudiante > 0) {
-        $stmtCursoEst = $conn->prepare("SELECT id_curso FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
-        $stmtCursoEst->execute([$id_estudiante]);
-        $idCursoEscaneado = (int)$stmtCursoEst->fetchColumn();
+        $stmtEstudiante = $conn->prepare("SELECT id_curso, nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ? LIMIT 1");
+        $stmtEstudiante->execute([$id_estudiante]);
+        $estudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+        $idCursoEscaneado = (int)($estudiante['id_curso'] ?? 0);
+
+        if (!$estudiante) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Estudiante no encontrado'
+            ]);
+            exit();
+        }
 
         if (!escaneo_usuario_puede_registrar($conn, $isAdminAsistencia, $lectorInfo, $idCursoEscaneado)) {
             echo json_encode([
@@ -130,31 +146,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
             $stmt = $conn->prepare("INSERT INTO asistencia
                 (id_estudiante, fecha, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
                 VALUES (?, ?, ?, 'QR', ?, ?, ?)");
-            if ($stmt->execute([
-                $id_estudiante,
-                $hoy,
-                $hora_actual,
-                $puntualidad['estado_puntualidad'],
-                $puntualidad['hora_ingreso_programada'],
-                $puntualidad['tolerancia_min']
-            ])) {
-                // Obtener información del estudiante
-                $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
-                $stmt_est->execute([$id_estudiante]);
-                $estudiante = $stmt_est->fetch(PDO::FETCH_ASSOC);
-                
+            try {
+                $stmt->execute([
+                    $id_estudiante,
+                    $hoy,
+                    $hora_actual,
+                    $puntualidad['estado_puntualidad'],
+                    $puntualidad['hora_ingreso_programada'],
+                    $puntualidad['tolerancia_min']
+                ]);
+
                 echo json_encode([
                     'success' => true,
                     'message' => 'Asistencia registrada correctamente',
                     'estudiante' => $estudiante['apellido_paterno'] . ' ' . $estudiante['apellido_materno'] . ', ' . $estudiante['nombres'],
+                    'nombres' => $estudiante['nombres'],
+                    'apellido_paterno' => $estudiante['apellido_paterno'],
+                    'apellido_materno' => $estudiante['apellido_materno'],
                     'hora' => $hora_actual,
                     'puntualidad' => $puntualidad['estado_puntualidad']
                 ]);
-            } else {
+            } catch (PDOException $e) {
+                if ($e->getCode() === '23000') {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'El estudiante ya registró asistencia hoy.'
+                    ]);
+                } else {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Error al registrar la asistencia'
                 ]);
+                }
             }
         }
     } else {
@@ -211,14 +234,40 @@ if ($id_curso) {
             font-family: 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            overflow-anchor: none;
         }
         .scanner-container {
             max-width: 500px;
             margin: 0 auto;
+            position: relative;
+            overflow: hidden;
         }
         #reader {
             border-radius: 10px;
             overflow: hidden;
+            height: 340px;
+        }
+        #result {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            right: 12px;
+            z-index: 20;
+            pointer-events: none;
+        }
+        #result .alert {
+            margin-bottom: 0;
+            min-height: 110px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+            border-radius: 10px;
+        }
+        @media (max-width: 576px) {
+            #reader {
+                height: 300px;
+            }
         }
         .result-card {
             animation: slideIn 0.3s ease-out;
@@ -247,7 +296,7 @@ if ($id_curso) {
                     <div class="card-header bg-primary text-white">
                         <div class="d-flex justify-content-between align-items-center">
                             <h4 class="mb-0">
-                                <i class="ri-qr-scan-line"></i> Escanear Asistencia
+                                <i class="ri-qr-scan-line"></i> Escanear Asistencias
                             </h4>
                             <a href="asistencia.php<?= $id_curso ? '?id_curso=' . $id_curso : '' ?>" class="btn btn-sm btn-light">
                                 <i class="ri-arrow-left-line"></i> Volver
@@ -266,17 +315,15 @@ if ($id_curso) {
                         <!-- Scanner -->
                         <div class="scanner-container mb-4">
                             <div id="reader"></div>
+                            <div id="result"></div>
                         </div>
-
-                        <!-- Resultado del escaneo -->
-                        <div id="result" class="mb-4"></div>
 
                         <!-- Lista de asistencia de hoy -->
                         <?php if (!empty($asistencia_hoy)): ?>
                             <div class="card mt-4">
                                 <div class="card-header bg-success text-white">
                                     <h6 class="mb-0">
-                                        <i class="ri-check-double-line"></i> Asistencia Registrada Hoy (<?= count($asistencia_hoy) ?>)
+                                        <i class="ri-check-double-line"></i> Asistencia Registrada Hoy (<span id="asistenciaCount"><?= count($asistencia_hoy) ?></span>)
                                     </h6>
                                 </div>
                                 <div class="card-body p-0">
@@ -288,7 +335,7 @@ if ($id_curso) {
                                                     <th>Estudiante</th>
                                                 </tr>
                                             </thead>
-                                            <tbody>
+                                            <tbody id="asistenciaTableBody">
                                                 <?php foreach ($asistencia_hoy as $asist): ?>
                                                     <tr>
                                                         <td><?= $asist['hora_entrada'] ?></td>
@@ -308,12 +355,43 @@ if ($id_curso) {
     </div>
 
     <script>
-        let html5QrcodeScanner;
+        let html5QrcodeInstance = null;
+        let isProcessingScan = false;
+        let scanUnlockTimer = null;
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function prependAsistenciaRow(hora, estudianteNombre) {
+            const tbody = document.getElementById('asistenciaTableBody');
+            const countEl = document.getElementById('asistenciaCount');
+            if (!tbody || !countEl) {
+                return;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${escapeHtml(hora)}</td><td>${escapeHtml(estudianteNombre)}</td>`;
+            tbody.prepend(tr);
+
+            const currentCount = parseInt(countEl.textContent || '0', 10);
+            countEl.textContent = Number.isNaN(currentCount) ? '1' : String(currentCount + 1);
+        }
 
         function onScanSuccess(decodedText, decodedResult) {
-            // Detener el escaneo temporalmente
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.pause();
+            if (isProcessingScan) {
+                return;
+            }
+            isProcessingScan = true;
+
+            if (scanUnlockTimer) {
+                clearTimeout(scanUnlockTimer);
+                scanUnlockTimer = null;
             }
 
             // Enviar datos al servidor
@@ -337,11 +415,8 @@ if ($id_curso) {
                             ${data.puntualidad ? `<p><strong>Puntualidad:</strong> ${data.puntualidad}</p>` : ''}
                         </div>
                     `;
-                    
-                    // Recargar la página después de 2 segundos para mostrar la lista actualizada
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 2000);
+
+                    prependAsistenciaRow(data.hora, data.estudiante);
                 } else {
                     resultDiv.innerHTML = `
                         <div class="alert alert-warning result-card">
@@ -349,15 +424,12 @@ if ($id_curso) {
                             <p>${data.message}</p>
                         </div>
                     `;
-                    
-                    // Reanudar el escaneo después de 2 segundos
-                    setTimeout(() => {
-                        if (html5QrcodeScanner) {
-                            html5QrcodeScanner.resume();
-                        }
-                        resultDiv.innerHTML = '';
-                    }, 2000);
                 }
+
+                scanUnlockTimer = setTimeout(() => {
+                    resultDiv.innerHTML = '';
+                    isProcessingScan = false;
+                }, 1600);
             })
             .catch(error => {
                 console.error('Error:', error);
@@ -368,14 +440,11 @@ if ($id_curso) {
                         <p>Error al procesar el QR</p>
                     </div>
                 `;
-                
-                // Reanudar el escaneo
-                setTimeout(() => {
-                    if (html5QrcodeScanner) {
-                        html5QrcodeScanner.resume();
-                    }
+
+                scanUnlockTimer = setTimeout(() => {
                     resultDiv.innerHTML = '';
-                }, 2000);
+                    isProcessingScan = false;
+                }, 1600);
             });
         }
 
@@ -386,17 +455,27 @@ if ($id_curso) {
 
         // Iniciar el escáner
         document.addEventListener('DOMContentLoaded', function() {
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader",
+            html5QrcodeInstance = new Html5Qrcode('reader');
+            html5QrcodeInstance.start(
+                { facingMode: 'environment' },
                 {
                     fps: 10,
                     qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0
+                    aspectRatio: 1.0,
+                    rememberLastUsedCamera: true
                 },
-                /* verbose= */ false
-            );
-            
-            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+                onScanSuccess,
+                onScanFailure
+            ).catch((err) => {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger result-card">
+                        <h5><i class="ri-error-warning-fill"></i> Error</h5>
+                        <p>No se pudo iniciar la camara. Verifica permisos.</p>
+                    </div>
+                `;
+                console.error(err);
+            });
         });
     </script>
 </body>

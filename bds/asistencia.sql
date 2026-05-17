@@ -10,5 +10,6 @@ CREATE TABLE IF NOT EXISTS `asistencia` (
   PRIMARY KEY (`id_asistencia`),
   UNIQUE KEY `uk_estudiante_fecha` (`id_estudiante`, `fecha`),
   KEY `idx_fecha` (`fecha`),
-  KEY `idx_estudiante` (`id_estudiante`)
+  KEY `idx_estudiante` (`id_estudiante`),
+  KEY `idx_asistencia_fecha_est_hora` (`fecha`,`id_estudiante`,`hora_entrada`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

@@ -15,9 +15,6 @@ class Database {
             $this->conn = new PDO('mysql:host=' . $this->host . ';dbname=' . $this->db_name, $this->username, $this->password);
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->exec("set names utf8");
-            if ($this->conn) {
-                edunote_aplicar_migraciones_bds($this->conn);
-            }
         } catch(PDOException $e) {
             echo 'Error en la conexión: ' . $e->getMessage();
         }
