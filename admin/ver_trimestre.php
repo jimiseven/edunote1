@@ -99,8 +99,12 @@ if (!empty($gestionesConsulta)) {
     $sqlPeriodosTrimestre = "SELECT id_periodo_evaluacion, parcial, gestion
                               FROM periodos_evaluacion
                               WHERE trimestre = ?
-                                AND gestion IN ($placeholdersPeriodos)";
+                                AND gestion IN ($placeholdersPeriodos)
+                              ORDER BY parcial ASC,
+                                       CASE WHEN gestion = ? THEN 0 ELSE 1 END ASC,
+                                       id_periodo_evaluacion DESC";
     $paramsPeriodosTrimestre = array_merge([(int)$trimestre], $gestionesConsulta);
+    $paramsPeriodosTrimestre[] = $gestionActual;
     try {
         $stmtPeriodosTrimestre = $conn->prepare($sqlPeriodosTrimestre);
         $stmtPeriodosTrimestre->execute($paramsPeriodosTrimestre);
@@ -1342,6 +1346,8 @@ foreach ($estudiantes as $estudiante) {
 
             let contextoActual = null;
             let totalesParcialesCache = null;
+            const parcialesEditados = new Set();
+            const periodosPorParcial = <?= json_encode(array_map(static function ($v) { return $v !== null ? (int)$v : null; }, $periodosIdsTrimestre), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
             const maxPorArea = { SER: 4, SABER: 8, HACER: 8 };
             const rangos = { SER: 10, SABER: 45, HACER: 40 };
 
@@ -1499,6 +1505,7 @@ foreach ($estudiantes as $estudiante) {
             function limpiarModal() {
                 contextoActual = null;
                 totalesParcialesCache = null;
+                parcialesEditados.clear();
                 infoMsgEl.textContent = '';
                 infoTrimestralEl.style.display = 'none';
                 estudianteEl.textContent = '—';
@@ -1700,6 +1707,7 @@ foreach ($estudiantes as $estudiante) {
                         inputs.forEach(input => {
                             input.addEventListener('input', () => {
                                 try {
+                                    parcialesEditados.add(p);
                                     calcularResumenes(p);
                                     aplicarTotalesParciales(totalesParcialesCache);
                                     actualizarNotaParcialDisplay(p, totalesParcialesCache);
@@ -1715,92 +1723,122 @@ foreach ($estudiantes as $estudiante) {
 
             btnGuardar.addEventListener('click', async function () {
                 if (!contextoActual) return;
-                const parcial = contextoActual.parcial;
                 try {
-                    const ser = obtenerValores(inputsMap[parcial]['SER'], 'SER');
-                    const saber = obtenerValores(inputsMap[parcial]['SABER'], 'SABER');
-                    const hacer = obtenerValores(inputsMap[parcial]['HACER'], 'HACER');
-
                     btnGuardar.disabled = true;
                     infoMsgEl.textContent = 'Guardando...';
 
-                    const payload = {
-                        id_curso: contextoActual.idCurso,
-                        id_materia: contextoActual.idMateria,
-                        id_estudiante: contextoActual.idEstudiante,
-                        id_periodo_evaluacion: contextoActual.idPeriodo,
-                        trimestre: contextoActual.trimestre,
-                        parcial: contextoActual.parcial,
-                        ser,
-                        saber,
-                        hacer,
-                    };
+                    const parcialesObjetivo = parcialesEditados.size > 0
+                        ? Array.from(parcialesEditados).sort((a, b) => a - b)
+                        : [contextoActual.parcial];
 
-                    const resp = await fetch('ajax_parcial_notas.php', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    const json = await resp.json();
-                    if (!resp.ok || !json.success) {
-                        throw new Error(json.message || 'No se pudo guardar.');
+                    const respuestas = [];
+                    for (const parcial of parcialesObjetivo) {
+                        const idPeriodoParcial = Number(periodosPorParcial?.[parcial] ?? 0);
+                        if (!idPeriodoParcial) {
+                            continue;
+                        }
+
+                        const ser = obtenerValores(inputsMap[parcial]['SER'], 'SER');
+                        const saber = obtenerValores(inputsMap[parcial]['SABER'], 'SABER');
+                        const hacer = obtenerValores(inputsMap[parcial]['HACER'], 'HACER');
+
+                        const payload = {
+                            id_curso: contextoActual.idCurso,
+                            id_materia: contextoActual.idMateria,
+                            id_estudiante: contextoActual.idEstudiante,
+                            id_periodo_evaluacion: idPeriodoParcial,
+                            trimestre: contextoActual.trimestre,
+                            parcial,
+                            ser,
+                            saber,
+                            hacer,
+                        };
+
+                        const resp = await fetch('ajax_parcial_notas.php', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const json = await resp.json();
+                        if (!resp.ok || !json.success) {
+                            throw new Error(json.message || `No se pudo guardar el parcial ${parcial}.`);
+                        }
+                        respuestas.push({ parcial, json });
                     }
+
+                    if (respuestas.length === 0) {
+                        throw new Error('No se encontraron periodos validos para guardar.');
+                    }
+
+                    const respuestaFinal = respuestas[respuestas.length - 1].json;
 
                     infoMsgEl.textContent = 'Cambios guardados correctamente.';
 
-                    if (contextoActual.celda) {
-                        if (json.data.parcial_formatted !== undefined) {
-                            contextoActual.celda.textContent = json.data.parcial_formatted;
+                    for (const respuesta of respuestas) {
+                        const parcial = respuesta.parcial;
+                        const data = respuesta.json.data || {};
+                        const celdaParcial = tabla.querySelector(`.js-parcial-edit[data-estudiante-id="${contextoActual.idEstudiante}"][data-materia-id="${contextoActual.idMateria}"][data-parcial="${parcial}"]`);
+                        if (celdaParcial && data.parcial_formatted !== undefined) {
+                            celdaParcial.textContent = data.parcial_formatted;
+                            celdaParcial.classList.toggle('nota-baja', data.es_nota_baja === true);
                         }
-                        contextoActual.celda.classList.toggle('nota-baja', json.data.es_nota_baja === true);
-                        notaActualEl.textContent = json.data.parcial_formatted !== '--' ? json.data.parcial_formatted : '—';
-                    }
 
-                    const fila = contextoActual.celda?.parentElement;
-                    if (fila && json.data.promedio_materia_formatted !== undefined) {
-                        const celdasProm = fila.querySelectorAll('.average-col');
-                        if (celdasProm.length > 0) {
-                            const celdaProm = celdasProm[celdasProm.length - 1];
-                            if (celdaProm) {
-                                celdaProm.textContent = json.data.promedio_materia_formatted ?? '--';
-                                if (json.data.promedio_materia_formatted !== null) {
-                                    celdaProm.classList.toggle('nota-baja', parseFloat(json.data.promedio_materia_formatted) < 51);
-                                }
-                            }
+                        if (!totalesParcialesCache) {
+                            totalesParcialesCache = {};
                         }
-                    }
-
-                    const promedioArea = valores => {
-                        const arr = Object.values(valores).filter(v => v !== null && v !== undefined);
-                        if (!arr.length) return null;
-                        const suma = arr.reduce((acc, val) => acc + Number(val), 0);
-                        return Number((suma / arr.length).toFixed(2));
-                    };
-
-                    if (!totalesParcialesCache) {
-                        totalesParcialesCache = {};
-                    }
-                    if (typeof contextoActual.parcial === 'number') {
-                        if (!totalesParcialesCache[contextoActual.parcial]) {
-                            totalesParcialesCache[contextoActual.parcial] = {
+                        if (!totalesParcialesCache[parcial]) {
+                            totalesParcialesCache[parcial] = {
                                 ser_total: null,
                                 saber_total: null,
                                 hacer_total: null,
                                 calificacion: null,
                             };
                         }
-                        const serProm = promedioArea(ser);
-                        const saberProm = promedioArea(saber);
-                        const hacerProm = promedioArea(hacer);
-                        totalesParcialesCache[contextoActual.parcial].ser_total = serProm;
-                        totalesParcialesCache[contextoActual.parcial].saber_total = saberProm;
-                        totalesParcialesCache[contextoActual.parcial].hacer_total = hacerProm;
-                        totalesParcialesCache[contextoActual.parcial].calificacion = json.data.parcial_formatted !== '--' ? parseFloat(json.data.parcial_formatted) : null;
-                        aplicarTotalesParciales(totalesParcialesCache);
+
+                        const promedioArea = valores => {
+                            const arr = Object.values(valores).filter(v => v !== null && v !== undefined);
+                            if (!arr.length) return null;
+                            const suma = arr.reduce((acc, val) => acc + Number(val), 0);
+                            return Number((suma / arr.length).toFixed(2));
+                        };
+
+                        const serVals = obtenerValores(inputsMap[parcial]['SER'], 'SER');
+                        const saberVals = obtenerValores(inputsMap[parcial]['SABER'], 'SABER');
+                        const hacerVals = obtenerValores(inputsMap[parcial]['HACER'], 'HACER');
+                        totalesParcialesCache[parcial].ser_total = promedioArea(serVals);
+                        totalesParcialesCache[parcial].saber_total = promedioArea(saberVals);
+                        totalesParcialesCache[parcial].hacer_total = promedioArea(hacerVals);
+                        totalesParcialesCache[parcial].calificacion = data.parcial_formatted !== '--' ? parseFloat(data.parcial_formatted) : null;
                     }
+
+                    const fila = contextoActual.celda?.parentElement;
+                    if (fila && respuestaFinal.data.promedio_materia_formatted !== undefined) {
+                        const celdasProm = fila.querySelectorAll('.average-col');
+                        if (celdasProm.length > 0) {
+                            const celdaProm = celdasProm[celdasProm.length - 1];
+                            if (celdaProm) {
+                                celdaProm.textContent = respuestaFinal.data.promedio_materia_formatted ?? '--';
+                                if (respuestaFinal.data.promedio_materia_formatted !== null) {
+                                    celdaProm.classList.toggle('nota-baja', parseFloat(respuestaFinal.data.promedio_materia_formatted) < 51);
+                                }
+                            }
+                        }
+                    }
+
+                    const parcialActivoBtn = modalEl.querySelector('#parcialTabs .nav-link.active');
+                    const parcialActivo = parcialActivoBtn ? parseInt(parcialActivoBtn.dataset.parcial, 10) : contextoActual.parcial;
+                    if (!Number.isNaN(parcialActivo)) {
+                        const celdaActiva = tabla.querySelector(`.js-parcial-edit[data-estudiante-id="${contextoActual.idEstudiante}"][data-materia-id="${contextoActual.idMateria}"][data-parcial="${parcialActivo}"]`);
+                        if (celdaActiva) {
+                            contextoActual.celda = celdaActiva;
+                        }
+                        notaActualEl.textContent = contextoActual.celda ? contextoActual.celda.textContent : '—';
+                    }
+                    aplicarTotalesParciales(totalesParcialesCache);
+                    parcialesEditados.clear();
 
                     setTimeout(() => {
                         bsModal.hide();
