@@ -4,7 +4,7 @@ date_default_timezone_set('America/La_Paz');
 
 class Database {
     private $host = 'localhost';
-    private $db_name = 'colegiov2';
+    private $db_name = 'wiredcom_uni3t';
     private $username = 'root';
     private $password = '';
     private $conn;
