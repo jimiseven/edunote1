@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/asistencia_auth.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
@@ -14,7 +15,7 @@ $isAdminAsistencia = $userRole === 1;
 
 function escaneo_get_lector(PDO $conn, $userId)
 {
-    $stmt = $conn->prepare("SELECT id_lector, alcance FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
+    $stmt = $conn->prepare("SELECT id_lector, alcance, tipo_lector FROM asistencia_lectores WHERE id_personal = ? AND estado = 1 LIMIT 1");
     $stmt->execute([(int)$userId]);
     $lector = $stmt->fetch(PDO::FETCH_ASSOC);
     return $lector ?: null;

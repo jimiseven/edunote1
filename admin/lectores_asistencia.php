@@ -16,15 +16,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_lector') {
             $idPersonal = (int)($_POST['id_personal'] ?? 0);
             $alcance = ($_POST['alcance'] ?? '') === 'POR_CURSO' ? 'POR_CURSO' : 'GLOBAL';
+            $tipoLector = ($_POST['tipo_lector'] ?? '') === 'ADMINISTRADOR' ? 'ADMINISTRADOR' : 'LECTURADOR';
 
             if ($idPersonal <= 0) {
                 throw new RuntimeException('Debes seleccionar un usuario de personal.');
             }
 
-            $stmt = $conn->prepare("INSERT INTO asistencia_lectores (id_personal, alcance, estado)
-                VALUES (?, ?, 1)
-                ON DUPLICATE KEY UPDATE alcance = VALUES(alcance), estado = 1");
-            $stmt->execute([$idPersonal, $alcance]);
+            $stmt = $conn->prepare("INSERT INTO asistencia_lectores (id_personal, alcance, tipo_lector, estado)
+                VALUES (?, ?, ?, 1)
+                ON DUPLICATE KEY UPDATE alcance = VALUES(alcance), tipo_lector = VALUES(tipo_lector), estado = 1");
+            $stmt->execute([$idPersonal, $alcance, $tipoLector]);
 
             $stmtId = $conn->prepare("SELECT id_lector FROM asistencia_lectores WHERE id_personal = ? LIMIT 1");
             $stmtId->execute([$idPersonal]);
@@ -128,7 +129,7 @@ $cursos = $conn->query("SELECT id_curso, nivel, curso, paralelo
     FROM cursos
     ORDER BY FIELD(nivel, 'Inicial', 'Primaria', 'Secundaria'), curso, paralelo")->fetchAll(PDO::FETCH_ASSOC);
 
-$lectores = $conn->query("SELECT al.id_lector, al.id_personal, al.alcance, al.estado,
+$lectores = $conn->query("SELECT al.id_lector, al.id_personal, al.alcance, al.tipo_lector, al.estado,
         p.nombres, p.apellidos, p.carnet_identidad, r.nombre_rol,
         (SELECT COUNT(*) FROM asistencia_lectores_cursos alc WHERE alc.id_lector = al.id_lector AND alc.estado = 1) AS total_cursos
     FROM asistencia_lectores al
@@ -213,7 +214,14 @@ foreach ($asigRows as $row) {
                                     <option value="POR_CURSO">POR_CURSO</option>
                                 </select>
                             </div>
-                            <div class="col-md-2 d-flex align-items-end">
+                            <div class="col-md-2">
+                                <label class="form-label">Tipo lector</label>
+                                <select name="tipo_lector" class="form-select">
+                                    <option value="LECTURADOR">LECTURADOR</option>
+                                    <option value="ADMINISTRADOR">ADMINISTRADOR</option>
+                                </select>
+                            </div>
+                            <div class="col-md-12 col-lg-2 d-flex align-items-end">
                                 <button type="submit" class="btn btn-primary w-100">Guardar</button>
                             </div>
                         </form>
@@ -230,6 +238,7 @@ foreach ($asigRows as $row) {
                                         <th>Usuario</th>
                                         <th>Rol</th>
                                         <th>Alcance</th>
+                                        <th>Tipo lector</th>
                                         <th>Cursos</th>
                                         <th>Estado</th>
                                         <th>Acciones</th>
@@ -238,7 +247,7 @@ foreach ($asigRows as $row) {
                                 <tbody>
                                     <?php if (empty($lectores)): ?>
                                         <tr>
-                                            <td colspan="6" class="text-center py-4">No hay lectores registrados.</td>
+                                            <td colspan="7" class="text-center py-4">No hay lectores registrados.</td>
                                         </tr>
                                     <?php else: ?>
                                         <?php foreach ($lectores as $lector): ?>
@@ -247,6 +256,7 @@ foreach ($asigRows as $row) {
                                                 <td><?= htmlspecialchars($lector['apellidos'] . ', ' . $lector['nombres'] . ' (CI ' . $lector['carnet_identidad'] . ')') ?></td>
                                                 <td><?= htmlspecialchars($lector['nombre_rol'] ?: 'Sin rol') ?></td>
                                                 <td><?= htmlspecialchars($lector['alcance']) ?></td>
+                                                <td><?= htmlspecialchars($lector['tipo_lector'] ?: 'LECTURADOR') ?></td>
                                                 <td><?= $lector['alcance'] === 'GLOBAL' ? 'Todos los cursos' : (int)$lector['total_cursos'] ?></td>
                                                 <td><?= (int)$lector['estado'] === 1 ? 'Habilitado' : 'Inhabilitado' ?></td>
                                                 <td>

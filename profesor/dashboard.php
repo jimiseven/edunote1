@@ -280,6 +280,74 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         @media (max-width: 576px) {
 
+            .main-content {
+                padding: 0.75rem;
+            }
+
+            .container-fluid.p-3 {
+                padding: 0 !important;
+            }
+
+            .card {
+                border: none;
+                box-shadow: none !important;
+                background: transparent;
+            }
+
+            .table-responsive {
+                min-width: 100%;
+                overflow: visible;
+            }
+
+            .table thead {
+                display: none;
+            }
+
+            .table,
+            .table tbody,
+            .table tr,
+            .table td {
+                display: block;
+                width: 100%;
+            }
+
+            .table tr {
+                background-color: #fff;
+                border: 1px solid #e9ecef;
+                border-radius: 0.75rem;
+                margin-bottom: 0.75rem;
+                padding: 0.35rem 0.5rem;
+            }
+
+            .table td {
+                border: 0;
+                border-bottom: 1px dashed #e9ecef;
+                padding: 0.55rem 0.4rem;
+                text-align: left !important;
+            }
+
+            .table td:last-child {
+                border-bottom: 0;
+            }
+
+            .table td::before {
+                content: attr(data-label);
+                display: block;
+                font-size: 0.72rem;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                color: #6c757d;
+                margin-bottom: 0.2rem;
+            }
+
+            .btn-action {
+                width: 100%;
+            }
+
+            .status-wrapper {
+                justify-content: flex-start !important;
+            }
+
             .table th,
             .table td {
                 padding: 0.75rem 0.5rem;
@@ -345,17 +413,17 @@ $anuncios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <?php if (!empty($cursos)): ?>
                                             <?php foreach ($cursos as $curso): ?>
                                                 <tr>
-                                                    <td><?php echo htmlspecialchars($curso['nivel']); ?></td>
-                                                    <td><?php echo htmlspecialchars($curso['curso']) . ' ' . htmlspecialchars($curso['paralelo']); ?></td>
-                                                    <td><?php echo htmlspecialchars($curso['nombre_materia']); ?></td>
-                                                    <td class="text-center">
+                                                    <td data-label="Nivel"><?php echo htmlspecialchars($curso['nivel']); ?></td>
+                                                    <td data-label="Curso"><?php echo htmlspecialchars($curso['curso']) . ' ' . htmlspecialchars($curso['paralelo']); ?></td>
+                                                    <td data-label="Materia"><?php echo htmlspecialchars($curso['nombre_materia']); ?></td>
+                                                    <td data-label="Accion" class="text-center">
                                                         <a href="cargar_notas.php?curso_materia=<?php echo htmlspecialchars($curso['id_curso_materia']); ?>"
                                                             class="btn btn-primary btn-sm btn-action">
                                                             Cargar
                                                         </a>
                                                     </td>
-                                                    <td class="text-center">
-                                                        <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                                    <td data-label="Estado" class="text-center">
+                                                        <div class="d-flex flex-wrap gap-1 justify-content-center status-wrapper">
                                                             <?php for ($i = 1; $i <= $cantidad_bimestres; $i++): ?>
                                                                 <span class="badge <?= in_array($i, $trimestresHabilitados) ? 'bg-success' : 'bg-secondary' ?> status-badge">
                                                                     T<?= $i ?>
