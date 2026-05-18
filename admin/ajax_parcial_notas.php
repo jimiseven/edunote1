@@ -10,7 +10,7 @@ function json_response(array $payload, int $statusCode = 200): void
     exit;
 }
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'] ?? null, [1, 2], true)) {
+if (!isset($_SESSION['user_id']) || !in_array((int)($_SESSION['user_role'] ?? 0), [1, 2], true)) {
     json_response(['success' => false, 'message' => 'No autorizado.'], 403);
 }
 
