@@ -101,28 +101,242 @@ function sanitize_file_part($value)
 
 function fetch_remote_binary($url)
 {
-    $data = @file_get_contents($url);
-    if ($data !== false) {
-        return $data;
+    for ($i = 0; $i < 2; $i++) {
+        $data = @file_get_contents($url);
+        if ($data !== false && strlen($data) > 100) {
+            return $data;
+        }
     }
 
     if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_FOLLOWLOCATION => true,
-        ]);
-        $response = curl_exec($ch);
-        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        for ($i = 0; $i < 3; $i++) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_USERAGENT => 'Edunote/1.0',
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+            ]);
+            $response = curl_exec($ch);
+            $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
 
-        if ($response !== false && $statusCode >= 200 && $statusCode < 300) {
-            return $response;
+            if ($response !== false && $statusCode >= 200 && $statusCode < 300 && strlen($response) > 100) {
+                return $response;
+            }
         }
     }
 
     return false;
+}
+
+function fetch_qr_binary_with_fallbacks($qrData, $size = 420)
+{
+    $encoded = urlencode((string)$qrData);
+    $size = max(180, min((int)$size, 900));
+
+    $urls = [
+        'https://api.qrserver.com/v1/create-qr-code/?size=' . $size . 'x' . $size . '&data=' . $encoded,
+        'https://quickchart.io/qr?size=' . $size . '&text=' . $encoded,
+        'https://chart.googleapis.com/chart?chs=' . $size . 'x' . $size . '&cht=qr&chl=' . $encoded,
+    ];
+
+    foreach ($urls as $url) {
+        $binary = fetch_remote_binary($url);
+        if ($binary !== false && strlen($binary) > 100) {
+            return $binary;
+        }
+    }
+
+    return false;
+}
+
+function build_simple_pdf_from_jpegs(array $jpegPages)
+{
+    if (empty($jpegPages)) {
+        return false;
+    }
+
+    $objects = [];
+    $kids = [];
+    $pageObjectIds = [];
+    $currentId = 3;
+
+    foreach ($jpegPages as $page) {
+        if (!isset($page['bytes'], $page['width'], $page['height'])) {
+            continue;
+        }
+        $imgBytes = $page['bytes'];
+        $w = max(1, (int)$page['width']);
+        $h = max(1, (int)$page['height']);
+
+        $imgId = $currentId++;
+        $contentId = $currentId++;
+        $pageId = $currentId++;
+
+        $imgObj = "<< /Type /XObject /Subtype /Image /Width {$w} /Height {$h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($imgBytes) . " >>\nstream\n" . $imgBytes . "\nendstream";
+        $contentStream = "q\n{$w} 0 0 {$h} 0 0 cm\n/Im0 Do\nQ\n";
+        $contentObj = "<< /Length " . strlen($contentStream) . " >>\nstream\n" . $contentStream . "endstream";
+        $pageObj = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$w} {$h}] /Resources << /XObject << /Im0 {$imgId} 0 R >> >> /Contents {$contentId} 0 R >>";
+
+        $objects[$imgId] = $imgObj;
+        $objects[$contentId] = $contentObj;
+        $objects[$pageId] = $pageObj;
+        $pageObjectIds[] = $pageId;
+        $kids[] = $pageId . ' 0 R';
+    }
+
+    if (empty($kids)) {
+        return false;
+    }
+
+    $objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    $objects[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
+
+    ksort($objects, SORT_NUMERIC);
+
+    $pdf = "%PDF-1.4\n";
+    $offsets = [0];
+    foreach ($objects as $id => $body) {
+        $offsets[$id] = strlen($pdf);
+        $pdf .= $id . " 0 obj\n" . $body . "\nendobj\n";
+    }
+
+    $xrefStart = strlen($pdf);
+    $maxId = max(array_keys($objects));
+    $pdf .= "xref\n0 " . ($maxId + 1) . "\n";
+    $pdf .= "0000000000 65535 f \n";
+    for ($i = 1; $i <= $maxId; $i++) {
+        $off = isset($offsets[$i]) ? $offsets[$i] : 0;
+        $pdf .= str_pad((string)$off, 10, '0', STR_PAD_LEFT) . " 00000 n \n";
+    }
+
+    $pdf .= "trailer\n<< /Size " . ($maxId + 1) . " /Root 1 0 R >>\n";
+    $pdf .= "startxref\n{$xrefStart}\n%%EOF";
+
+    return $pdf;
+}
+
+function build_gafetes_pdf_binary_for_course(array $students, $courseLabel)
+{
+    if (empty($students)) {
+        return false;
+    }
+
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+        return false;
+    }
+
+    $pages = [];
+
+    $pageW = 612;
+    $pageH = 792;
+    $cardW = (int)round((6 * 72) / 2.54);
+    $cardH = (int)round((10 * 72) / 2.54);
+    $qrSize = (int)round((4.5 * 72) / 2.54);
+    $cols = 3;
+    $rows = 2;
+    $cardsPerPage = $cols * $rows;
+    $gapX = (int)round(($pageW - ($cols * $cardW)) / ($cols + 1));
+    $gapY = (int)round(($pageH - ($rows * $cardH)) / ($rows + 1));
+
+    $total = count($students);
+    for ($i = 0; $i < $total; $i += $cardsPerPage) {
+        $sheet = imagecreatetruecolor($pageW, $pageH);
+        if (!$sheet) {
+            continue;
+        }
+
+        $white = imagecolorallocate($sheet, 255, 255, 255);
+        $black = imagecolorallocate($sheet, 15, 15, 15);
+        $dark = imagecolorallocate($sheet, 25, 25, 25);
+        $gray = imagecolorallocate($sheet, 120, 120, 120);
+        $border = imagecolorallocate($sheet, 170, 170, 170);
+        $light = imagecolorallocate($sheet, 245, 245, 245);
+        imagefill($sheet, 0, 0, $white);
+
+        $title = 'Curso: ' . $courseLabel;
+        imagestring($sheet, 5, max(10, (int)(($pageW - (strlen($title) * 9)) / 2)), 10, $title, $dark);
+
+        for ($slot = 0; $slot < $cardsPerPage; $slot++) {
+            $idx = $i + $slot;
+            if ($idx >= $total) {
+                break;
+            }
+            $student = $students[$idx];
+            $row = (int)floor($slot / $cols);
+            $col = $slot % $cols;
+
+            $x = $gapX + $col * ($cardW + $gapX);
+            $y = $gapY + $row * ($cardH + $gapY);
+
+            imagefilledrectangle($sheet, $x, $y, $x + $cardW, $y + $cardH, $white);
+            imagerectangle($sheet, $x, $y, $x + $cardW, $y + $cardH, $border);
+
+            imagefilledrectangle($sheet, $x, $y, $x + $cardW, $y + 13, $black);
+            imagestring($sheet, 2, $x + (int)(($cardW - (strlen('GAFETE ESTUDIANTIL') * 6)) / 2), $y + 3, 'GAFETE ESTUDIANTIL', $white);
+            imagestring($sheet, 2, $x + (int)(($cardW - (strlen('Unidad Educativa Simon Bolivar') * 6)) / 2), $y + 16, 'Unidad Educativa Simon Bolivar', $dark);
+
+            $qrData = 'EST:' . (int)$student['id_estudiante'];
+            $qrBinary = fetch_qr_binary_with_fallbacks($qrData, 600);
+            $qrImg = ($qrBinary !== false) ? @imagecreatefromstring($qrBinary) : false;
+            $qrX = $x + (int)(($cardW - $qrSize) / 2);
+            $qrY = $y + 42;
+            if ($qrImg) {
+                imagecopyresampled($sheet, $qrImg, $qrX, $qrY, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
+                imagedestroy($qrImg);
+            } else {
+                imagefilledrectangle($sheet, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $light);
+                imagerectangle($sheet, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $border);
+                imagestring($sheet, 2, $qrX + 24, $qrY + (int)($qrSize / 2), 'QR no disponible', $gray);
+            }
+
+            $idY = $qrY + $qrSize + 12;
+            imagestring($sheet, 2, $x + (int)(($cardW - (strlen('Id estudiante: ' . (int)$student['id_estudiante']) * 6)) / 2), $idY, 'Id estudiante: ' . (int)$student['id_estudiante'], $dark);
+
+            $fullName = strtoupper(trim(($student['apellido_paterno'] ?? '') . ' ' . ($student['apellido_materno'] ?? '') . ', ' . ($student['nombres'] ?? '')));
+            $nameLines = explode("\n", wordwrap($fullName, 26, "\n", true));
+            if (count($nameLines) > 2) {
+                $nameLines = array_slice($nameLines, 0, 2);
+                $last = $nameLines[1];
+                $nameLines[1] = (strlen($last) > 3) ? (substr($last, 0, -3) . '...') : $last;
+            }
+            $nameY = $idY + 14;
+            foreach ($nameLines as $line) {
+                imagestring($sheet, 3, $x + (int)(($cardW - (strlen($line) * 7)) / 2), $nameY, $line, $black);
+                $nameY += 12;
+            }
+
+            $courseText = trim(($student['nivel'] ?? '') . ' ' . ($student['curso'] ?? '') . ' "' . ($student['paralelo'] ?? '') . '"');
+            $courseLines = explode("\n", wordwrap($courseText, 28, "\n", true));
+            if (count($courseLines) > 2) {
+                $courseLines = array_slice($courseLines, 0, 2);
+            }
+            $footY = $y + $cardH - 20;
+            foreach ($courseLines as $line) {
+                imagestring($sheet, 2, $x + (int)(($cardW - (strlen($line) * 6)) / 2), $footY, $line, $dark);
+                $footY += 10;
+            }
+        }
+
+        ob_start();
+        imagejpeg($sheet, null, 88);
+        $jpeg = ob_get_clean();
+        imagedestroy($sheet);
+
+        if ($jpeg !== false && $jpeg !== '') {
+            $pages[] = [
+                'bytes' => $jpeg,
+                'width' => $pageW,
+                'height' => $pageH,
+            ];
+        }
+    }
+
+    return build_simple_pdf_from_jpegs($pages);
 }
 
 function create_gafete_png_binary($qrBinary, array $student)
@@ -131,9 +345,9 @@ function create_gafete_png_binary($qrBinary, array $student)
         return false;
     }
 
-    $qrImg = @imagecreatefromstring($qrBinary);
-    if (!$qrImg) {
-        return false;
+    $qrImg = false;
+    if (is_string($qrBinary) && $qrBinary !== '') {
+        $qrImg = @imagecreatefromstring($qrBinary);
     }
 
     $width = 1063;
@@ -155,8 +369,14 @@ function create_gafete_png_binary($qrBinary, array $student)
     $qrSize = 410;
     $qrX = 60;
     $qrY = 190;
-    imagecopyresampled($canvas, $qrImg, $qrX, $qrY, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
-    imagerectangle($canvas, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $border);
+    if ($qrImg) {
+        imagecopyresampled($canvas, $qrImg, $qrX, $qrY, 0, 0, $qrSize, $qrSize, imagesx($qrImg), imagesy($qrImg));
+        imagerectangle($canvas, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $border);
+    } else {
+        imagefilledrectangle($canvas, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, imagecolorallocate($canvas, 245, 245, 245));
+        imagerectangle($canvas, $qrX, $qrY, $qrX + $qrSize, $qrY + $qrSize, $border);
+        imagestring($canvas, 5, $qrX + 120, $qrY + 190, 'QR NO DISPONIBLE', $gray);
+    }
 
     $fullName = trim(($student['apellido_paterno'] ?? '') . ' ' . ($student['apellido_materno'] ?? '') . ', ' . ($student['nombres'] ?? ''));
     $curso = trim(($student['nivel'] ?? '') . ' ' . ($student['curso'] ?? '') . ' "' . ($student['paralelo'] ?? '') . '"');
@@ -181,7 +401,9 @@ function create_gafete_png_binary($qrBinary, array $student)
     imagepng($canvas, null, 9);
     $binary = ob_get_clean();
 
-    imagedestroy($qrImg);
+    if ($qrImg) {
+        imagedestroy($qrImg);
+    }
     imagedestroy($canvas);
 
     return $binary !== false ? $binary : false;
@@ -338,10 +560,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $ok = 0;
     $fail = 0;
 
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
     foreach ($studentsQr as $studentQr) {
         $qrData = 'EST:' . (int)$studentQr['id_estudiante'];
-        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=945x945&data=' . urlencode($qrData);
-        $binary = fetch_remote_binary($qrUrl);
+        $binary = fetch_qr_binary_with_fallbacks($qrData, 420);
 
         if ($binary === false) {
             $fail++;
@@ -380,6 +604,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $slugCurso = sanitize_file_part($courseInfo['nivel'] . '_' . $courseInfo['curso'] . '_' . $courseInfo['paralelo']);
     $zipName = 'gafetes_' . $slugCurso . '_' . date('Ymd_His') . '.zip';
 
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
     header('Content-Type: application/zip');
     header('Content-Disposition: attachment; filename="' . $zipName . '"');
     header('Content-Length: ' . filesize($zipPath));
@@ -399,6 +627,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     if (!class_exists('ZipArchive')) {
         $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'ZipArchive no está habilitado en este servidor.'];
+        header('Location: asistencia.php');
+        exit();
+    }
+
+    if (!function_exists('imagecreatetruecolor') || !function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+        $_SESSION['asistencia_flash'] = ['type' => 'danger', 'message' => 'La extension GD no esta habilitada. No se pueden generar gafetes PDF.'];
         header('Location: asistencia.php');
         exit();
     }
@@ -437,31 +671,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $ok = 0;
     $fail = 0;
 
-    foreach ($studentsAll as $studentQr) {
-        $qrData = 'EST:' . (int)$studentQr['id_estudiante'];
-        $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=945x945&data=' . urlencode($qrData);
-        $binary = fetch_remote_binary($qrUrl);
+    $groupedByCourse = [];
+    foreach ($studentsAll as $student) {
+        $nivel = (string)$student['nivel'];
+        $cursoFolder = sanitize_file_part($student['curso'] . '_' . $student['paralelo']);
+        $courseKey = $nivel . '||' . $cursoFolder;
+        if (!isset($groupedByCourse[$courseKey])) {
+            $groupedByCourse[$courseKey] = [
+                'nivel' => $nivel,
+                'curso_folder' => $cursoFolder,
+                'course_label' => trim($student['nivel'] . ' ' . $student['curso'] . ' "' . $student['paralelo'] . '"'),
+                'students' => [],
+            ];
+        }
+        $groupedByCourse[$courseKey]['students'][] = $student;
+    }
 
-        if ($binary === false) {
+    foreach (['Inicial', 'Primaria', 'Secundaria'] as $nivelBase) {
+        $zip->addEmptyDir(sanitize_file_part($nivelBase));
+    }
+
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
+    foreach ($groupedByCourse as $courseData) {
+        $nivelFolder = sanitize_file_part($courseData['nivel']);
+        $cursoFolder = $courseData['curso_folder'];
+        $baseFolder = $nivelFolder . '/' . $cursoFolder;
+        $zip->addEmptyDir($baseFolder);
+
+        $pdfBinary = build_gafetes_pdf_binary_for_course($courseData['students'], $courseData['course_label']);
+        if ($pdfBinary === false || $pdfBinary === '') {
             $fail++;
             continue;
         }
 
-        $fileName = sanitize_file_part($studentQr['nivel']) . '__'
-            . sanitize_file_part($studentQr['curso'] . '_' . $studentQr['paralelo']) . '__'
-            . sanitize_file_part($studentQr['apellido_paterno'] . '_' . $studentQr['nombres'])
-            . '_' . (int)$studentQr['id_estudiante'] . '.png';
-
-        $gafeteBinary = create_gafete_png_binary($binary, $studentQr);
-        if ($gafeteBinary === false) {
-            $gafeteBinary = $binary;
-        }
-
-        $saved = $zip->addFromString($fileName, $gafeteBinary);
-        if (!$saved) {
-            $fail++;
-        } else {
+        $pdfName = 'Gafetes_' . $cursoFolder . '.pdf';
+        $saved = $zip->addFromString($baseFolder . '/' . $pdfName, $pdfBinary);
+        if ($saved) {
             $ok++;
+        } else {
+            $fail++;
         }
     }
 
@@ -478,6 +728,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     $zipName = 'gafetes_todo_colegio_' . date('Ymd_His') . '.zip';
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
 
     header('Content-Type: application/zip');
     header('Content-Disposition: attachment; filename="' . $zipName . '"');
@@ -650,9 +904,14 @@ if ($id_curso) {
         #reader {
             border-radius: 10px;
             overflow: hidden;
+            height: 360px;
+            background: rgba(0, 0, 0, 0.25);
         }
         #reader video {
             border-radius: 10px;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover;
         }
         .result-card {
             animation: slideIn 0.3s ease-out;
@@ -689,6 +948,36 @@ if ($id_curso) {
             width: 3rem;
             height: 3rem;
         }
+        .pdf-progress-wrap {
+            margin-top: 12px;
+            text-align: left;
+        }
+        .pdf-progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 6px;
+        }
+        .pdf-progress-track {
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: #e9ecef;
+            overflow: hidden;
+        }
+        .pdf-progress-fill {
+            height: 100%;
+            width: 1%;
+            background: linear-gradient(90deg, #198754 0%, #20c997 100%);
+            transition: width 0.25s ease;
+        }
+        .pdf-progress-eta {
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: #6c757d;
+            min-height: 1.1rem;
+        }
         .manual-id-card {
             background: rgba(255,255,255,0.12);
             border: 1px solid rgba(255,255,255,0.28);
@@ -705,8 +994,19 @@ if ($id_curso) {
             margin-top: 6px;
         }
         .reader-pane {
+            position: relative;
             border-radius: 10px;
+            overflow: hidden;
+            min-height: 360px;
             transition: all 0.25s ease;
+        }
+        .scan-result-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 30;
+            pointer-events: none;
         }
         .reader-collapsed-hint {
             display: none;
@@ -720,16 +1020,20 @@ if ($id_curso) {
         .scan-layout.manual-mode #reader {
             display: none;
         }
+        .scan-layout.manual-mode .scan-result-overlay {
+            display: none;
+        }
         .scan-layout.manual-mode .reader-collapsed-hint {
             display: block;
         }
-        .scan-result-box {
-            position: sticky;
-            top: 0;
-            z-index: 6;
-        }
         #scan-result .alert {
-            margin-bottom: 0.75rem;
+            margin-bottom: 0;
+            min-height: 96px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+            border-radius: 10px;
         }
         @media (max-width: 991.98px) {
             .asistencia-main {
@@ -756,6 +1060,12 @@ if ($id_curso) {
                 right: 16px;
                 bottom: 16px;
                 font-size: 24px;
+            }
+            #reader {
+                height: 300px;
+            }
+            .reader-pane {
+                min-height: 300px;
             }
             .qr-card {
                 margin: 6px;
@@ -917,12 +1227,9 @@ if ($id_curso) {
                             </form>
 
                             <div class="mt-3">
-                                <form method="POST" action="" class="d-inline">
-                                    <input type="hidden" name="action" value="generate_all_school_zip">
-                                    <button type="submit" class="btn btn-success">
-                                        <i class="ri-download-cloud-2-line"></i> Descargar ZIP de todo el colegio
-                                    </button>
-                                </form>
+                                <button type="button" class="btn btn-success" id="btnZipTodoColegio" onclick="generarZipTodoColegio()">
+                                    <i class="ri-download-cloud-2-line"></i> Descargar ZIP de todo el colegio
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1024,13 +1331,13 @@ if ($id_curso) {
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="scan-result-box">
-                        <div id="scan-result"></div>
-                    </div>
                     <div class="row g-3 align-items-start scan-layout" id="scanLayout">
                         <div class="col-lg-8">
                             <div class="reader-pane">
                                 <div id="reader"></div>
+                                <div class="scan-result-overlay">
+                                    <div id="scan-result"></div>
+                                </div>
                                 <div id="readerCollapsedHint" class="reader-collapsed-hint" onclick="setManualMode(false)">
                                     <i class="ri-qr-scan-line"></i>
                                     Lector QR minimizado. Toca aquí para volver al tamaño grande.
@@ -1067,6 +1374,16 @@ if ($id_curso) {
                     <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
                     <h6 class="mt-3 mb-1">Generando PDF</h6>
                     <p class="text-muted mb-0">Por favor espere. No cierre esta ventana.</p>
+                    <div class="pdf-progress-wrap">
+                        <div class="pdf-progress-label">
+                            <span id="pdfProgressText">Preparando...</span>
+                            <span id="pdfProgressPercent">1%</span>
+                        </div>
+                        <div class="pdf-progress-track">
+                            <div class="pdf-progress-fill" id="pdfProgressFill"></div>
+                        </div>
+                        <div class="pdf-progress-eta" id="pdfProgressEta"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1074,6 +1391,7 @@ if ($id_curso) {
 
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
     <script>
         feather.replace();
@@ -1093,6 +1411,34 @@ if ($id_curso) {
                 }
             }
             echo json_encode($datosPdf, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        ?>;
+
+        const datosGafetesZip = <?php
+            $datosZip = [];
+            if ($isAdminAsistencia) {
+                try {
+                    $stmtZip = $conn->query("SELECT e.id_estudiante, e.nombres, e.apellido_paterno, e.apellido_materno, c.nivel, c.curso, c.paralelo
+                        FROM estudiantes e
+                        INNER JOIN cursos c ON c.id_curso = e.id_curso
+                        ORDER BY FIELD(c.nivel, 'Inicial', 'Primaria', 'Secundaria'), c.curso, c.paralelo, e.apellido_paterno, e.apellido_materno, e.nombres");
+                    $rowsZip = $stmtZip ? $stmtZip->fetchAll(PDO::FETCH_ASSOC) : [];
+                    foreach ($rowsZip as $rowZip) {
+                        $qrDataZip = 'EST:' . (int)$rowZip['id_estudiante'];
+                        $datosZip[] = [
+                            'id_estudiante' => (int)$rowZip['id_estudiante'],
+                            'nombre' => strtoupper(trim(($rowZip['apellido_paterno'] ?? '') . ' ' . ($rowZip['apellido_materno'] ?? '') . ', ' . ($rowZip['nombres'] ?? ''))),
+                            'nivel' => (string)($rowZip['nivel'] ?? ''),
+                            'curso' => (string)($rowZip['curso'] ?? ''),
+                            'paralelo' => (string)($rowZip['paralelo'] ?? ''),
+                            'curso_texto' => trim(($rowZip['nivel'] ?? '') . ' ' . ($rowZip['curso'] ?? '') . ' "' . ($rowZip['paralelo'] ?? '') . '"'),
+                            'qr_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=' . urlencode($qrDataZip),
+                        ];
+                    }
+                } catch (Throwable $e) {
+                    $datosZip = [];
+                }
+            }
+            echo json_encode($datosZip, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         ?>;
 
         function cmToPt(cm) {
@@ -1118,6 +1464,27 @@ if ($id_curso) {
             if (modal) {
                 modal.show();
             }
+        }
+
+        function actualizarProgresoPdf(percent, text, etaText) {
+            const fill = document.getElementById('pdfProgressFill');
+            const pct = document.getElementById('pdfProgressPercent');
+            const lbl = document.getElementById('pdfProgressText');
+            const eta = document.getElementById('pdfProgressEta');
+
+            const safe = Math.max(1, Math.min(100, Math.round(percent)));
+            if (fill) fill.style.width = safe + '%';
+            if (pct) pct.textContent = safe + '%';
+            if (lbl && text) lbl.textContent = text;
+            if (eta) eta.textContent = etaText || '';
+        }
+
+        function formatearSegundos(segundos) {
+            const s = Math.max(0, Math.round(segundos));
+            const m = Math.floor(s / 60);
+            const r = s % 60;
+            if (m <= 0) return `${r}s`;
+            return `${m}m ${r}s`;
         }
 
         function ocultarCargaPdf() {
@@ -1161,6 +1528,7 @@ if ($id_curso) {
 
             isGeneratingPdf = true;
             mostrarCargaPdf();
+            actualizarProgresoPdf(1, 'Generando PDF del curso', '');
 
             try {
                 const { jsPDF } = window.jspdf;
@@ -1190,6 +1558,8 @@ if ($id_curso) {
                 }
 
                 for (let i = 0; i < datosGafetesPdf.length; i++) {
+                    const pct = 1 + Math.floor(((i + 1) / datosGafetesPdf.length) * 99);
+                    actualizarProgresoPdf(pct, 'Procesando gafetes del curso', '');
                     if (i > 0 && i % cardsPerPage === 0) {
                         pdf.addPage('letter', 'portrait');
                     }
@@ -1264,6 +1634,7 @@ if ($id_curso) {
 
                 const nombreCursoArchivo = <?= json_encode($id_curso ? ('curso_' . (int)$id_curso) : 'curso') ?>;
                 pdf.save('gafetes_pdf_' + nombreCursoArchivo + '.pdf');
+                actualizarProgresoPdf(100, 'PDF completado', '');
             } finally {
                 isGeneratingPdf = false;
                 ocultarCargaPdf();
@@ -1301,6 +1672,220 @@ if ($id_curso) {
         let isScanning = false;
         let isProcessingScan = false;
         const RESULT_DISPLAY_MS = 1000;
+        let beepAudioContext = null;
+
+        function ensureBeepContext() {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+                return null;
+            }
+            if (!beepAudioContext) {
+                beepAudioContext = new AudioCtx();
+            }
+            if (beepAudioContext.state === 'suspended') {
+                beepAudioContext.resume().catch(() => {});
+            }
+            return beepAudioContext;
+        }
+
+        function sanitizeFolderName(value) {
+            return String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^A-Za-z0-9_-]+/g, '_')
+                .replace(/^_+|_+$/g, '') || 'sin_nombre';
+        }
+
+        async function crearPdfGafetesCursoBlob(estudiantesCurso, cursoPagina) {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+            const pageW = 612;
+            const pageH = 792;
+            const cardW = cmToPt(6);
+            const cardH = cmToPt(10);
+            const qrSize = cmToPt(4.5);
+            const cardsPerPage = 6;
+
+            const cols = 3;
+            const rows = 2;
+            const gapX = (pageW - (cols * cardW)) / (cols + 1);
+            const gapY = (pageH - (rows * cardH)) / (rows + 1);
+
+            const slots = [];
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    slots.push({
+                        x: gapX + col * (cardW + gapX),
+                        y: gapY + row * (cardH + gapY)
+                    });
+                }
+            }
+
+            for (let i = 0; i < estudiantesCurso.length; i++) {
+                if (i > 0 && i % cardsPerPage === 0) {
+                    pdf.addPage('letter', 'portrait');
+                }
+
+                const est = estudiantesCurso[i];
+                const slot = slots[i % cardsPerPage];
+                const x = slot.x;
+                const y = slot.y;
+
+                if (i % cardsPerPage === 0) {
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(25, 25, 25);
+                    pdf.text('Curso: ' + cursoPagina, pageW / 2, 28, { align: 'center' });
+                }
+
+                pdf.setFillColor(255, 255, 255);
+                pdf.setDrawColor(170, 170, 170);
+                pdf.setLineWidth(0.5);
+                pdf.rect(x, y, cardW, cardH, 'FD');
+
+                pdf.setFillColor(15, 15, 15);
+                pdf.rect(x, y, cardW, 13, 'F');
+
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(8);
+                pdf.text('GAFETE ESTUDIANTIL', x + (cardW / 2), y + 9, { align: 'center' });
+                pdf.setTextColor(20, 20, 20);
+                pdf.setFontSize(7.5);
+                pdf.text('Unidad Educativa Simon Bolivar', x + (cardW / 2), y + 20, { align: 'center' });
+
+                const qrX = x + (cardW - qrSize) / 2;
+                const qrY = y + 42;
+                const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
+                if (qrDataUrl) {
+                    pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                } else {
+                    pdf.setDrawColor(160, 160, 160);
+                    pdf.rect(qrX, qrY, qrSize, qrSize);
+                    pdf.setFont('helvetica', 'normal');
+                    pdf.setFontSize(8);
+                    pdf.text('QR no disponible', x + (cardW / 2), qrY + (qrSize / 2), { align: 'center' });
+                }
+
+                const idY = qrY + qrSize + 11;
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8);
+                pdf.text('Id estudiante: ' + est.id_estudiante, x + (cardW / 2), idY, { align: 'center' });
+
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(10);
+                const nombreBase = (est.nombre || '').toUpperCase();
+                let nombreLineas = pdf.splitTextToSize(nombreBase, cardW - 12);
+                if (nombreLineas.length > 2) {
+                    nombreLineas = nombreLineas.slice(0, 2);
+                    nombreLineas[1] = nombreLineas[1].slice(0, Math.max(nombreLineas[1].length - 3, 0)) + '...';
+                }
+                pdf.text(nombreLineas, x + (cardW / 2), idY + 14, { align: 'center', maxWidth: cardW - 12 });
+
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8);
+                const pieTexto = est.curso_texto || '';
+                let pieLineas = pdf.splitTextToSize(pieTexto, cardW - 12);
+                if (pieLineas.length > 2) {
+                    pieLineas = pieLineas.slice(0, 2);
+                    pieLineas[1] = pieLineas[1].slice(0, Math.max(pieLineas[1].length - 3, 0)) + '...';
+                }
+                pdf.text(pieLineas, x + (cardW / 2), y + cardH - 20, { align: 'center', maxWidth: cardW - 12 });
+            }
+
+            return pdf.output('blob');
+        }
+
+        async function generarZipTodoColegio() {
+            if (!Array.isArray(datosGafetesZip) || datosGafetesZip.length === 0) {
+                alert('No hay estudiantes para generar el ZIP global.');
+                return;
+            }
+            if (typeof JSZip === 'undefined') {
+                alert('No se pudo cargar JSZip. Recarga la pagina e intenta nuevamente.');
+                return;
+            }
+
+            const btn = document.getElementById('btnZipTodoColegio');
+            if (btn) {
+                btn.disabled = true;
+            }
+            mostrarCargaPdf();
+            actualizarProgresoPdf(1, 'Preparando cursos', 'Calculando tiempo estimado...');
+
+            try {
+                const zip = new JSZip();
+                const byCourse = new Map();
+
+                for (const st of datosGafetesZip) {
+                    const key = `${st.nivel}||${st.curso}||${st.paralelo}`;
+                    if (!byCourse.has(key)) {
+                        byCourse.set(key, {
+                            nivel: st.nivel,
+                            curso: st.curso,
+                            paralelo: st.paralelo,
+                            curso_texto: st.curso_texto,
+                            estudiantes: []
+                        });
+                    }
+                    byCourse.get(key).estudiantes.push(st);
+                }
+
+                ['Inicial', 'Primaria', 'Secundaria'].forEach(n => zip.folder(sanitizeFolderName(n)));
+
+                const courseEntries = Array.from(byCourse.values());
+                const totalCursos = courseEntries.length;
+                const startTs = Date.now();
+
+                for (let idx = 0; idx < totalCursos; idx++) {
+                    const cursoData = courseEntries[idx];
+                    const nivelFolder = sanitizeFolderName(cursoData.nivel);
+                    const cursoFolder = sanitizeFolderName(`${cursoData.curso}_${cursoData.paralelo}`);
+                    const carpetaCurso = zip.folder(`${nivelFolder}/${cursoFolder}`);
+
+                    const avance = idx / Math.max(totalCursos, 1);
+                    const pctPrevio = 1 + Math.floor(avance * 94);
+                    const elapsedSec = (Date.now() - startTs) / 1000;
+                    const cursosTerminados = idx;
+                    const avgSec = cursosTerminados > 0 ? (elapsedSec / cursosTerminados) : 0;
+                    const restantes = Math.max(totalCursos - cursosTerminados, 0);
+                    const etaSec = avgSec * restantes;
+                    actualizarProgresoPdf(
+                        pctPrevio,
+                        `Generando PDF ${idx + 1}/${totalCursos}: ${cursoData.curso_texto}`,
+                        cursosTerminados > 0 ? `Tiempo estimado restante: ${formatearSegundos(etaSec)}` : 'Calculando tiempo estimado...'
+                    );
+
+                    const pdfBlob = await crearPdfGafetesCursoBlob(cursoData.estudiantes, cursoData.curso_texto);
+                    carpetaCurso.file(`Gafetes_${cursoFolder}.pdf`, pdfBlob);
+                }
+
+                actualizarProgresoPdf(96, 'Empaquetando ZIP', '');
+                const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+                const ts = new Date();
+                const pad = (n) => String(n).padStart(2, '0');
+                const name = `gafetes_todo_colegio_${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.zip`;
+
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                actualizarProgresoPdf(100, 'ZIP completado', 'Descarga iniciada');
+            } catch (err) {
+                console.error(err);
+                alert('No se pudo generar el ZIP global. Intenta nuevamente.');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                }
+                ocultarCargaPdf();
+            }
+        }
 
         function setManualMode(enabled) {
             const layout = document.getElementById('scanLayout');
@@ -1316,7 +1901,6 @@ if ($id_curso) {
 
         function renderScanResult(data) {
             const resultDiv = document.getElementById('scan-result');
-            const modalBody = document.querySelector('#scannerModal .modal-body');
 
             if (data.success) {
                 resultDiv.innerHTML = `
@@ -1338,17 +1922,9 @@ if ($id_curso) {
                 playErrorSound();
             }
 
-            if (modalBody) {
-                modalBody.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
             setTimeout(() => {
                 resultDiv.innerHTML = '';
                 isProcessingScan = false;
-                if (html5QrCode) {
-                    html5QrCode.resume();
-                }
             }, RESULT_DISPLAY_MS);
         }
 
@@ -1358,10 +1934,6 @@ if ($id_curso) {
             }
 
             isProcessingScan = true;
-
-            if (html5QrCode) {
-                html5QrCode.pause();
-            }
 
             fetch('asistencia.php', {
                 method: 'POST',
@@ -1385,9 +1957,6 @@ if ($id_curso) {
                 setTimeout(() => {
                     resultDiv.innerHTML = '';
                     isProcessingScan = false;
-                    if (html5QrCode) {
-                        html5QrCode.resume();
-                    }
                 }, RESULT_DISPLAY_MS);
             });
         }
@@ -1395,6 +1964,7 @@ if ($id_curso) {
         function openScanner() {
             const modal = new bootstrap.Modal(document.getElementById('scannerModal'));
             setManualMode(false);
+            ensureBeepContext();
             modal.show();
             
             // Iniciar el escáner después de que el modal se muestre
@@ -1522,39 +2092,49 @@ if ($id_curso) {
         }
 
         function playSuccessSound() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioContext = ensureBeepContext();
+            if (!audioContext) {
+                return;
+            }
+
+            const now = audioContext.currentTime;
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 800;
+
+            oscillator.frequency.setValueAtTime(920, now);
             oscillator.type = 'sine';
-            gainNode.gain.value = 0.6;
-            
-            oscillator.start();
-            setTimeout(() => {
-                oscillator.stop();
-            }, 200);
+            gainNode.gain.setValueAtTime(0.0001, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.45, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+
+            oscillator.start(now);
+            oscillator.stop(now + 0.21);
         }
 
         function playErrorSound() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const audioContext = ensureBeepContext();
+            if (!audioContext) {
+                return;
+            }
+
+            const now = audioContext.currentTime;
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-            
+
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.value = 300;
+
+            oscillator.frequency.setValueAtTime(320, now);
             oscillator.type = 'square';
-            gainNode.gain.value = 0.5;
-            
-            oscillator.start();
-            setTimeout(() => {
-                oscillator.stop();
-            }, 300);
+            gainNode.gain.setValueAtTime(0.0001, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.38, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+            oscillator.start(now);
+            oscillator.stop(now + 0.29);
         }
 
         // Detener el escáner cuando se cierra el modal
@@ -1564,6 +2144,10 @@ if ($id_curso) {
         });
 
         document.addEventListener('DOMContentLoaded', function() {
+            const activateAudio = () => ensureBeepContext();
+            document.addEventListener('click', activateAudio, { once: true });
+            document.addEventListener('touchstart', activateAudio, { once: true });
+
             const input = document.getElementById('manualStudentId');
             if (input) {
                 input.addEventListener('focus', function() {

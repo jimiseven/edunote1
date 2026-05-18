@@ -176,11 +176,14 @@ if ($method === 'GET') {
         // Obtener los periodos de evaluación para los 3 parciales del trimestre
         $gestiones = obtener_gestion_prioritaria($gestionActual, $gestionAlternativa);
         $placeholdersGestion = implode(',', array_fill(0, count($gestiones), '?'));
-        $stmtPeriodos = $conn->prepare("SELECT id_periodo_evaluacion, parcial
+        $stmtPeriodos = $conn->prepare("SELECT id_periodo_evaluacion, parcial, gestion
                                         FROM periodos_evaluacion
                                         WHERE trimestre = ?
-                                          AND gestion IN ($placeholdersGestion)");
-        $stmtPeriodos->execute(array_merge([$trimestre], $gestiones));
+                                          AND gestion IN ($placeholdersGestion)
+                                        ORDER BY parcial ASC,
+                                                 CASE WHEN gestion = ? THEN 0 ELSE 1 END ASC,
+                                                 id_periodo_evaluacion DESC");
+        $stmtPeriodos->execute(array_merge([$trimestre], $gestiones, [$gestionActual]));
         $periodos = [];
         foreach ($stmtPeriodos->fetchAll(PDO::FETCH_ASSOC) as $p) {
             $parc = (int)$p['parcial'];
@@ -366,9 +369,9 @@ if ($method === 'POST') {
         $prevSaberTotal = $filaPrev && $filaPrev['saber_total'] !== null ? (float)$filaPrev['saber_total'] : 0.0;
         $prevHacerTotal = $filaPrev && $filaPrev['hacer_total'] !== null ? (float)$filaPrev['hacer_total'] : 0.0;
 
-        $serProm = $conteoSer > 0 ? ($serResumen['promedio'] ?? 0.0) : $prevSerTotal;
-        $saberProm = $conteoSaber > 0 ? ($saberResumen['promedio'] ?? 0.0) : $prevSaberTotal;
-        $hacerProm = $conteoHacer > 0 ? ($hacerResumen['promedio'] ?? 0.0) : $prevHacerTotal;
+        $serProm = $conteoSer > 0 ? ($serResumen['promedio'] ?? 0.0) : 0.0;
+        $saberProm = $conteoSaber > 0 ? ($saberResumen['promedio'] ?? 0.0) : 0.0;
+        $hacerProm = $conteoHacer > 0 ? ($hacerResumen['promedio'] ?? 0.0) : 0.0;
 
         $serTotal = round($serProm, 2);
         $saberTotal = round($saberProm, 2);
@@ -401,33 +404,27 @@ if ($method === 'POST') {
                     ON DUPLICATE KEY UPDATE nota = VALUES(nota), creado_por = VALUES(creado_por)');
                 $stmtDetalleDelete = $conn->prepare('DELETE FROM calificaciones_parciales_detalle WHERE id_calificacion_parcial = ? AND area = ? AND indice = ?');
 
-                if ($conteoSer > 0) {
-                    foreach ($serValores as $indice => $valor) {
-                        if ($valor !== null) {
-                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SER', $indice, $valor, $_SESSION['user_id']]);
-                        } else {
-                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'SER', $indice]);
-                        }
+                foreach ($serValores as $indice => $valor) {
+                    if ($valor !== null) {
+                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SER', $indice, $valor, $_SESSION['user_id']]);
+                    } else {
+                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'SER', $indice]);
                     }
                 }
 
-                if ($conteoSaber > 0) {
-                    foreach ($saberValores as $indice => $valor) {
-                        if ($valor !== null) {
-                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SABER', $indice, $valor, $_SESSION['user_id']]);
-                        } else {
-                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'SABER', $indice]);
-                        }
+                foreach ($saberValores as $indice => $valor) {
+                    if ($valor !== null) {
+                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'SABER', $indice, $valor, $_SESSION['user_id']]);
+                    } else {
+                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'SABER', $indice]);
                     }
                 }
 
-                if ($conteoHacer > 0) {
-                    foreach ($hacerValores as $indice => $valor) {
-                        if ($valor !== null) {
-                            $stmtDetalleUpsert->execute([$idCalificacionExistente, 'HACER', $indice, $valor, $_SESSION['user_id']]);
-                        } else {
-                            $stmtDetalleDelete->execute([$idCalificacionExistente, 'HACER', $indice]);
-                        }
+                foreach ($hacerValores as $indice => $valor) {
+                    if ($valor !== null) {
+                        $stmtDetalleUpsert->execute([$idCalificacionExistente, 'HACER', $indice, $valor, $_SESSION['user_id']]);
+                    } else {
+                        $stmtDetalleDelete->execute([$idCalificacionExistente, 'HACER', $indice]);
                     }
                 }
             } catch (PDOException $e) {
@@ -439,19 +436,23 @@ if ($method === 'POST') {
 
         $notaTrimestral = obtener_nota_trimestral($conn, $idEstudiante, $idMateria, $trimestre, $gestionActual, $gestionAlternativa);
 
-        $stmtParciales = $conn->prepare('SELECT pe.parcial, cp.calificacion
+        $stmtParciales = $conn->prepare('SELECT pe.parcial, cp.calificacion, pe.gestion
                                           FROM calificaciones_parciales cp
                                           INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
                                           WHERE cp.id_estudiante = ?
                                             AND cp.id_materia = ?
                                             AND pe.trimestre = ?
-                                            AND pe.gestion IN (?, ?);');
+                                            AND pe.gestion IN (?, ?)
+                                          ORDER BY pe.parcial ASC,
+                                                   CASE WHEN pe.gestion = ? THEN 0 ELSE 1 END ASC,
+                                                   cp.id_calificacion_parcial DESC;');
         $stmtParciales->execute([
             $idEstudiante,
             $idMateria,
             $trimestre,
             $gestionActual,
             $gestionAlternativa ?? $gestionActual,
+            $gestionActual,
         ]);
 
         $parcialesValores = [];
