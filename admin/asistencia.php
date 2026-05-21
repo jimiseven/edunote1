@@ -468,12 +468,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 // Obtener información del estudiante
                 $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
                 $stmt_est->execute([$id_estudiante]);
-                $estudiante = $stmt_est->fetch(PDO::FETCH_ASSOC);
+                $estudiante = $stmt_est->fetch(PDO::FETCH_ASSOC) ?: [];
+                $nombreEstudiante = trim(implode(' ', array_filter([
+                    (string)($estudiante['apellido_paterno'] ?? ''),
+                    (string)($estudiante['apellido_materno'] ?? ''),
+                    (string)($estudiante['nombres'] ?? '')
+                ])));
+                if ($nombreEstudiante === '') {
+                    $nombreEstudiante = 'ID ' . (int)$id_estudiante;
+                }
                 
                 echo json_encode([
                     'success' => true,
                     'message' => 'Asistencia registrada correctamente',
-                    'estudiante' => $estudiante['apellido_paterno'] . ' ' . $estudiante['apellido_materno'] . ', ' . $estudiante['nombres'],
+                    'estudiante' => $nombreEstudiante,
                     'hora' => $hora_actual,
                     'puntualidad' => $puntualidad['estado_puntualidad']
                 ]);
@@ -927,8 +935,10 @@ if ($id_curso) {
             }
         }
         .scan-modal .modal-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(165deg, #0f2742 0%, #19436f 55%, #1f5f8b 100%);
+            color: #f4f8fc;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 14px;
         }
         .scan-modal .modal-header {
             border-bottom: 1px solid rgba(255,255,255,0.2);
@@ -979,10 +989,10 @@ if ($id_curso) {
             min-height: 1.1rem;
         }
         .manual-id-card {
-            background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.28);
-            border-radius: 10px;
-            padding: 12px;
+            background: rgba(255,255,255,0.10);
+            border: 1px solid rgba(255,255,255,0.24);
+            border-radius: 12px;
+            padding: 14px;
         }
         .manual-id-input {
             background: rgba(255,255,255,0.95);
@@ -993,12 +1003,36 @@ if ($id_curso) {
             opacity: 0.9;
             margin-top: 6px;
         }
+        .scan-mode-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .scan-mode-btn {
+            border: 1px solid rgba(255,255,255,0.34);
+            background: rgba(255,255,255,0.09);
+            color: #e8f3ff;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .scan-mode-btn.is-active {
+            background: #e9f4ff;
+            color: #17416a;
+            border-color: #e9f4ff;
+            box-shadow: 0 6px 20px rgba(8, 28, 48, 0.28);
+        }
         .reader-pane {
             position: relative;
             border-radius: 10px;
             overflow: hidden;
             min-height: 360px;
             transition: all 0.25s ease;
+            border: 1px solid rgba(255,255,255,0.20);
+            background: rgba(0,0,0,0.15);
         }
         .scan-result-overlay {
             position: absolute;
@@ -1026,7 +1060,14 @@ if ($id_curso) {
         .scan-layout.manual-mode .reader-collapsed-hint {
             display: block;
         }
-        #scan-result .alert {
+        .scan-layout.manual-mode .col-lg-8 {
+            order: 2;
+        }
+        .scan-layout.manual-mode .col-lg-4 {
+            order: 1;
+        }
+        #scan-result .alert,
+        #scan-result-manual .alert {
             margin-bottom: 0;
             min-height: 96px;
             display: flex;
@@ -1034,6 +1075,9 @@ if ($id_curso) {
             justify-content: center;
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
             border-radius: 10px;
+        }
+        #scan-result-manual {
+            min-height: 90px;
         }
         @media (max-width: 991.98px) {
             .asistencia-main {
@@ -1067,6 +1111,18 @@ if ($id_curso) {
             .reader-pane {
                 min-height: 300px;
             }
+            .scan-modal .modal-body {
+                padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+            }
+            .scan-layout.manual-mode .reader-pane {
+                min-height: 140px;
+            }
+            .scan-layout.manual-mode #scan-result-manual {
+                position: sticky;
+                bottom: 0;
+                z-index: 5;
+                padding-bottom: 4px;
+            }
             .qr-card {
                 margin: 6px;
                 padding: 10px;
@@ -1085,6 +1141,13 @@ if ($id_curso) {
             }
             .asistencia-main .h3 {
                 font-size: 1.2rem;
+            }
+            .scan-mode-btn {
+                font-size: 0.85rem;
+                padding: 8px;
+            }
+            .manual-id-card {
+                padding: 12px;
             }
         }
         @media print {
@@ -1346,6 +1409,14 @@ if ($id_curso) {
                         </div>
                         <div class="col-lg-4">
                             <div class="manual-id-card">
+                                <div class="scan-mode-toggle">
+                                    <button type="button" class="scan-mode-btn is-active" id="modeQrBtn" onclick="setManualMode(false)">
+                                        <i class="ri-qr-scan-2-line"></i> Escanear QR
+                                    </button>
+                                    <button type="button" class="scan-mode-btn" id="modeManualBtn" onclick="setManualMode(true)">
+                                        <i class="ri-keyboard-box-line"></i> Registro manual
+                                    </button>
+                                </div>
                                 <label for="manualStudentId" class="form-label mb-1"><strong>Registrar por ID</strong></label>
                                 <div class="input-group">
                                     <input type="number" min="1" step="1" id="manualStudentId" class="form-control manual-id-input" placeholder="Ej: 154">
@@ -1356,6 +1427,7 @@ if ($id_curso) {
                                 <div class="manual-id-help">
                                     Usar cuando el estudiante no tenga su QR. Solo ingrese el ID del estudiante.
                                 </div>
+                                <div id="scan-result-manual" class="mt-2"></div>
                             </div>
                         </div>
                     </div>
@@ -1671,7 +1743,7 @@ if ($id_curso) {
         let html5QrCode = null;
         let isScanning = false;
         let isProcessingScan = false;
-        const RESULT_DISPLAY_MS = 1000;
+        const RESULT_DISPLAY_MS = 2200;
         let beepAudioContext = null;
 
         function ensureBeepContext() {
@@ -1892,15 +1964,55 @@ if ($id_curso) {
             if (!layout) {
                 return;
             }
+
+            const qrBtn = document.getElementById('modeQrBtn');
+            const manualBtn = document.getElementById('modeManualBtn');
             if (enabled) {
                 layout.classList.add('manual-mode');
+                if (manualBtn) {
+                    manualBtn.classList.add('is-active');
+                }
+                if (qrBtn) {
+                    qrBtn.classList.remove('is-active');
+                }
             } else {
                 layout.classList.remove('manual-mode');
+                if (qrBtn) {
+                    qrBtn.classList.add('is-active');
+                }
+                if (manualBtn) {
+                    manualBtn.classList.remove('is-active');
+                }
+            }
+            clearScanResults();
+        }
+
+        function getScanResultContainer() {
+            const layout = document.getElementById('scanLayout');
+            const inManualMode = layout && layout.classList.contains('manual-mode');
+            if (inManualMode) {
+                return document.getElementById('scan-result-manual');
+            }
+            return document.getElementById('scan-result');
+        }
+
+        function clearScanResults() {
+            const overlayResult = document.getElementById('scan-result');
+            const manualResult = document.getElementById('scan-result-manual');
+            if (overlayResult) {
+                overlayResult.innerHTML = '';
+            }
+            if (manualResult) {
+                manualResult.innerHTML = '';
             }
         }
 
         function renderScanResult(data) {
-            const resultDiv = document.getElementById('scan-result');
+            const resultDiv = getScanResultContainer();
+            if (!resultDiv) {
+                isProcessingScan = false;
+                return;
+            }
 
             if (data.success) {
                 resultDiv.innerHTML = `
@@ -1922,8 +2034,12 @@ if ($id_curso) {
                 playErrorSound();
             }
 
+            if (resultDiv.id === 'scan-result-manual') {
+                resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
             setTimeout(() => {
-                resultDiv.innerHTML = '';
+                clearScanResults();
                 isProcessingScan = false;
             }, RESULT_DISPLAY_MS);
         }
@@ -1946,7 +2062,11 @@ if ($id_curso) {
             .then(renderScanResult)
             .catch(error => {
                 console.error('Error:', error);
-                const resultDiv = document.getElementById('scan-result');
+                const resultDiv = getScanResultContainer();
+                if (!resultDiv) {
+                    isProcessingScan = false;
+                    return;
+                }
                 resultDiv.innerHTML = `
                     <div class="alert alert-danger result-card">
                         <h5><i class="ri-error-warning-fill"></i> Error</h5>
@@ -1955,7 +2075,7 @@ if ($id_curso) {
                 `;
 
                 setTimeout(() => {
-                    resultDiv.innerHTML = '';
+                    clearScanResults();
                     isProcessingScan = false;
                 }, RESULT_DISPLAY_MS);
             });
@@ -2073,7 +2193,10 @@ if ($id_curso) {
 
             const idValue = (input.value || '').trim();
             if (!/^\d+$/.test(idValue) || parseInt(idValue, 10) <= 0) {
-                const resultDiv = document.getElementById('scan-result');
+                const resultDiv = getScanResultContainer();
+                if (!resultDiv) {
+                    return;
+                }
                 resultDiv.innerHTML = `
                     <div class="alert alert-warning result-card">
                         <h5><i class="ri-alert-fill"></i> ID inválido</h5>
@@ -2083,6 +2206,7 @@ if ($id_curso) {
                 return;
             }
 
+            setManualMode(true);
             procesarRegistroAsistencia('EST:' + parseInt(idValue, 10));
             input.value = '';
             input.focus();
@@ -2144,6 +2268,7 @@ if ($id_curso) {
         });
 
         document.addEventListener('DOMContentLoaded', function() {
+            setManualMode(false);
             const activateAudio = () => ensureBeepContext();
             document.addEventListener('click', activateAudio, { once: true });
             document.addEventListener('touchstart', activateAudio, { once: true });
