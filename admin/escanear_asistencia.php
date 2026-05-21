@@ -48,38 +48,124 @@ function escaneo_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lectorI
     return false;
 }
 
-function escaneo_resolver_puntualidad(PDO $conn, $fecha, $horaActual)
+function escaneo_curso_doble_turno(PDO $conn, int $idCurso): bool
 {
-    static $cache = [];
-    $cacheKey = (string)$fecha;
-    if (isset($cache[$cacheKey])) {
-        $horario = $cache[$cacheKey];
-    } else {
-    $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
-        FROM asistencia_horarios_ingreso
-        WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
-        ORDER BY fecha_inicio DESC, id_horario DESC
+    if ($idCurso <= 0) {
+        return false;
+    }
+    $stmt = $conn->prepare("SELECT doble_turno
+        FROM asistencia_cursos_turnos
+        WHERE id_curso = ? AND estado = 1
         LIMIT 1");
-    $stmt->execute([$fecha]);
-    $horario = $stmt->fetch(PDO::FETCH_ASSOC);
-        $cache[$cacheKey] = $horario ?: null;
+    $stmt->execute([$idCurso]);
+    return (int)$stmt->fetchColumn() === 1;
+}
+
+function escaneo_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $idEstudiante, string $fecha, string $horaActual): array
+{
+    $obtenerHorarioGlobalTurno = static function (string $turno) use ($conn, $fecha): ?array {
+        $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+            FROM asistencia_horarios_turno_global
+            WHERE estado = 1 AND turno = ? AND ? BETWEEN fecha_inicio AND fecha_fin
+            ORDER BY fecha_inicio DESC, id_horario_global DESC
+            LIMIT 1");
+        $stmt->execute([$turno, $fecha]);
+        $h = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $h ?: null;
+    };
+
+    $esDoble = escaneo_curso_doble_turno($conn, $idCurso);
+
+    if (!$esDoble) {
+        static $cache = [];
+        $cacheKey = (string)$fecha;
+        if (isset($cache[$cacheKey])) {
+            $horario = $cache[$cacheKey];
+        } else {
+            $horario = $obtenerHorarioGlobalTurno('MANANA');
+            if (!$horario) {
+                $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+                    FROM asistencia_horarios_ingreso
+                    WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
+                    ORDER BY fecha_inicio DESC, id_horario DESC
+                    LIMIT 1");
+                $stmt->execute([$fecha]);
+                $horario = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+            $cache[$cacheKey] = $horario ?: null;
+        }
+
+        if (!$horario) {
+            return [
+                'turno' => 'MANANA',
+                'estado_puntualidad' => null,
+                'hora_ingreso_programada' => null,
+                'tolerancia_min' => null,
+            ];
+        }
+
+        $toleranciaMin = max((int)($horario['tolerancia_min'] ?? 0), 0);
+        $horaIngreso = (string)$horario['hora_ingreso'];
+        $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
+
+        return [
+            'turno' => 'MANANA',
+            'estado_puntualidad' => ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE',
+            'hora_ingreso_programada' => $horaIngreso,
+            'tolerancia_min' => $toleranciaMin,
+        ];
     }
 
-    if (!$horario) {
+    $horarios = [];
+    foreach (['MANANA', 'TARDE'] as $turnoCfg) {
+        $row = $obtenerHorarioGlobalTurno($turnoCfg);
+        if ($row) {
+            $horarios[$turnoCfg] = [
+                'hora_ingreso' => (string)($row['hora_ingreso'] ?? ''),
+                'tolerancia_min' => max((int)($row['tolerancia_min'] ?? 0), 0),
+            ];
+        }
+    }
+
+    if (empty($horarios)) {
+        throw new RuntimeException('Curso doble turno sin horarios activos para hoy.');
+    }
+
+    $stmtReg = $conn->prepare("SELECT turno FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
+    $stmtReg->execute([$idEstudiante, $fecha]);
+    $registradosRows = $stmtReg->fetchAll(PDO::FETCH_COLUMN);
+    $registrados = [];
+    foreach ($registradosRows as $t) {
+        $registrados[strtoupper((string)$t)] = true;
+    }
+
+    $yaManana = isset($registrados['MANANA']);
+    $yaTarde = isset($registrados['TARDE']);
+
+    if (!$yaManana) {
+        $turnoAsignado = 'MANANA';
+    } elseif (!$yaTarde) {
+        $turnoAsignado = 'TARDE';
+    } else {
         return [
+            'turno' => 'COMPLETO',
             'estado_puntualidad' => null,
             'hora_ingreso_programada' => null,
             'tolerancia_min' => null,
         ];
     }
 
-    $toleranciaMin = max((int)($horario['tolerancia_min'] ?? 0), 0);
-    $horaIngreso = (string)$horario['hora_ingreso'];
+    if (!isset($horarios[$turnoAsignado])) {
+        throw new RuntimeException('No hay horario global activo para el turno ' . $turnoAsignado . ' en la fecha de hoy.');
+    }
+
+    $horaIngreso = $horarios[$turnoAsignado]['hora_ingreso'];
+    $toleranciaMin = $horarios[$turnoAsignado]['tolerancia_min'];
     $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
-    $estado = ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE';
 
     return [
-        'estado_puntualidad' => $estado,
+        'turno' => $turnoAsignado,
+        'estado_puntualidad' => ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE',
         'hora_ingreso_programada' => $horaIngreso,
         'tolerancia_min' => $toleranciaMin,
     ];
@@ -129,27 +215,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
         
-        // Verificar si ya tiene asistencia hoy
-        $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
-        $stmt_check->execute([$id_estudiante, $hoy]);
+        try {
+            $puntualidad = escaneo_resolver_turno_y_puntualidad($conn, $idCursoEscaneado, $id_estudiante, $hoy, $hora_actual);
+        } catch (Throwable $e) {
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+            exit();
+        }
+
+        if (($puntualidad['turno'] ?? '') === 'COMPLETO') {
+            echo json_encode([
+                'success' => false,
+                'message' => 'El estudiante ya registró asistencia en MANANA y TARDE hoy.'
+            ]);
+            exit();
+        }
+
+        $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ?");
+        $stmt_check->execute([$id_estudiante, $hoy, $puntualidad['turno']]);
         $existente = $stmt_check->fetch(PDO::FETCH_ASSOC);
-        
+
         if ($existente) {
             echo json_encode([
                 'success' => false,
-                'message' => 'El estudiante ya registró asistencia hoy a las ' . $existente['hora_entrada']
+                'message' => 'El estudiante ya registró el turno ' . $puntualidad['turno'] . ' hoy a las ' . $existente['hora_entrada']
             ]);
         } else {
-            $puntualidad = escaneo_resolver_puntualidad($conn, $hoy, $hora_actual);
 
             // Registrar asistencia
             $stmt = $conn->prepare("INSERT INTO asistencia
-                (id_estudiante, fecha, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
-                VALUES (?, ?, ?, 'QR', ?, ?, ?)");
+                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
+                VALUES (?, ?, ?, ?, 'QR', ?, ?, ?)");
             try {
                 $stmt->execute([
                     $id_estudiante,
                     $hoy,
+                    $puntualidad['turno'],
                     $hora_actual,
                     $puntualidad['estado_puntualidad'],
                     $puntualidad['hora_ingreso_programada'],
@@ -159,6 +262,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
                 echo json_encode([
                     'success' => true,
                     'message' => 'Asistencia registrada correctamente',
+                    'turno' => $puntualidad['turno'],
                     'estudiante' => $estudiante['apellido_paterno'] . ' ' . $estudiante['apellido_materno'] . ', ' . $estudiante['nombres'],
                     'nombres' => $estudiante['nombres'],
                     'apellido_paterno' => $estudiante['apellido_paterno'],

@@ -1,0 +1,80 @@
+-- data3.txt
+-- Simplificacion: horarios globales por turno + cursos excepcion doble turno
+-- Ejecutar despues de data2.txt
+
+START TRANSACTION;
+
+-- 1) Tabla de horarios globales por turno (manana/tarde)
+CREATE TABLE IF NOT EXISTS asistencia_horarios_turno_global (
+  id_horario_global INT(11) NOT NULL AUTO_INCREMENT,
+  fecha_inicio DATE NOT NULL,
+  fecha_fin DATE NOT NULL,
+  turno ENUM('MANANA','TARDE') NOT NULL,
+  hora_ingreso TIME NOT NULL,
+  tolerancia_min INT(11) NOT NULL DEFAULT 0,
+  estado TINYINT(1) NOT NULL DEFAULT 1,
+  creado_por INT(11) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_horario_global),
+  KEY idx_turno_global_rango_estado (turno, estado, fecha_inicio, fecha_fin),
+  KEY idx_global_estado (estado)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 2) Migrar horario global existente (tabla antigua) a turno MANANA
+INSERT INTO asistencia_horarios_turno_global
+  (fecha_inicio, fecha_fin, turno, hora_ingreso, tolerancia_min, estado, creado_por)
+SELECT
+  ahi.fecha_inicio,
+  ahi.fecha_fin,
+  'MANANA',
+  ahi.hora_ingreso,
+  ahi.tolerancia_min,
+  ahi.estado,
+  ahi.creado_por
+FROM asistencia_horarios_ingreso ahi
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM asistencia_horarios_turno_global g
+  WHERE g.turno = 'MANANA'
+    AND g.fecha_inicio = ahi.fecha_inicio
+    AND g.fecha_fin = ahi.fecha_fin
+    AND g.hora_ingreso = ahi.hora_ingreso
+    AND g.tolerancia_min = ahi.tolerancia_min
+);
+
+-- 3) Crear un horario TARDE por defecto para hoy si no existe ninguno activo
+INSERT INTO asistencia_horarios_turno_global
+  (fecha_inicio, fecha_fin, turno, hora_ingreso, tolerancia_min, estado, creado_por)
+SELECT
+  CURDATE(),
+  DATE_ADD(CURDATE(), INTERVAL 5 YEAR),
+  'TARDE',
+  '13:30:00',
+  0,
+  1,
+  NULL
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM asistencia_horarios_turno_global g
+  WHERE g.turno = 'TARDE'
+    AND g.estado = 1
+    AND CURDATE() BETWEEN g.fecha_inicio AND g.fecha_fin
+);
+
+-- 4) Tabla de cursos excepcion ya existe en data2; asegurar estructura minima
+CREATE TABLE IF NOT EXISTS asistencia_cursos_turnos (
+  id_curso_turno INT(11) NOT NULL AUTO_INCREMENT,
+  id_curso INT(11) NOT NULL,
+  doble_turno TINYINT(1) NOT NULL DEFAULT 0,
+  estado TINYINT(1) NOT NULL DEFAULT 1,
+  creado_por INT(11) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_curso_turno),
+  UNIQUE KEY uk_curso_turno (id_curso)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 5) Opcional: desactivar uso de horarios por curso/turno (se conserva historial)
+-- UPDATE asistencia_horarios_curso_turno SET estado = 0 WHERE estado = 1;
+
+COMMIT;

@@ -53,31 +53,121 @@ function asistencia_usuario_puede_registrar(PDO $conn, $isAdminAsistencia, $lect
     return false;
 }
 
-function asistencia_resolver_puntualidad(PDO $conn, $fecha, $horaActual)
+function asistencia_curso_doble_turno(PDO $conn, int $idCurso): bool
 {
-    $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
-        FROM asistencia_horarios_ingreso
-        WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
-        ORDER BY fecha_inicio DESC, id_horario DESC
+    if ($idCurso <= 0) {
+        return false;
+    }
+    $stmt = $conn->prepare("SELECT doble_turno
+        FROM asistencia_cursos_turnos
+        WHERE id_curso = ? AND estado = 1
         LIMIT 1");
-    $stmt->execute([$fecha]);
-    $horario = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute([$idCurso]);
+    return (int)$stmt->fetchColumn() === 1;
+}
 
-    if (!$horario) {
+function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $idEstudiante, string $fecha, string $horaActual): array
+{
+    $obtenerHorarioGlobalTurno = static function (string $turno) use ($conn, $fecha): ?array {
+        $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+            FROM asistencia_horarios_turno_global
+            WHERE estado = 1 AND turno = ? AND ? BETWEEN fecha_inicio AND fecha_fin
+            ORDER BY fecha_inicio DESC, id_horario_global DESC
+            LIMIT 1");
+        $stmt->execute([$turno, $fecha]);
+        $h = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $h ?: null;
+    };
+
+    $esDoble = asistencia_curso_doble_turno($conn, $idCurso);
+
+    if (!$esDoble) {
+        $horario = $obtenerHorarioGlobalTurno('MANANA');
+
+        if (!$horario) {
+            $stmtLegacy = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+                FROM asistencia_horarios_ingreso
+                WHERE estado = 1 AND ? BETWEEN fecha_inicio AND fecha_fin
+                ORDER BY fecha_inicio DESC, id_horario DESC
+                LIMIT 1");
+            $stmtLegacy->execute([$fecha]);
+            $horario = $stmtLegacy->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        if (!$horario) {
+            return [
+                'turno' => 'MANANA',
+                'estado_puntualidad' => null,
+                'hora_ingreso_programada' => null,
+                'tolerancia_min' => null,
+            ];
+        }
+
+        $toleranciaMin = max((int)($horario['tolerancia_min'] ?? 0), 0);
+        $horaIngreso = (string)$horario['hora_ingreso'];
+        $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
+
         return [
+            'turno' => 'MANANA',
+            'estado_puntualidad' => ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE',
+            'hora_ingreso_programada' => $horaIngreso,
+            'tolerancia_min' => $toleranciaMin,
+        ];
+    }
+
+    $horarios = [];
+    foreach (['MANANA', 'TARDE'] as $turnoCfg) {
+        $row = $obtenerHorarioGlobalTurno($turnoCfg);
+        if ($row) {
+            $horarios[$turnoCfg] = [
+                'hora_ingreso' => (string)($row['hora_ingreso'] ?? ''),
+                'tolerancia_min' => max((int)($row['tolerancia_min'] ?? 0), 0),
+            ];
+        }
+    }
+
+    if (empty($horarios)) {
+        throw new RuntimeException('El curso esta configurado en doble turno, pero no tiene horarios por turno activos para hoy.');
+    }
+
+    $stmtReg = $conn->prepare("SELECT turno FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
+    $stmtReg->execute([$idEstudiante, $fecha]);
+    $registros = $stmtReg->fetchAll(PDO::FETCH_COLUMN);
+    $registrados = [];
+    foreach ($registros as $t) {
+        $turnoReg = strtoupper((string)$t);
+        if ($turnoReg !== '') {
+            $registrados[$turnoReg] = true;
+        }
+    }
+
+    $yaManana = isset($registrados['MANANA']);
+    $yaTarde = isset($registrados['TARDE']);
+
+    if (!$yaManana) {
+        $turnoAsignado = 'MANANA';
+    } elseif (!$yaTarde) {
+        $turnoAsignado = 'TARDE';
+    } else {
+        return [
+            'turno' => 'COMPLETO',
             'estado_puntualidad' => null,
             'hora_ingreso_programada' => null,
             'tolerancia_min' => null,
         ];
     }
 
-    $toleranciaMin = max((int)($horario['tolerancia_min'] ?? 0), 0);
-    $horaIngreso = (string)$horario['hora_ingreso'];
+    if (!isset($horarios[$turnoAsignado])) {
+        throw new RuntimeException('No hay horario global activo para el turno ' . $turnoAsignado . ' en la fecha de hoy.');
+    }
+
+    $horaIngreso = $horarios[$turnoAsignado]['hora_ingreso'];
+    $toleranciaMin = $horarios[$turnoAsignado]['tolerancia_min'];
     $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
-    $estado = ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE';
 
     return [
-        'estado_puntualidad' => $estado,
+        'turno' => $turnoAsignado,
+        'estado_puntualidad' => ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE',
         'hora_ingreso_programada' => $horaIngreso,
         'tolerancia_min' => $toleranciaMin,
     ];
@@ -439,27 +529,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
-        
-        // Verificar si ya tiene asistencia hoy
-        $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
-        $stmt_check->execute([$id_estudiante, $hoy]);
-        $existente = $stmt_check->fetch(PDO::FETCH_ASSOC);
-        
-        if ($existente) {
+
+        try {
+            $puntualidad = asistencia_resolver_turno_y_puntualidad($conn, $idCursoEscaneado, $id_estudiante, $hoy, $hora_actual);
+        } catch (Throwable $e) {
             echo json_encode([
                 'success' => false,
-                'message' => 'El estudiante ya registró asistencia hoy a las ' . $existente['hora_entrada']
+                'message' => $e->getMessage()
+            ]);
+            exit();
+        }
+
+        if (($puntualidad['turno'] ?? '') === 'COMPLETO') {
+            echo json_encode([
+                'success' => false,
+                'message' => 'El estudiante ya registró asistencia en MANANA y TARDE hoy.'
             ]);
         } else {
-            $puntualidad = asistencia_resolver_puntualidad($conn, $hoy, $hora_actual);
+            $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ?");
+            $stmt_check->execute([$id_estudiante, $hoy, $puntualidad['turno']]);
+            $existente = $stmt_check->fetch(PDO::FETCH_ASSOC);
+
+            if ($existente) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'El estudiante ya registró el turno ' . $puntualidad['turno'] . ' hoy a las ' . $existente['hora_entrada']
+                ]);
+                exit();
+            }
 
             // Registrar asistencia
             $stmt = $conn->prepare("INSERT INTO asistencia
-                (id_estudiante, fecha, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
-                VALUES (?, ?, ?, 'QR', ?, ?, ?)");
+                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
+                VALUES (?, ?, ?, ?, 'QR', ?, ?, ?)");
             if ($stmt->execute([
                 $id_estudiante,
                 $hoy,
+                $puntualidad['turno'],
                 $hora_actual,
                 $puntualidad['estado_puntualidad'],
                 $puntualidad['hora_ingreso_programada'],
@@ -480,7 +586,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 
                 echo json_encode([
                     'success' => true,
-                    'message' => 'Asistencia registrada correctamente',
+                    'message' => 'Asistencia registrada correctamente (' . $puntualidad['turno'] . ')',
+                    'id_estudiante' => (int)$id_estudiante,
+                    'turno' => $puntualidad['turno'],
                     'estudiante' => $nombreEstudiante,
                     'hora' => $hora_actual,
                     'puntualidad' => $puntualidad['estado_puntualidad']
@@ -1019,11 +1127,44 @@ if ($id_curso) {
             font-weight: 600;
             transition: all 0.2s ease;
         }
+        .scan-mode-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
         .scan-mode-btn.is-active {
             background: #e9f4ff;
             color: #17416a;
             border-color: #e9f4ff;
             box-shadow: 0 6px 20px rgba(8, 28, 48, 0.28);
+        }
+        .scan-kpi-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .scan-kpi {
+            flex: 1 1 140px;
+            border: 1px solid rgba(255,255,255,0.24);
+            background: rgba(255,255,255,0.09);
+            border-radius: 10px;
+            padding: 8px 10px;
+            line-height: 1.15;
+        }
+        .scan-kpi-label {
+            font-size: 0.74rem;
+            opacity: 0.85;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .scan-kpi-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .speed-tip {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            opacity: 0.95;
         }
         .reader-pane {
             position: relative;
@@ -1078,6 +1219,18 @@ if ($id_curso) {
         }
         #scan-result-manual {
             min-height: 90px;
+        }
+        #scan-result .alert-success,
+        #scan-result-manual .alert-success {
+            border: 2px solid #198754;
+        }
+        #scan-result .alert-warning,
+        #scan-result-manual .alert-warning {
+            border: 2px solid #ffc107;
+        }
+        #scan-result .alert-danger,
+        #scan-result-manual .alert-danger {
+            border: 2px solid #dc3545;
         }
         @media (max-width: 991.98px) {
             .asistencia-main {
@@ -1145,6 +1298,9 @@ if ($id_curso) {
             .scan-mode-btn {
                 font-size: 0.85rem;
                 padding: 8px;
+            }
+            .scan-kpi-value {
+                font-size: 1.02rem;
             }
             .manual-id-card {
                 padding: 12px;
@@ -1409,6 +1565,16 @@ if ($id_curso) {
                         </div>
                         <div class="col-lg-4">
                             <div class="manual-id-card">
+                                <div class="scan-kpi-bar">
+                                    <div class="scan-kpi">
+                                        <div class="scan-kpi-label">Registros en sesion</div>
+                                        <div class="scan-kpi-value" id="kpiSuccessCount">0</div>
+                                    </div>
+                                    <div class="scan-kpi">
+                                        <div class="scan-kpi-label">Ultimo ID</div>
+                                        <div class="scan-kpi-value" id="kpiLastId">-</div>
+                                    </div>
+                                </div>
                                 <div class="scan-mode-toggle">
                                     <button type="button" class="scan-mode-btn is-active" id="modeQrBtn" onclick="setManualMode(false)">
                                         <i class="ri-qr-scan-2-line"></i> Escanear QR
@@ -1426,6 +1592,9 @@ if ($id_curso) {
                                 </div>
                                 <div class="manual-id-help">
                                     Usar cuando el estudiante no tenga su QR. Solo ingrese el ID del estudiante.
+                                </div>
+                                <div class="speed-tip" id="scanSpeedTip">
+                                    Flujo rapido: escriba ID -> Enter -> siguiente ID.
                                 </div>
                                 <div id="scan-result-manual" class="mt-2"></div>
                             </div>
@@ -1743,8 +1912,10 @@ if ($id_curso) {
         let html5QrCode = null;
         let isScanning = false;
         let isProcessingScan = false;
-        const RESULT_DISPLAY_MS = 2200;
+        const RESULT_DISPLAY_MS = 1300;
         let beepAudioContext = null;
+        let successCount = 0;
+        const isMobileScreen = window.matchMedia('(max-width: 991.98px)').matches;
 
         function ensureBeepContext() {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -2007,6 +2178,20 @@ if ($id_curso) {
             }
         }
 
+        function updateKpis(data) {
+            const successNode = document.getElementById('kpiSuccessCount');
+            const lastIdNode = document.getElementById('kpiLastId');
+            if (data && data.success) {
+                successCount += 1;
+            }
+            if (successNode) {
+                successNode.textContent = String(successCount);
+            }
+            if (lastIdNode && data && data.id_estudiante) {
+                lastIdNode.textContent = String(data.id_estudiante);
+            }
+        }
+
         function renderScanResult(data) {
             const resultDiv = getScanResultContainer();
             if (!resultDiv) {
@@ -2018,12 +2203,17 @@ if ($id_curso) {
                 resultDiv.innerHTML = `
                     <div class="alert alert-success result-card">
                         <h5><i class="ri-check-circle-fill"></i> ¡Asistencia Registrada!</h5>
+                        ${data.id_estudiante ? `<p><strong>ID:</strong> ${data.id_estudiante}</p>` : ''}
+                        ${data.turno ? `<p><strong>Turno:</strong> ${data.turno}</p>` : ''}
                         <p><strong>Estudiante:</strong> ${data.estudiante}</p>
                         <p><strong>Hora:</strong> ${data.hora}</p>
                         ${data.puntualidad ? `<p><strong>Puntualidad:</strong> ${data.puntualidad}</p>` : ''}
                     </div>
                 `;
                 playSuccessSound();
+                if (navigator.vibrate) {
+                    navigator.vibrate(70);
+                }
             } else {
                 resultDiv.innerHTML = `
                     <div class="alert alert-warning result-card">
@@ -2033,6 +2223,8 @@ if ($id_curso) {
                 `;
                 playErrorSound();
             }
+
+            updateKpis(data);
 
             if (resultDiv.id === 'scan-result-manual') {
                 resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2083,7 +2275,7 @@ if ($id_curso) {
 
         function openScanner() {
             const modal = new bootstrap.Modal(document.getElementById('scannerModal'));
-            setManualMode(false);
+            setManualMode(!isMobileScreen);
             ensureBeepContext();
             modal.show();
             
@@ -2268,7 +2460,23 @@ if ($id_curso) {
         });
 
         document.addEventListener('DOMContentLoaded', function() {
-            setManualMode(false);
+            const qrBtn = document.getElementById('modeQrBtn');
+            const speedTip = document.getElementById('scanSpeedTip');
+            if (!isMobileScreen) {
+                setManualMode(true);
+                if (qrBtn) {
+                    qrBtn.disabled = true;
+                    qrBtn.title = 'Escaneo QR habilitado para celular';
+                }
+                if (speedTip) {
+                    speedTip.textContent = 'PC: priorice registro manual continuo con Enter.';
+                }
+            } else {
+                setManualMode(false);
+                if (speedTip) {
+                    speedTip.textContent = 'Celular: use QR; manual solo para excepciones.';
+                }
+            }
             const activateAudio = () => ensureBeepContext();
             document.addEventListener('click', activateAudio, { once: true });
             document.addEventListener('touchstart', activateAudio, { once: true });
