@@ -1,0 +1,26 @@
+-- Rollback de migracion inicial de dias TARDE (Lunes a Viernes)
+-- Revierte lo cargado por: sql_migracion_datos_turno_tarde_lun_vie.txt
+-- Nota: este rollback elimina reglas TARDE con vigencia NULL y creado_por NULL en dias 1..5
+
+START TRANSACTION;
+
+DELETE d
+FROM `asistencia_curso_turno_dias` d
+INNER JOIN `asistencia_cursos_turnos` act
+    ON act.`id_curso` = d.`id_curso`
+WHERE d.`turno` = 'TARDE'
+  AND d.`dia_semana` IN (1, 2, 3, 4, 5)
+  AND d.`fecha_inicio` IS NULL
+  AND d.`fecha_fin` IS NULL
+  AND d.`creado_por` IS NULL
+  AND act.`estado` = 1
+  AND act.`doble_turno` = 1;
+
+COMMIT;
+
+-- Verificacion posterior
+-- SELECT c.nivel, c.curso, c.paralelo, d.turno, d.dia_semana, d.fecha_inicio, d.fecha_fin, d.creado_por
+-- FROM asistencia_curso_turno_dias d
+-- INNER JOIN cursos c ON c.id_curso = d.id_curso
+-- WHERE d.turno = 'TARDE'
+-- ORDER BY c.nivel, c.curso, c.paralelo, d.dia_semana;

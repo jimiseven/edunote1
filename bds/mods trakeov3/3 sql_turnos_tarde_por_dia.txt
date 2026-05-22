@@ -1,0 +1,44 @@
+-- Migracion: configuracion de dias por curso y turno
+-- Objetivo: definir, curso por curso, que dias aplica el turno TARDE
+
+START TRANSACTION;
+
+CREATE TABLE IF NOT EXISTS `asistencia_curso_turno_dias` (
+  `id_curso_turno_dia` int(11) NOT NULL AUTO_INCREMENT,
+  `id_curso` int(11) NOT NULL,
+  `turno` enum('MANANA','TARDE') NOT NULL DEFAULT 'TARDE',
+  `dia_semana` tinyint(3) unsigned NOT NULL COMMENT '1=Lunes, 2=Martes, 3=Miercoles, 4=Jueves, 5=Viernes, 6=Sabado, 7=Domingo',
+  `estado` tinyint(1) NOT NULL DEFAULT 1,
+  `fecha_inicio` date DEFAULT NULL COMMENT 'Opcional: inicio de vigencia',
+  `fecha_fin` date DEFAULT NULL COMMENT 'Opcional: fin de vigencia',
+  `creado_por` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id_curso_turno_dia`),
+  UNIQUE KEY `uk_curso_turno_dia_vigencia` (`id_curso`,`turno`,`dia_semana`,`fecha_inicio`,`fecha_fin`),
+  KEY `idx_curso_turno_estado` (`id_curso`,`turno`,`estado`),
+  KEY `idx_turno_dia_estado` (`turno`,`dia_semana`,`estado`),
+  CONSTRAINT `fk_asistencia_curso_turno_dias_curso`
+    FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_asistencia_curso_turno_dias_personal`
+    FOREIGN KEY (`creado_por`) REFERENCES `personal` (`id_personal`)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `chk_asistencia_curso_turno_dias_dia`
+    CHECK (`dia_semana` BETWEEN 1 AND 7)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+COMMIT;
+
+-- Ejemplo de uso (activar TARDE lunes/miercoles/viernes para curso 124)
+-- INSERT INTO asistencia_curso_turno_dias (id_curso, turno, dia_semana, estado, creado_por)
+-- VALUES
+--   (124, 'TARDE', 1, 1, 1),
+--   (124, 'TARDE', 3, 1, 1),
+--   (124, 'TARDE', 5, 1, 1);
+
+-- Consulta util para verificar configuracion por curso
+-- SELECT c.nivel, c.curso, c.paralelo, d.turno, d.dia_semana, d.estado, d.fecha_inicio, d.fecha_fin
+-- FROM asistencia_curso_turno_dias d
+-- INNER JOIN cursos c ON c.id_curso = d.id_curso
+-- ORDER BY c.nivel, c.curso, c.paralelo, d.turno, d.dia_semana;

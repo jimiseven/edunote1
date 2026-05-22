@@ -66,7 +66,39 @@ function asistencia_curso_doble_turno(PDO $conn, int $idCurso): bool
     return (int)$stmt->fetchColumn() === 1;
 }
 
-function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $idEstudiante, string $fecha, string $horaActual): array
+function asistencia_curso_tarde_habilitado_fecha(PDO $conn, int $idCurso, string $fecha): bool
+{
+    if ($idCurso <= 0 || $fecha === '') {
+        return false;
+    }
+
+    static $tablaExiste = null;
+    if ($tablaExiste === null) {
+        $stmtTbl = $conn->prepare("SHOW TABLES LIKE 'asistencia_curso_turno_dias'");
+        $stmtTbl->execute();
+        $tablaExiste = (bool)$stmtTbl->fetchColumn();
+    }
+
+    if (!$tablaExiste) {
+        return true;
+    }
+
+    $diaSemana = (int)date('N', strtotime($fecha));
+
+    $stmt = $conn->prepare("SELECT 1
+        FROM asistencia_curso_turno_dias
+        WHERE id_curso = ?
+          AND turno = 'TARDE'
+          AND estado = 1
+          AND dia_semana = ?
+          AND (fecha_inicio IS NULL OR fecha_inicio <= ?)
+          AND (fecha_fin IS NULL OR fecha_fin >= ?)
+        LIMIT 1");
+    $stmt->execute([$idCurso, $diaSemana, $fecha, $fecha]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $idEstudiante, string $fecha, string $horaActual, string $turnoForzado = ''): array
 {
     $obtenerHorarioGlobalTurno = static function (string $turno) use ($conn, $fecha): ?array {
         $stmt = $conn->prepare("SELECT hora_ingreso, tolerancia_min
@@ -79,9 +111,17 @@ function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $i
         return $h ?: null;
     };
 
+    $turnoForzado = strtoupper(trim($turnoForzado));
+    if (!in_array($turnoForzado, ['MANANA', 'TARDE'], true)) {
+        $turnoForzado = '';
+    }
+
     $esDoble = asistencia_curso_doble_turno($conn, $idCurso);
 
     if (!$esDoble) {
+        if ($turnoForzado === 'TARDE') {
+            throw new RuntimeException('Este curso no tiene turno TARDE habilitado.');
+        }
         $horario = $obtenerHorarioGlobalTurno('MANANA');
 
         if (!$horario) {
@@ -130,6 +170,31 @@ function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $i
         throw new RuntimeException('El curso esta configurado en doble turno, pero no tiene horarios por turno activos para hoy.');
     }
 
+    if ($turnoForzado !== '') {
+        if ($turnoForzado === 'TARDE' && !asistencia_curso_tarde_habilitado_fecha($conn, $idCurso, $fecha)) {
+            return [
+                'turno' => 'SIN_TARDE_HOY',
+                'estado_puntualidad' => null,
+                'hora_ingreso_programada' => null,
+                'tolerancia_min' => null,
+            ];
+        }
+        if (!isset($horarios[$turnoForzado])) {
+            throw new RuntimeException('No hay horario global activo para el turno ' . $turnoForzado . ' en la fecha de hoy.');
+        }
+
+        $horaIngreso = $horarios[$turnoForzado]['hora_ingreso'];
+        $toleranciaMin = $horarios[$turnoForzado]['tolerancia_min'];
+        $limite = date('H:i:s', strtotime($fecha . ' ' . $horaIngreso . ' +' . $toleranciaMin . ' minutes'));
+
+        return [
+            'turno' => $turnoForzado,
+            'estado_puntualidad' => ($horaActual <= $limite) ? 'TEMPRANO' : 'TARDE',
+            'hora_ingreso_programada' => $horaIngreso,
+            'tolerancia_min' => $toleranciaMin,
+        ];
+    }
+
     $stmtReg = $conn->prepare("SELECT turno FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
     $stmtReg->execute([$idEstudiante, $fecha]);
     $registros = $stmtReg->fetchAll(PDO::FETCH_COLUMN);
@@ -143,10 +208,19 @@ function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $i
 
     $yaManana = isset($registrados['MANANA']);
     $yaTarde = isset($registrados['TARDE']);
+    $tardeHabilitadaHoy = asistencia_curso_tarde_habilitado_fecha($conn, $idCurso, $fecha);
 
     if (!$yaManana) {
         $turnoAsignado = 'MANANA';
     } elseif (!$yaTarde) {
+        if (!$tardeHabilitadaHoy) {
+            return [
+                'turno' => 'SIN_TARDE_HOY',
+                'estado_puntualidad' => null,
+                'hora_ingreso_programada' => null,
+                'tolerancia_min' => null,
+            ];
+        }
         $turnoAsignado = 'TARDE';
     } else {
         return [
@@ -503,6 +577,11 @@ function create_gafete_png_binary($qrBinary, array $student)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'scan_qr' && isset($_POST['qr_data'])) {
     header('Content-Type: application/json; charset=utf-8');
     $raw_qr = trim((string)$_POST['qr_data']);
+    $turnoManual = strtoupper(trim((string)($_POST['turno_manual'] ?? 'AUTO')));
+    if (!in_array($turnoManual, ['AUTO', 'MANANA', 'TARDE'], true)) {
+        $turnoManual = 'AUTO';
+    }
+    $turnoForzado = $turnoManual === 'AUTO' ? '' : $turnoManual;
     $id_estudiante = null;
 
     $qr_data = json_decode($raw_qr, true);
@@ -531,7 +610,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $hora_actual = date('H:i:s');
 
         try {
-            $puntualidad = asistencia_resolver_turno_y_puntualidad($conn, $idCursoEscaneado, $id_estudiante, $hoy, $hora_actual);
+            $puntualidad = asistencia_resolver_turno_y_puntualidad($conn, $idCursoEscaneado, $id_estudiante, $hoy, $hora_actual, $turnoForzado);
         } catch (Throwable $e) {
             echo json_encode([
                 'success' => false,
@@ -544,6 +623,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             echo json_encode([
                 'success' => false,
                 'message' => 'El estudiante ya registró asistencia en MANANA y TARDE hoy.'
+            ]);
+        } elseif (($puntualidad['turno'] ?? '') === 'SIN_TARDE_HOY') {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Este curso no tiene clases en turno TARDE para hoy. No se permite un segundo registro.'
             ]);
         } else {
             $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ?");
@@ -1582,6 +1666,9 @@ if ($id_curso) {
                                     <button type="button" class="scan-mode-btn" id="modeManualBtn" onclick="setManualMode(true)">
                                         <i class="ri-keyboard-box-line"></i> Registro manual
                                     </button>
+                                </div>
+                                <div class="alert alert-secondary mb-2">
+                                    <strong>Turno automatico:</strong> el sistema define MANANA o TARDE segun configuracion del curso y del dia.
                                 </div>
                                 <label for="manualStudentId" class="form-label mb-1"><strong>Registrar por ID</strong></label>
                                 <div class="input-group">

@@ -1,0 +1,52 @@
+-- Migracion de datos iniciales para asistencia_curso_turno_dias
+-- Requisito: ejecutar primero sql_turnos_tarde_por_dia.txt
+-- Objetivo: cargar Lunes a Viernes (1..5) para cursos con doble turno activo
+
+START TRANSACTION;
+
+INSERT INTO `asistencia_curso_turno_dias`
+    (`id_curso`, `turno`, `dia_semana`, `estado`, `fecha_inicio`, `fecha_fin`, `creado_por`)
+SELECT
+    act.`id_curso`,
+    'TARDE' AS `turno`,
+    dias.`dia_semana`,
+    1 AS `estado`,
+    NULL AS `fecha_inicio`,
+    NULL AS `fecha_fin`,
+    NULL AS `creado_por`
+FROM `asistencia_cursos_turnos` act
+INNER JOIN (
+    SELECT 1 AS `dia_semana`
+    UNION ALL SELECT 2
+    UNION ALL SELECT 3
+    UNION ALL SELECT 4
+    UNION ALL SELECT 5
+) dias ON 1 = 1
+WHERE act.`estado` = 1
+  AND act.`doble_turno` = 1
+  AND NOT EXISTS (
+      SELECT 1
+      FROM `asistencia_curso_turno_dias` d
+      WHERE d.`id_curso` = act.`id_curso`
+        AND d.`turno` = 'TARDE'
+        AND d.`dia_semana` = dias.`dia_semana`
+        AND d.`fecha_inicio` IS NULL
+        AND d.`fecha_fin` IS NULL
+  );
+
+COMMIT;
+
+-- Verificacion 1: cantidad de reglas creadas por curso
+-- SELECT c.nivel, c.curso, c.paralelo, COUNT(*) reglas_tarde
+-- FROM asistencia_curso_turno_dias d
+-- INNER JOIN cursos c ON c.id_curso = d.id_curso
+-- WHERE d.turno = 'TARDE' AND d.estado = 1
+-- GROUP BY c.id_curso, c.nivel, c.curso, c.paralelo
+-- ORDER BY c.nivel, c.curso, c.paralelo;
+
+-- Verificacion 2: detalle de dias por curso
+-- SELECT c.nivel, c.curso, c.paralelo, d.turno, d.dia_semana, d.fecha_inicio, d.fecha_fin
+-- FROM asistencia_curso_turno_dias d
+-- INNER JOIN cursos c ON c.id_curso = d.id_curso
+-- WHERE d.turno = 'TARDE'
+-- ORDER BY c.nivel, c.curso, c.paralelo, d.dia_semana;

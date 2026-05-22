@@ -9,6 +9,25 @@ if (!isset($_SESSION['user_id']) || (int)($_SESSION['user_role'] ?? 0) !== 1) {
 
 $conn = (new Database())->connect();
 
+$diasSemanaEtiquetas = [
+    1 => 'Lunes',
+    2 => 'Martes',
+    3 => 'Miercoles',
+    4 => 'Jueves',
+    5 => 'Viernes',
+    6 => 'Sabado',
+    7 => 'Domingo',
+];
+
+$tablaDiasTurnoExiste = false;
+try {
+    $stmtTablaDias = $conn->prepare("SHOW TABLES LIKE 'asistencia_curso_turno_dias'");
+    $stmtTablaDias->execute();
+    $tablaDiasTurnoExiste = (bool)$stmtTablaDias->fetchColumn();
+} catch (Throwable $e) {
+    $tablaDiasTurnoExiste = false;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $isAjax = (($_POST['ajax'] ?? '') === '1') || (strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest');
@@ -160,7 +179,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'estado_nuevo' => $estado,
             ];
         }
+
+        if ($action === 'guardar_dias_tarde_curso') {
+            if (!$tablaDiasTurnoExiste) {
+                throw new RuntimeException('No existe la tabla asistencia_curso_turno_dias. Ejecuta primero los SQL de migracion.');
+            }
+
+            $idCurso = (int)($_POST['id_curso'] ?? 0);
+            $diasInput = $_POST['dias_tarde'] ?? [];
+            if (!is_array($diasInput)) {
+                $diasInput = [];
+            }
+
+            if ($idCurso <= 0) {
+                throw new RuntimeException('Seleccione un curso valido.');
+            }
+
+            $stmtCursoHabilitado = $conn->prepare("SELECT 1
+                FROM asistencia_cursos_turnos
+                WHERE id_curso = ? AND estado = 1 AND doble_turno = 1
+                LIMIT 1");
+            $stmtCursoHabilitado->execute([$idCurso]);
+            if (!$stmtCursoHabilitado->fetchColumn()) {
+                throw new RuntimeException('El curso no esta habilitado para turno tarde.');
+            }
+
+            $diasSeleccionados = [];
+            foreach ($diasInput as $diaRaw) {
+                $dia = (int)$diaRaw;
+                if ($dia >= 1 && $dia <= 7) {
+                    $diasSeleccionados[$dia] = true;
+                }
+            }
+            $diasSeleccionados = array_keys($diasSeleccionados);
+            sort($diasSeleccionados);
+
+            $conn->beginTransaction();
+
+            $stmtDel = $conn->prepare("DELETE FROM asistencia_curso_turno_dias
+                WHERE id_curso = ?
+                  AND turno = 'TARDE'
+                  AND fecha_inicio IS NULL
+                  AND fecha_fin IS NULL");
+            $stmtDel->execute([$idCurso]);
+
+            if (!empty($diasSeleccionados)) {
+                $stmtIns = $conn->prepare("INSERT INTO asistencia_curso_turno_dias
+                    (id_curso, turno, dia_semana, estado, fecha_inicio, fecha_fin, creado_por)
+                    VALUES (?, 'TARDE', ?, 1, NULL, NULL, ?)");
+                $creadoPor = (int)$_SESSION['user_id'];
+                foreach ($diasSeleccionados as $dia) {
+                    $stmtIns->execute([$idCurso, $dia, $creadoPor]);
+                }
+            }
+
+            $conn->commit();
+
+            $stmtCurso = $conn->prepare("SELECT nivel, curso, paralelo FROM cursos WHERE id_curso = ? LIMIT 1");
+            $stmtCurso->execute([$idCurso]);
+            $cursoInfo = $stmtCurso->fetch(PDO::FETCH_ASSOC) ?: [];
+            $cursoLabel = trim((string)($cursoInfo['nivel'] ?? '') . ' - ' . (string)($cursoInfo['curso'] ?? '') . ' "' . (string)($cursoInfo['paralelo'] ?? '') . '"');
+
+            $diasTxt = [];
+            foreach ($diasSeleccionados as $dia) {
+                if (isset($diasSemanaEtiquetas[$dia])) {
+                    $diasTxt[] = $diasSemanaEtiquetas[$dia];
+                }
+            }
+            $diasDesc = empty($diasTxt) ? 'Sin dias habilitados' : implode(', ', $diasTxt);
+
+            $_SESSION['ajustes_asistencia_flash'] = [
+                'type' => 'success',
+                'message' => 'Dias de turno tarde actualizados para ' . ($cursoLabel !== '' ? $cursoLabel : ('curso #' . $idCurso)) . ': ' . $diasDesc . '.'
+            ];
+
+            $ajaxPayload = [
+                'ok' => true,
+                'message' => 'Dias de turno tarde actualizados.',
+                'action' => $action,
+            ];
+        }
     } catch (Throwable $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
         $_SESSION['ajustes_asistencia_flash'] = [
             'type' => 'danger',
             'message' => 'Error: ' . $e->getMessage()
@@ -222,6 +324,27 @@ foreach ($cursosDobleTurno as $ct) {
 $cursosDisponiblesTarde = array_values(array_filter($cursos, static function ($c) use ($idsCursosTarde) {
     return !isset($idsCursosTarde[(int)$c['id_curso']]);
 }));
+
+$diasTardeCurso = [];
+if ($tablaDiasTurnoExiste) {
+    $stmtDias = $conn->query("SELECT id_curso, dia_semana
+        FROM asistencia_curso_turno_dias
+        WHERE turno = 'TARDE'
+          AND estado = 1
+          AND fecha_inicio IS NULL
+          AND fecha_fin IS NULL
+        ORDER BY id_curso ASC, dia_semana ASC");
+    foreach ($stmtDias->fetchAll(PDO::FETCH_ASSOC) as $d) {
+        $cid = (int)($d['id_curso'] ?? 0);
+        $dia = (int)($d['dia_semana'] ?? 0);
+        if ($cid > 0 && $dia >= 1 && $dia <= 7) {
+            if (!isset($diasTardeCurso[$cid])) {
+                $diasTardeCurso[$cid] = [];
+            }
+            $diasTardeCurso[$cid][$dia] = true;
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -430,6 +553,64 @@ $cursosDisponiblesTarde = array_values(array_filter($cursos, static function ($c
                         </div>
                     </div>
                 
+                    <div class="col-12">
+                        <div class="section-block">
+                            <div class="section-title"><span class="step">4</span>Dias de Turno Tarde por Curso</div>
+                            <div class="section-help">Define que dias de la semana cada curso habilitado en turno tarde puede registrar asistencia en TARDE.</div>
+                            <div class="card mb-4">
+                                <div class="card-header"><strong>Configuracion por curso (turno TARDE)</strong></div>
+                                <div class="card-body p-0">
+                                    <?php if (!$tablaDiasTurnoExiste): ?>
+                                        <div class="alert alert-warning m-3 mb-0">
+                                            No existe la tabla <code>asistencia_curso_turno_dias</code>. Ejecuta primero los SQL de migracion en
+                                            <code>bds/mods trakeov3</code> para habilitar esta funcionalidad.
+                                        </div>
+                                    <?php elseif (empty($cursosDobleTurno)): ?>
+                                        <div class="alert alert-info m-3 mb-0">
+                                            No hay cursos en turno tarde para configurar dias.
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="table-responsive">
+                                            <table class="table table-striped mb-0 align-middle">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th>Curso</th>
+                                                        <th>Dias habilitados para TARDE</th>
+                                                        <th style="width: 160px;">Accion</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <?php foreach ($cursosDobleTurno as $row): ?>
+                                                        <?php $cursoId = (int)$row['id_curso']; ?>
+                                                        <tr>
+                                                            <td><?= htmlspecialchars($row['nivel'] . ' - ' . $row['curso'] . ' "' . $row['paralelo'] . '"') ?></td>
+                                                            <td>
+                                                                <form method="POST" action="" class="d-flex flex-wrap gap-3">
+                                                                    <input type="hidden" name="action" value="guardar_dias_tarde_curso">
+                                                                    <input type="hidden" name="id_curso" value="<?= $cursoId ?>">
+                                                                    <?php foreach ($diasSemanaEtiquetas as $numDia => $etqDia): ?>
+                                                                        <?php $checked = isset($diasTardeCurso[$cursoId][$numDia]); ?>
+                                                                        <div class="form-check form-check-inline me-0">
+                                                                            <input class="form-check-input" type="checkbox" id="c<?= $cursoId ?>d<?= $numDia ?>" name="dias_tarde[]" value="<?= $numDia ?>" <?= $checked ? 'checked' : '' ?>>
+                                                                            <label class="form-check-label" for="c<?= $cursoId ?>d<?= $numDia ?>"><?= htmlspecialchars($etqDia) ?></label>
+                                                                        </div>
+                                                                    <?php endforeach; ?>
+                                                            </td>
+                                                            <td>
+                                                                    <button type="submit" class="btn btn-sm btn-primary">Guardar dias</button>
+                                                                </form>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="col-12">
                     <div class="card">
                         <div class="card-header"><strong>Horarios globales configurados</strong></div>
