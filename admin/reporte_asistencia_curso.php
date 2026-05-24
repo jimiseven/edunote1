@@ -20,6 +20,20 @@ if (!asistencia_auth_puede_ver_reportes($userRole, $lectorInfo)) {
 }
 
 $nivelesPermitidos = ['Inicial', 'Primaria', 'Secundaria'];
+$stmtCatalogoCursos = $conn->query("SELECT
+        c.id_curso,
+        c.nivel,
+        c.curso,
+        c.paralelo,
+        CASE
+            WHEN COALESCE(act.estado, 0) = 1 AND COALESCE(act.doble_turno, 0) = 1 THEN 1
+            ELSE 0
+        END AS disponible_tarde
+    FROM cursos c
+    LEFT JOIN asistencia_cursos_turnos act ON act.id_curso = c.id_curso
+    ORDER BY c.nivel, c.curso, c.paralelo");
+$catalogoCursos = $stmtCatalogoCursos->fetchAll(PDO::FETCH_ASSOC);
+
 $nivel = $_GET['nivel'] ?? '';
 if (!in_array($nivel, $nivelesPermitidos, true)) {
     $nivel = '';
@@ -46,6 +60,8 @@ $tipoReporte = $_GET['tipo_reporte'] ?? 'llegada';
 if (!in_array($tipoReporte, ['llegada', 'puntualidad'], true)) {
     $tipoReporte = 'llegada';
 }
+$accion = $_GET['accion'] ?? 'ver_reporte';
+$mostrarReporteGlobal = $accion === 'reporte_global';
 
 $stmtTurnosActivos = $conn->prepare("SELECT turno
     FROM asistencia_horarios_turno_global
@@ -200,6 +216,242 @@ if ($nivel !== '') {
 }
 $resumenCursos = $stmtResumen->fetchAll(PDO::FETCH_ASSOC);
 
+$ausentesPorCurso = [];
+$resumenPorCurso = [];
+$totalesColegio = [
+    'total' => 0,
+    'llegaron' => 0,
+    'ausentes' => 0,
+];
+
+if ($mostrarReporteGlobal) {
+    foreach ($resumenCursos as $rc) {
+        $cursoId = (int)($rc['id_curso'] ?? 0);
+        $totalEst = (int)($rc['total_estudiantes'] ?? 0);
+        $llegaron = (int)($rc['llegaron'] ?? 0);
+        $ausentes = max($totalEst - $llegaron, 0);
+        $nombreCurso = trim((string)($rc['nivel'] ?? '') . ' ' . (string)($rc['curso'] ?? '') . ' "' . (string)($rc['paralelo'] ?? '') . '"');
+
+        $resumenPorCurso[$cursoId] = [
+            'nombre' => $nombreCurso,
+            'total' => $totalEst,
+            'llegaron' => $llegaron,
+            'ausentes' => $ausentes,
+        ];
+        $ausentesPorCurso[$cursoId] = [];
+        $totalesColegio['total'] += $totalEst;
+        $totalesColegio['llegaron'] += $llegaron;
+        $totalesColegio['ausentes'] += $ausentes;
+    }
+}
+
+if ($mostrarReporteGlobal && !empty($resumenCursos)) {
+    if ($nivel !== '') {
+        $stmtAusentes = $conn->prepare("SELECT
+                c.id_curso,
+                e.apellido_paterno,
+                e.apellido_materno,
+                e.nombres
+            FROM cursos c
+            INNER JOIN estudiantes e ON e.id_curso = c.id_curso
+            LEFT JOIN asistencia a ON a.id_estudiante = e.id_estudiante AND a.fecha = ? AND " . $turnoFiltroSql . "
+            LEFT JOIN asistencia_cursos_turnos act ON act.id_curso = c.id_curso
+            WHERE c.nivel = ?
+              AND (? <> 'TARDE' OR (act.estado = 1 AND act.doble_turno = 1))
+              AND a.id_asistencia IS NULL
+            ORDER BY c.nivel ASC, c.curso ASC, c.paralelo ASC, e.apellido_paterno ASC, e.apellido_materno ASC, e.nombres ASC");
+        $paramsAusentes = array_merge([$fecha], $turnoFiltroParams, [$nivel, $turno]);
+        $stmtAusentes->execute($paramsAusentes);
+    } else {
+        $stmtAusentes = $conn->prepare("SELECT
+                c.id_curso,
+                e.apellido_paterno,
+                e.apellido_materno,
+                e.nombres
+            FROM cursos c
+            INNER JOIN estudiantes e ON e.id_curso = c.id_curso
+            LEFT JOIN asistencia a ON a.id_estudiante = e.id_estudiante AND a.fecha = ? AND " . $turnoFiltroSql . "
+            LEFT JOIN asistencia_cursos_turnos act ON act.id_curso = c.id_curso
+            WHERE (? <> 'TARDE' OR (act.estado = 1 AND act.doble_turno = 1))
+              AND a.id_asistencia IS NULL
+            ORDER BY c.nivel ASC, c.curso ASC, c.paralelo ASC, e.apellido_paterno ASC, e.apellido_materno ASC, e.nombres ASC");
+        $paramsAusentes = array_merge([$fecha], $turnoFiltroParams, [$turno]);
+        $stmtAusentes->execute($paramsAusentes);
+    }
+
+    foreach ($stmtAusentes->fetchAll(PDO::FETCH_ASSOC) as $aRow) {
+        $cursoId = (int)($aRow['id_curso'] ?? 0);
+        if (!array_key_exists($cursoId, $ausentesPorCurso)) {
+            continue;
+        }
+        $nombreCompleto = trim((string)($aRow['apellido_paterno'] ?? '') . ' ' . (string)($aRow['apellido_materno'] ?? '') . ', ' . (string)($aRow['nombres'] ?? ''));
+        if ($nombreCompleto !== '') {
+            $ausentesPorCurso[$cursoId][] = $nombreCompleto;
+        }
+    }
+}
+
+if ($mostrarReporteGlobal) {
+    require_once '../vendor/autoload.php';
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheetResumen = $spreadsheet->getActiveSheet();
+    $sheetResumen->setTitle('Consolidado');
+    $fechaGeneracion = date('d/m/Y H:i');
+    $turnoTexto = $turno === 'TARDE' ? 'TARDE' : 'MANANA';
+
+    $sheetResumen->setCellValue('A1', 'REPORTE DE ASISTENCIA - UE SIMON BOLIVAR 2026');
+    $sheetResumen->setCellValue('A2', 'Fecha de generacion: ' . $fechaGeneracion . ' | Fecha de reporte: ' . $fecha . ' | Turno: ' . $turnoTexto);
+    $sheetResumen->setCellValue('A4', 'Curso');
+    $sheetResumen->setCellValue('B4', 'Total');
+    $sheetResumen->setCellValue('C4', 'Llegaron');
+    $sheetResumen->setCellValue('D4', 'Ausentes');
+    $sheetResumen->setCellValue('E4', '% Asistencia');
+
+    $fila = 5;
+    foreach ($resumenCursos as $rc) {
+        $cursoId = (int)($rc['id_curso'] ?? 0);
+        $cursoNom = (string)($resumenPorCurso[$cursoId]['nombre'] ?? '');
+        $totalEst = (int)($resumenPorCurso[$cursoId]['total'] ?? 0);
+        $llegaron = (int)($resumenPorCurso[$cursoId]['llegaron'] ?? 0);
+        $ausentes = (int)($resumenPorCurso[$cursoId]['ausentes'] ?? 0);
+        $pct = $totalEst > 0 ? round(($llegaron * 100) / $totalEst, 2) : 0;
+
+        $sheetResumen->setCellValue('A' . $fila, $cursoNom);
+        $sheetResumen->setCellValue('B' . $fila, $totalEst);
+        $sheetResumen->setCellValue('C' . $fila, $llegaron);
+        $sheetResumen->setCellValue('D' . $fila, $ausentes);
+        $sheetResumen->setCellValue('E' . $fila, $pct / 100);
+        $fila++;
+    }
+
+    $sheetResumen->setCellValue('A' . $fila, 'TOTAL GENERAL');
+    $sheetResumen->setCellValue('B' . $fila, (int)$totalesColegio['total']);
+    $sheetResumen->setCellValue('C' . $fila, (int)$totalesColegio['llegaron']);
+    $sheetResumen->setCellValue('D' . $fila, (int)$totalesColegio['ausentes']);
+    $pctGeneral = (int)$totalesColegio['total'] > 0 ? round(((int)$totalesColegio['llegaron'] * 100) / (int)$totalesColegio['total'], 2) : 0;
+    $sheetResumen->setCellValue('E' . $fila, $pctGeneral / 100);
+
+    $sheetResumen->mergeCells('A1:E1');
+    $sheetResumen->mergeCells('A2:E2');
+    $sheetResumen->getStyle('A1')->getFont()->setBold(true)->setSize(13);
+    $sheetResumen->getStyle('A1:A2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+    $sheetResumen->getStyle('A1:E2')->getFont()->getColor()->setRGB('000000');
+    $sheetResumen->getStyle('A4:E4')->getFont()->setBold(true);
+    $sheetResumen->getStyle('A4:E4')->getFont()->getColor()->setRGB('000000');
+    $sheetResumen->getStyle('A' . $fila . ':E' . $fila)->getFont()->setBold(true);
+    $sheetResumen->getStyle('E5:E' . $fila)->getNumberFormat()->setFormatCode('0.00%');
+    $sheetResumen->getStyle('A4:E' . $fila)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+    $sheetResumen->getStyle('A4:E' . $fila)->getFont()->setSize(9);
+    $sheetResumen->getStyle('B5:E' . $fila)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+    $sheetResumen->getStyle('A4:E4')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+    $sheetResumen->getStyle('A1:E' . $fila)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_NONE);
+    $sheetResumen->getStyle('A1:E' . $fila)->getFont()->getColor()->setRGB('000000');
+    $sheetResumen->getColumnDimension('A')->setWidth(30);
+    $sheetResumen->getColumnDimension('B')->setWidth(10);
+    $sheetResumen->getColumnDimension('C')->setWidth(11);
+    $sheetResumen->getColumnDimension('D')->setWidth(11);
+    $sheetResumen->getColumnDimension('E')->setWidth(12);
+    for ($filaResumen = 4; $filaResumen <= $fila; $filaResumen++) {
+        $sheetResumen->getRowDimension($filaResumen)->setRowHeight(20);
+    }
+    $sheetResumen->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT);
+    $sheetResumen->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_LETTER);
+    $sheetResumen->getPageSetup()->setFitToWidth(1);
+    $sheetResumen->getPageSetup()->setFitToHeight(0);
+    $sheetResumen->getPageMargins()->setTop(0.3);
+    $sheetResumen->getPageMargins()->setBottom(0.3);
+    $sheetResumen->getPageMargins()->setLeft(0.25);
+    $sheetResumen->getPageMargins()->setRight(0.25);
+    $sheetResumen->freezePane('A5');
+
+    $sheetAusentes = $spreadsheet->createSheet();
+    $sheetAusentes->setTitle('Ausentes por curso');
+    $sheetAusentes->setCellValue('A1', 'REPORTE DE ASISTENCIA - UE SIMON BOLIVAR 2026');
+    $sheetAusentes->setCellValue('A2', 'Fecha de generacion: ' . $fechaGeneracion . ' | Fecha de reporte: ' . $fecha . ' | Turno: ' . $turnoTexto);
+    $sheetAusentes->setCellValue('A3', 'Curso');
+    $sheetAusentes->setCellValue('B3', 'Ausentes');
+    $sheetAusentes->mergeCells('A1:B1');
+    $sheetAusentes->mergeCells('A2:B2');
+    $sheetAusentes->getStyle('A1')->getFont()->setBold(true)->setSize(12);
+    $sheetAusentes->getStyle('A1:B2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+    $sheetAusentes->getStyle('A3:B3')->getFont()->setBold(true);
+    $sheetAusentes->getStyle('A3:B3')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+    $filaAus = 4;
+    foreach ($resumenCursos as $rc) {
+        $cursoId = (int)($rc['id_curso'] ?? 0);
+        $cursoNom = (string)($resumenPorCurso[$cursoId]['nombre'] ?? '');
+        $totalEst = (int)($resumenPorCurso[$cursoId]['total'] ?? 0);
+        $llegaron = (int)($resumenPorCurso[$cursoId]['llegaron'] ?? 0);
+        $ausentes = (int)($resumenPorCurso[$cursoId]['ausentes'] ?? 0);
+        $puntuales = (int)($rc['temprano'] ?? 0);
+        $retrasados = (int)($rc['retrasados'] ?? 0);
+        $listaAusentes = $ausentesPorCurso[$cursoId] ?? [];
+
+        $detalleCurso = $cursoNom
+            . "\nTotal: " . $totalEst
+            . " | Llegaron: " . $llegaron
+            . " (Puntuales: " . $puntuales . " , Retrasados: " . $retrasados . ")"
+            . "\nFaltan: " . $ausentes;
+        $sheetAusentes->setCellValue('A' . $filaAus, $detalleCurso);
+
+        if (empty($listaAusentes)) {
+            $sheetAusentes->setCellValue('B' . $filaAus, 'SIN AUSENTES');
+        } else {
+            $lineas = ['', '', ''];
+            $totalNombres = count($listaAusentes);
+            $tamBloque = (int)ceil($totalNombres / 3);
+            for ($i = 0; $i < 3; $i++) {
+                $inicio = $i * $tamBloque;
+                if ($inicio >= $totalNombres) {
+                    $lineas[$i] = '-';
+                    continue;
+                }
+                $bloque = array_slice($listaAusentes, $inicio, $tamBloque);
+                $lineas[$i] = implode(' | ', array_map('strtoupper', $bloque));
+            }
+            $sheetAusentes->setCellValue('B' . $filaAus, implode("\n", $lineas));
+        }
+
+        $sheetAusentes->getRowDimension($filaAus)->setRowHeight(54);
+        $filaAus++;
+    }
+    $ultimaFilaAusentes = max($filaAus - 1, 4);
+    $sheetAusentes->getStyle('A3:B' . $ultimaFilaAusentes)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+    $sheetAusentes->getStyle('A3:B' . $ultimaFilaAusentes)->getFont()->setSize(9);
+    $sheetAusentes->getStyle('A4:A' . $ultimaFilaAusentes)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP)->setWrapText(true);
+    $sheetAusentes->getStyle('B4:B' . $ultimaFilaAusentes)->getAlignment()->setWrapText(true)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_TOP);
+    $sheetAusentes->getStyle('A4:A' . $ultimaFilaAusentes)->getFont()->setBold(true);
+    $sheetAusentes->getStyle('A1:B' . $ultimaFilaAusentes)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_NONE);
+    $sheetAusentes->getStyle('A1:B' . $ultimaFilaAusentes)->getFont()->getColor()->setRGB('000000');
+    $sheetAusentes->getColumnDimension('A')->setWidth(28);
+    $sheetAusentes->getColumnDimension('B')->setWidth(100);
+    $sheetAusentes->getRowDimension(3)->setRowHeight(22);
+    for ($filaDetalle = 4; $filaDetalle <= $ultimaFilaAusentes; $filaDetalle++) {
+        if ($sheetAusentes->getRowDimension($filaDetalle)->getRowHeight() < 58) {
+            $sheetAusentes->getRowDimension($filaDetalle)->setRowHeight(58);
+        }
+    }
+    $sheetAusentes->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+    $sheetAusentes->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_LETTER);
+    $sheetAusentes->getPageSetup()->setFitToWidth(1);
+    $sheetAusentes->getPageSetup()->setFitToHeight(0);
+    $sheetAusentes->getPageMargins()->setTop(0.25);
+    $sheetAusentes->getPageMargins()->setBottom(0.25);
+    $sheetAusentes->getPageMargins()->setLeft(0.2);
+    $sheetAusentes->getPageMargins()->setRight(0.2);
+
+    $nombreArchivo = 'reporte_global_asistencia_' . $fecha . '_' . strtolower($turno) . '.xlsx';
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit();
+}
+
 $registros = [];
 if ($idCurso > 0) {
     $stmt = $conn->prepare("SELECT e.apellido_paterno, e.apellido_materno, e.nombres,
@@ -224,6 +476,32 @@ if ($idCurso > 0) {
     <link rel="stylesheet" href="../css/bootstrap.min.css">
 </head>
 <body>
+    <style>
+        .reporte-compacto {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: pre-wrap;
+            margin: 0;
+        }
+
+        .reporte-columnas {
+            column-count: 2;
+            column-gap: 24px;
+        }
+
+        .bloque-curso {
+            break-inside: avoid;
+            margin-bottom: 12px;
+        }
+
+        @media print {
+            .reporte-columnas {
+                column-count: 2;
+                column-gap: 18px;
+            }
+        }
+    </style>
     <div class="container-fluid">
         <div class="row position-relative">
             <?php include '../includes/sidebar.php'; ?>
@@ -253,7 +531,8 @@ if ($idCurso > 0) {
                                 La puntualidad se calcula usando el estado guardado en cada registro.
                             </div>
                         <?php endif; ?>
-                        <form class="row g-3" method="GET" action="">
+                        <form class="row g-3" method="GET" action="" id="filtrosReporteForm">
+                            <input type="hidden" name="accion" id="accion_form" value="ver_reporte">
                             <div class="col-md-4">
                                 <label class="form-label">Nivel</label>
                                 <select class="form-select" id="nivel" name="nivel">
@@ -267,10 +546,16 @@ if ($idCurso > 0) {
                             </div>
                             <div class="col-md-5">
                                 <label class="form-label">Curso</label>
-                                <select class="form-select" name="id_curso" id="id_curso" <?= $nivel === '' ? 'disabled' : '' ?>>
+                                <select class="form-select" name="id_curso" id="id_curso">
                                     <option value="">Seleccione un curso</option>
-                                    <?php foreach ($cursos as $curso): ?>
-                                        <option value="<?= (int)$curso['id_curso'] ?>" <?= $idCurso === (int)$curso['id_curso'] ? 'selected' : '' ?>>
+                                    <?php foreach ($catalogoCursos as $curso): ?>
+                                        <option
+                                            value="<?= (int)$curso['id_curso'] ?>"
+                                            data-curso-id="<?= (int)$curso['id_curso'] ?>"
+                                            data-nivel="<?= htmlspecialchars((string)$curso['nivel']) ?>"
+                                            data-disponible-tarde="<?= (int)($curso['disponible_tarde'] ?? 0) ?>"
+                                            <?= $idCurso === (int)$curso['id_curso'] ? 'selected' : '' ?>
+                                        >
                                             <?= htmlspecialchars($curso['nivel'] . ' ' . $curso['curso'] . ' "' . $curso['paralelo'] . '"') ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -295,9 +580,30 @@ if ($idCurso > 0) {
                                 </select>
                             </div>
                             <div class="col-md-2 d-flex align-items-end">
-                                <button type="submit" class="btn btn-primary w-100">Ver reporte</button>
+                                <button type="submit" class="btn btn-primary w-100" id="btnVerReporte">Ver reporte</button>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="button" class="btn btn-outline-dark w-100" id="btnReporteGlobal">Reporte global (Excel)</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+
+                <div class="modal fade" id="modalTurnoReporteGlobal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Generar reporte global</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                Selecciona el turno para generar el Excel:
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-primary" id="btnTurnoManana">Turno manana</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btnTurnoTarde">Turno tarde</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -409,6 +715,95 @@ if ($idCurso > 0) {
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
     <script>
         feather.replace();
+
+        (function () {
+            var formFiltros = document.getElementById('filtrosReporteForm');
+            var nivelSelect = document.getElementById('nivel');
+            var turnoSelect = document.querySelector('select[name="turno"]');
+            var cursoSelect = document.getElementById('id_curso');
+            var accionInput = document.getElementById('accion_form');
+            var btnVerReporte = document.getElementById('btnVerReporte');
+            var btnReporteGlobal = document.getElementById('btnReporteGlobal');
+            var btnTurnoManana = document.getElementById('btnTurnoManana');
+            var btnTurnoTarde = document.getElementById('btnTurnoTarde');
+            var modalElement = document.getElementById('modalTurnoReporteGlobal');
+            var modalTurno = modalElement ? new bootstrap.Modal(modalElement) : null;
+
+            if (!formFiltros || !nivelSelect || !turnoSelect || !cursoSelect || !accionInput) {
+                return;
+            }
+
+            var opcionesCurso = Array.prototype.slice.call(cursoSelect.querySelectorAll('option[data-curso-id]'));
+
+            function filtrarCursos() {
+                var nivel = nivelSelect.value;
+                var turno = turnoSelect.value;
+                var valorSeleccionado = cursoSelect.value;
+
+                for (var i = 0; i < opcionesCurso.length; i++) {
+                    var opcion = opcionesCurso[i];
+                    var nivelCurso = opcion.getAttribute('data-nivel') || '';
+                    var disponibleTarde = opcion.getAttribute('data-disponible-tarde') === '1';
+                    var visible = true;
+
+                    if (nivel !== '' && nivelCurso !== nivel) {
+                        visible = false;
+                    }
+
+                    if (turno === 'TARDE' && !disponibleTarde) {
+                        visible = false;
+                    }
+
+                    opcion.hidden = !visible;
+                    opcion.disabled = !visible;
+                }
+
+                if (valorSeleccionado !== '') {
+                    var opcionSeleccionada = cursoSelect.querySelector('option[value="' + valorSeleccionado + '"]');
+                    if (!opcionSeleccionada || opcionSeleccionada.hidden) {
+                        cursoSelect.value = '';
+                    }
+                }
+            }
+
+            nivelSelect.addEventListener('change', filtrarCursos);
+            turnoSelect.addEventListener('change', filtrarCursos);
+            filtrarCursos();
+
+            if (btnVerReporte) {
+                btnVerReporte.addEventListener('click', function () {
+                    accionInput.value = 'ver_reporte';
+                });
+            }
+
+            if (btnReporteGlobal && modalTurno) {
+                btnReporteGlobal.addEventListener('click', function () {
+                    modalTurno.show();
+                });
+            }
+
+            function enviarReporteGlobal(turno) {
+                turnoSelect.value = turno;
+                filtrarCursos();
+                accionInput.value = 'reporte_global';
+                if (modalTurno) {
+                    modalTurno.hide();
+                }
+                formFiltros.submit();
+            }
+
+            if (btnTurnoManana) {
+                btnTurnoManana.addEventListener('click', function () {
+                    enviarReporteGlobal('MANANA');
+                });
+            }
+
+            if (btnTurnoTarde) {
+                btnTurnoTarde.addEventListener('click', function () {
+                    enviarReporteGlobal('TARDE');
+                });
+            }
+        })();
     </script>
 </body>
 </html>
