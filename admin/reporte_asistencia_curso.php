@@ -60,6 +60,7 @@ $tipoReporte = $_GET['tipo_reporte'] ?? 'llegada';
 if (!in_array($tipoReporte, ['llegada', 'puntualidad'], true)) {
     $tipoReporte = 'llegada';
 }
+$esFechaHoy = $fecha === date('Y-m-d');
 $accion = $_GET['accion'] ?? 'ver_reporte';
 $mostrarReporteGlobal = $accion === 'reporte_global';
 
@@ -581,6 +582,64 @@ if ($idCurso > 0) {
             box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.2);
         }
 
+        .qr-fullscreen-overlay {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .qr-fullscreen-overlay.active {
+            display: flex;
+        }
+
+        .mobile-top-alert {
+            position: fixed;
+            top: 0.8rem;
+            left: 0.75rem;
+            right: 0.75rem;
+            z-index: 2200;
+            display: none;
+        }
+
+        .mobile-top-alert.show {
+            display: block;
+        }
+
+        .qr-fullscreen-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.75);
+        }
+
+        #modalQrReaderFullscreen {
+            flex: 1;
+            min-height: 0;
+        }
+
+        @media (max-width: 767.98px) {
+            .mobile-main-safe {
+                padding-top: 4.2rem !important;
+                padding-left: 0.8rem !important;
+                padding-right: 0.8rem !important;
+            }
+
+            .mobile-page-title {
+                padding-left: 2.2rem;
+                margin-bottom: 0.35rem;
+            }
+
+            .mobile-page-subtitle {
+                padding-left: 2.2rem;
+                margin-bottom: 0;
+            }
+        }
+
         .mobile-chip-group {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -635,12 +694,15 @@ if ($idCurso > 0) {
         <div class="row position-relative">
             <?php include '../includes/sidebar.php'; ?>
 
-            <main class="w-100 px-md-4 position-relative py-4">
+            <main class="w-100 px-md-4 position-relative py-4 mobile-main-safe">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h1 class="h3 mb-0">Reporte de Asistencia por Curso</h1>
+                    <div>
+                        <h1 class="h3 mb-0 mobile-page-title">Reporte de Asistencia por Curso</h1>
+                        <p class="text-muted small mobile-page-subtitle d-md-none">Vista rapida por nivel y curso</p>
+                    </div>
                 </div>
 
-                <div class="card mb-4">
+                <div class="card mb-4 d-none d-md-block">
                     <div class="card-body">
                         <?php if (!$turnoHabilitadoPorHorario): ?>
                             <div class="alert alert-info mb-3">
@@ -938,6 +1000,61 @@ if ($idCurso > 0) {
                     </div>
                 </div>
 
+                <div class="card mb-4 d-none d-md-block">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Reporte detallado por curso (PC)</span>
+                        <?php if ($idCurso > 0): ?>
+                            <span class="small text-muted"><?= htmlspecialchars($resumenPorCurso[$idCurso]['nombre'] ?? '') ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="card-body p-0">
+                        <?php if ($idCurso <= 0): ?>
+                            <div class="p-3 text-muted">Selecciona un curso en los filtros para ver el reporte detallado.</div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-striped mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>N°</th>
+                                            <th>Nombre completo</th>
+                                            <th>Hora que llego</th>
+                                            <th>Retrasado</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if (empty($registros)): ?>
+                                            <tr>
+                                                <td colspan="5" class="text-center py-4">No hay registros para este curso y filtros seleccionados.</td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($registros as $index => $row): ?>
+                                                <?php
+                                                    $llego = (int)($row['llego'] ?? 0) === 1;
+                                                    $puntualidad = strtoupper((string)($row['puntualidad_calculada'] ?? ''));
+                                                    $esRetrasado = $llego && $puntualidad === 'RETRASADO';
+                                                    $nombreCompleto = trim((string)($row['apellido_paterno'] ?? '') . ' ' . (string)($row['apellido_materno'] ?? '') . ', ' . (string)($row['nombres'] ?? ''));
+                                                ?>
+                                                <tr>
+                                                    <td><?= $index + 1 ?></td>
+                                                    <td><?= htmlspecialchars($nombreCompleto) ?></td>
+                                                    <td><?= htmlspecialchars($llego ? (string)($row['hora_entrada'] ?? '-') : '-') ?></td>
+                                                    <td class="<?= $esRetrasado ? 'text-warning fw-semibold' : 'text-success' ?>">
+                                                        <?= $llego ? ($esRetrasado ? 'SI' : 'NO') : '-' ?>
+                                                    </td>
+                                                    <td class="<?= $llego ? 'text-success fw-semibold' : 'text-danger fw-semibold' ?>">
+                                                        <?= $llego ? 'LLEGO' : 'NO LLEGO' ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
                 <div class="modal fade d-md-none" id="modalAusentesCursoMovil" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
                         <div class="modal-content">
@@ -948,6 +1065,9 @@ if ($idCurso > 0) {
                             <div class="modal-body">
                                 <div class="small text-muted mb-2" id="modalAusentesMeta"></div>
                                 <ul class="list-group" id="modalAusentesLista"></ul>
+                                <div class="alert alert-warning mt-3 mb-0 <?= $esFechaHoy ? 'd-none' : '' ?>" id="modalFechaNoHoyAviso">
+                                    Solo puedes registrar asistencia para la fecha de hoy.
+                                </div>
                                 <div class="mt-3 border-top pt-3">
                                     <label for="modalManualStudentId" class="form-label mb-1"><strong>Registrar por ID</strong></label>
                                     <div class="input-group">
@@ -957,16 +1077,41 @@ if ($idCurso > 0) {
                                     <div class="form-text">Puedes usar ID manual o escanear QR desde la camara.</div>
                                 </div>
                                 <div class="mt-3">
-                                    <button type="button" class="btn btn-outline-success w-100" id="modalToggleQrBtn">Abrir camara QR</button>
+                                    <button type="button" class="btn btn-outline-success w-100" id="modalToggleQrBtn">Escanear QR en pantalla completa</button>
                                 </div>
-                                <div class="mt-2 d-none" id="modalQrWrapper">
-                                    <div id="modalQrReader" style="width:100%;"></div>
+                                <div class="mt-2 d-grid">
+                                    <button type="button" class="btn btn-success" id="modalRegistrarTodosBtn">Registrar a todos los faltantes</button>
                                 </div>
                                 <div class="mt-2" id="modalRegistroResultado"></div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <div class="qr-fullscreen-overlay d-md-none" id="qrFullscreenOverlay">
+                    <div class="qr-fullscreen-header">
+                        <strong>Escanear QR</strong>
+                        <button type="button" class="btn btn-sm btn-light" id="qrFullscreenCloseBtn">Cerrar</button>
+                    </div>
+                    <div id="modalQrReaderFullscreen"></div>
+                </div>
+
+                <div class="modal fade" id="modalRegistroExito" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Registro exitoso</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body" id="modalRegistroExitoDetalle"></div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Aceptar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mobile-top-alert d-md-none" id="mobileTopAlert"></div>
 
 
             </main>
@@ -999,9 +1144,19 @@ if ($idCurso > 0) {
             var modalManualStudentId = document.getElementById('modalManualStudentId');
             var modalRegistrarIdBtn = document.getElementById('modalRegistrarIdBtn');
             var modalToggleQrBtn = document.getElementById('modalToggleQrBtn');
-            var modalQrWrapper = document.getElementById('modalQrWrapper');
+            var modalRegistrarTodosBtn = document.getElementById('modalRegistrarTodosBtn');
             var modalRegistroResultado = document.getElementById('modalRegistroResultado');
+            var modalFechaNoHoyAviso = document.getElementById('modalFechaNoHoyAviso');
+            var qrFullscreenOverlay = document.getElementById('qrFullscreenOverlay');
+            var qrFullscreenCloseBtn = document.getElementById('qrFullscreenCloseBtn');
+            var modalRegistroExitoElement = document.getElementById('modalRegistroExito');
+            var modalRegistroExito = modalRegistroExitoElement ? new bootstrap.Modal(modalRegistroExitoElement) : null;
+            var modalRegistroExitoDetalle = document.getElementById('modalRegistroExitoDetalle');
+            var mobileTopAlert = document.getElementById('mobileTopAlert');
+            var timerAlertTemporal = null;
             var ausentesPorCurso = <?= json_encode($ausentesPorCurso, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+            var registroHabilitadoHoy = <?= $esFechaHoy ? 'true' : 'false' ?>;
+            var turnoActualReporte = <?= json_encode($turno, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
             var qrReader = null;
             var qrActivo = false;
             var cursoActualModal = {
@@ -1140,6 +1295,33 @@ if ($idCurso > 0) {
                 modalRegistroResultado.innerHTML = '<div class="alert ' + clase + ' py-2 mb-0">' + escaparHtml(mensaje) + '</div>';
             }
 
+            function mostrarAlertaTemporal(tipo, mensaje, duracionMs) {
+                if (!mobileTopAlert) {
+                    mostrarResultadoRegistro(tipo, mensaje);
+                    return;
+                }
+                var clase = 'alert-info';
+                if (tipo === 'ok') {
+                    clase = 'alert-success';
+                } else if (tipo === 'error') {
+                    clase = 'alert-danger';
+                } else if (tipo === 'warn') {
+                    clase = 'alert-warning';
+                }
+                mobileTopAlert.innerHTML = '<div class="alert ' + clase + ' py-2 mb-0 shadow-sm">' + escaparHtml(mensaje) + '</div>';
+                mobileTopAlert.classList.add('show');
+                if (timerAlertTemporal) {
+                    clearTimeout(timerAlertTemporal);
+                }
+                timerAlertTemporal = setTimeout(function () {
+                    if (mobileTopAlert) {
+                        mobileTopAlert.innerHTML = '';
+                        mobileTopAlert.classList.remove('show');
+                    }
+                    timerAlertTemporal = null;
+                }, duracionMs);
+            }
+
             function actualizarTablasTrasRegistro(idEstudiante) {
                 var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
                 var nuevaLista = [];
@@ -1182,11 +1364,18 @@ if ($idCurso > 0) {
                 renderAusentesModal();
             }
 
-            function registrarAsistenciaPorId(idEstudiante) {
+            function registrarAsistenciaPorId(idEstudiante, opciones) {
+                var opts = opciones || {};
+                var mostrarModalExito = opts.mostrarModalExito !== false;
+                if (!registroHabilitadoHoy) {
+                    mostrarResultadoRegistro('warn', 'Solo se permite registrar asistencia para la fecha de hoy.');
+                    return Promise.resolve(false);
+                }
+
                 var idNum = parseInt(idEstudiante, 10);
                 if (!(idNum > 0)) {
                     mostrarResultadoRegistro('warn', 'Ingresa un ID valido.');
-                    return;
+                    return Promise.resolve(false);
                 }
 
                 var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
@@ -1199,16 +1388,16 @@ if ($idCurso > 0) {
                 }
                 if (!existeEnLista) {
                     mostrarResultadoRegistro('warn', 'Ese ID no corresponde a un ausente de este curso.');
-                    return;
+                    return Promise.resolve(false);
                 }
 
                 mostrarResultadoRegistro('ok', 'Registrando asistencia...');
-                fetch('asistencia.php', {
+                return fetch('asistencia.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                     },
-                    body: 'action=scan_qr&qr_data=' + encodeURIComponent('EST:' + idNum)
+                    body: 'action=scan_qr&qr_data=' + encodeURIComponent('EST:' + idNum) + '&turno_manual=' + encodeURIComponent(turnoActualReporte)
                 })
                     .then(function (response) {
                         return response.json();
@@ -1217,24 +1406,97 @@ if ($idCurso > 0) {
                         if (data && data.success) {
                             actualizarTablasTrasRegistro(idNum);
                             mostrarResultadoRegistro('ok', data.message || 'Asistencia registrada correctamente.');
+                            if (mostrarModalExito) {
+                                var msgExito = 'Registro correcto';
+                                if (data.estudiante) {
+                                    msgExito += ': ' + data.estudiante;
+                                }
+                                mostrarAlertaTemporal('ok', msgExito, 1000);
+                            }
                             if (modalManualStudentId) {
                                 modalManualStudentId.value = '';
                                 modalManualStudentId.focus();
                             }
+                            return true;
                         } else {
-                            mostrarResultadoRegistro('error', (data && data.message) ? data.message : 'No se pudo registrar la asistencia.');
+                            var msgError = (data && data.message) ? data.message : 'No se pudo registrar la asistencia.';
+                            if (mostrarModalExito) {
+                                mostrarAlertaTemporal('error', msgError, 1000);
+                            } else {
+                                mostrarResultadoRegistro('error', msgError);
+                            }
+                            return false;
                         }
                     })
                     .catch(function () {
-                        mostrarResultadoRegistro('error', 'Error de conexion al registrar asistencia.');
+                        if (mostrarModalExito) {
+                            mostrarAlertaTemporal('error', 'Error de conexion al registrar asistencia.', 1000);
+                        } else {
+                            mostrarResultadoRegistro('error', 'Error de conexion al registrar asistencia.');
+                        }
+                        return false;
                     });
             }
 
+            function registrarTodosAusentes() {
+                if (!registroHabilitadoHoy) {
+                    mostrarResultadoRegistro('warn', 'Solo se permite registrar asistencia para la fecha de hoy.');
+                    return;
+                }
+                var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
+                if (lista.length === 0) {
+                    mostrarResultadoRegistro('warn', 'No hay faltantes para registrar en este curso.');
+                    return;
+                }
+
+                var idsPendientes = [];
+                for (var i = 0; i < lista.length; i++) {
+                    idsPendientes.push(parseInt(lista[i].id_estudiante, 10));
+                }
+
+                var total = idsPendientes.length;
+                var okCount = 0;
+                var failCount = 0;
+                if (modalRegistrarTodosBtn) {
+                    modalRegistrarTodosBtn.disabled = true;
+                }
+
+                function procesarSiguiente(indice) {
+                    if (indice >= idsPendientes.length) {
+                        if (modalRegistrarTodosBtn) {
+                            modalRegistrarTodosBtn.disabled = false;
+                        }
+                        mostrarResultadoRegistro('ok', 'Registro masivo finalizado. Correctos: ' + okCount + ' | Fallidos: ' + failCount + '.');
+                        if (modalRegistroExito && modalRegistroExitoDetalle) {
+                            modalRegistroExitoDetalle.innerHTML = 'Registro masivo completado para <strong>' + escaparHtml(cursoActualModal.nombre) + '</strong>.<br>Correctos: <strong>' + okCount + '</strong> | Fallidos: <strong>' + failCount + '</strong>.';
+                            modalRegistroExito.show();
+                        }
+                        return;
+                    }
+
+                    mostrarResultadoRegistro('ok', 'Registrando ' + (indice + 1) + ' de ' + total + '...');
+                    registrarAsistenciaPorId(idsPendientes[indice], { mostrarModalExito: false }).then(function (ok) {
+                        if (ok) {
+                            okCount++;
+                        } else {
+                            failCount++;
+                        }
+                        procesarSiguiente(indice + 1);
+                    });
+                }
+
+                procesarSiguiente(0);
+            }
+
             function iniciarQr() {
+                if (!registroHabilitadoHoy) {
+                    mostrarResultadoRegistro('warn', 'Solo se permite registrar asistencia para la fecha de hoy.');
+                    return;
+                }
                 if (qrActivo || typeof Html5Qrcode === 'undefined') {
                     return;
                 }
-                qrReader = new Html5Qrcode('modalQrReader');
+                qrReader = new Html5Qrcode('modalQrReaderFullscreen');
                 qrReader.start(
                     { facingMode: 'environment' },
                     { fps: 10, qrbox: { width: 220, height: 220 } },
@@ -1249,9 +1511,6 @@ if ($idCurso > 0) {
                     function () {}
                 ).then(function () {
                     qrActivo = true;
-                    if (modalToggleQrBtn) {
-                        modalToggleQrBtn.textContent = 'Cerrar camara QR';
-                    }
                 }).catch(function () {
                     mostrarResultadoRegistro('error', 'No se pudo iniciar la camara QR.');
                 });
@@ -1265,9 +1524,6 @@ if ($idCurso > 0) {
                     qrReader.clear();
                     qrActivo = false;
                     qrReader = null;
-                    if (modalToggleQrBtn) {
-                        modalToggleQrBtn.textContent = 'Abrir camara QR';
-                    }
                 }).catch(function () {});
             }
 
@@ -1293,6 +1549,39 @@ if ($idCurso > 0) {
                 }
                 if (modalRegistroResultado) {
                     modalRegistroResultado.innerHTML = '';
+                }
+                if (!registroHabilitadoHoy) {
+                    if (modalManualStudentId) {
+                        modalManualStudentId.disabled = true;
+                    }
+                    if (modalRegistrarIdBtn) {
+                        modalRegistrarIdBtn.disabled = true;
+                    }
+                    if (modalToggleQrBtn) {
+                        modalToggleQrBtn.disabled = true;
+                    }
+                    if (modalRegistrarTodosBtn) {
+                        modalRegistrarTodosBtn.disabled = true;
+                    }
+                    if (modalFechaNoHoyAviso) {
+                        modalFechaNoHoyAviso.classList.remove('d-none');
+                    }
+                } else {
+                    if (modalManualStudentId) {
+                        modalManualStudentId.disabled = false;
+                    }
+                    if (modalRegistrarIdBtn) {
+                        modalRegistrarIdBtn.disabled = false;
+                    }
+                    if (modalToggleQrBtn) {
+                        modalToggleQrBtn.disabled = false;
+                    }
+                    if (modalRegistrarTodosBtn) {
+                        modalRegistrarTodosBtn.disabled = false;
+                    }
+                    if (modalFechaNoHoyAviso) {
+                        modalFechaNoHoyAviso.classList.add('d-none');
+                    }
                 }
                 renderAusentesModal();
 
@@ -1328,30 +1617,43 @@ if ($idCurso > 0) {
 
             if (modalToggleQrBtn) {
                 modalToggleQrBtn.addEventListener('click', function () {
-                    if (!modalQrWrapper) {
+                    if (!qrFullscreenOverlay) {
                         return;
                     }
-                    if (modalQrWrapper.classList.contains('d-none')) {
-                        modalQrWrapper.classList.remove('d-none');
-                        iniciarQr();
-                    } else {
-                        modalQrWrapper.classList.add('d-none');
-                        detenerQr();
+                    qrFullscreenOverlay.classList.add('active');
+                    iniciarQr();
+                });
+            }
+
+            if (modalRegistrarTodosBtn) {
+                modalRegistrarTodosBtn.addEventListener('click', function () {
+                    registrarTodosAusentes();
+                });
+            }
+
+            if (qrFullscreenCloseBtn) {
+                qrFullscreenCloseBtn.addEventListener('click', function () {
+                    if (qrFullscreenOverlay) {
+                        qrFullscreenOverlay.classList.remove('active');
                     }
+                    detenerQr();
                 });
             }
 
             if (modalAusentesElement) {
                 modalAusentesElement.addEventListener('hidden.bs.modal', function () {
                     detenerQr();
-                    if (modalQrWrapper) {
-                        modalQrWrapper.classList.add('d-none');
+                    if (qrFullscreenOverlay) {
+                        qrFullscreenOverlay.classList.remove('active');
                     }
                     if (modalManualStudentId) {
                         modalManualStudentId.value = '';
                     }
                     if (modalRegistroResultado) {
                         modalRegistroResultado.innerHTML = '';
+                    }
+                    if (modalRegistrarTodosBtn) {
+                        modalRegistrarTodosBtn.disabled = false;
                     }
                 });
             }
