@@ -224,31 +224,33 @@ $totalesColegio = [
     'ausentes' => 0,
 ];
 
-if ($mostrarReporteGlobal) {
-    foreach ($resumenCursos as $rc) {
-        $cursoId = (int)($rc['id_curso'] ?? 0);
-        $totalEst = (int)($rc['total_estudiantes'] ?? 0);
-        $llegaron = (int)($rc['llegaron'] ?? 0);
-        $ausentes = max($totalEst - $llegaron, 0);
-        $nombreCurso = trim((string)($rc['nivel'] ?? '') . ' ' . (string)($rc['curso'] ?? '') . ' "' . (string)($rc['paralelo'] ?? '') . '"');
+foreach ($resumenCursos as $rc) {
+    $cursoId = (int)($rc['id_curso'] ?? 0);
+    $totalEst = (int)($rc['total_estudiantes'] ?? 0);
+    $llegaron = (int)($rc['llegaron'] ?? 0);
+    $ausentes = max($totalEst - $llegaron, 0);
+    $nombreCurso = trim((string)($rc['nivel'] ?? '') . ' ' . (string)($rc['curso'] ?? '') . ' "' . (string)($rc['paralelo'] ?? '') . '"');
 
-        $resumenPorCurso[$cursoId] = [
-            'nombre' => $nombreCurso,
-            'total' => $totalEst,
-            'llegaron' => $llegaron,
-            'ausentes' => $ausentes,
-        ];
-        $ausentesPorCurso[$cursoId] = [];
+    $resumenPorCurso[$cursoId] = [
+        'nombre' => $nombreCurso,
+        'total' => $totalEst,
+        'llegaron' => $llegaron,
+        'ausentes' => $ausentes,
+    ];
+    $ausentesPorCurso[$cursoId] = [];
+
+    if ($mostrarReporteGlobal) {
         $totalesColegio['total'] += $totalEst;
         $totalesColegio['llegaron'] += $llegaron;
         $totalesColegio['ausentes'] += $ausentes;
     }
 }
 
-if ($mostrarReporteGlobal && !empty($resumenCursos)) {
+if (!empty($resumenCursos)) {
     if ($nivel !== '') {
         $stmtAusentes = $conn->prepare("SELECT
                 c.id_curso,
+                e.id_estudiante,
                 e.apellido_paterno,
                 e.apellido_materno,
                 e.nombres
@@ -265,6 +267,7 @@ if ($mostrarReporteGlobal && !empty($resumenCursos)) {
     } else {
         $stmtAusentes = $conn->prepare("SELECT
                 c.id_curso,
+                e.id_estudiante,
                 e.apellido_paterno,
                 e.apellido_materno,
                 e.nombres
@@ -285,8 +288,12 @@ if ($mostrarReporteGlobal && !empty($resumenCursos)) {
             continue;
         }
         $nombreCompleto = trim((string)($aRow['apellido_paterno'] ?? '') . ' ' . (string)($aRow['apellido_materno'] ?? '') . ', ' . (string)($aRow['nombres'] ?? ''));
+        $idEstudianteAus = (int)($aRow['id_estudiante'] ?? 0);
         if ($nombreCompleto !== '') {
-            $ausentesPorCurso[$cursoId][] = $nombreCompleto;
+            $ausentesPorCurso[$cursoId][] = [
+                'id_estudiante' => $idEstudianteAus,
+                'nombre' => $nombreCompleto,
+            ];
         }
     }
 }
@@ -409,7 +416,9 @@ if ($mostrarReporteGlobal) {
                     continue;
                 }
                 $bloque = array_slice($listaAusentes, $inicio, $tamBloque);
-                $lineas[$i] = implode(' | ', array_map('strtoupper', $bloque));
+                $lineas[$i] = implode(' | ', array_map(static function ($item) {
+                    return strtoupper((string)($item['nombre'] ?? ''));
+                }, $bloque));
             }
             $sheetAusentes->setCellValue('B' . $filaAus, implode("\n", $lineas));
         }
@@ -477,6 +486,126 @@ if ($idCurso > 0) {
 </head>
 <body>
     <style>
+        .mobile-report-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+            color: #1f3c88;
+        }
+
+        .mobile-report-subtitle {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 0.85rem;
+        }
+
+        .mobile-table {
+            font-size: 0.9rem;
+            margin-bottom: 0;
+            border-radius: 0.45rem;
+            overflow: hidden;
+        }
+
+        .mobile-table th,
+        .mobile-table td {
+            padding: 0.45rem 0.5rem;
+            vertical-align: middle;
+            border-color: #cfd4da;
+        }
+
+        .mobile-table thead th {
+            background: #e8eef9;
+            font-weight: 700;
+            color: #1f3c88;
+        }
+
+        .mobile-summary-card,
+        .mobile-detail-card {
+            border: 1px solid #d9e3f3;
+            border-radius: 0.6rem;
+            box-shadow: 0 6px 14px rgba(31, 60, 136, 0.08);
+        }
+
+        .mobile-nivel-tabs {
+            border-bottom: 0;
+            gap: 0.4rem;
+        }
+
+        .mobile-nivel-tabs .nav-link {
+            border: 1px solid transparent;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.84rem;
+            padding: 0.38rem 0.7rem;
+            color: #475569;
+            background: #eef2f7;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-inicial.active {
+            color: #ffffff;
+            background: #0ea5a4;
+            border-color: #0b8f8e;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-primaria.active {
+            color: #ffffff;
+            background: #2563eb;
+            border-color: #1d4ed8;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-secundaria.active {
+            color: #ffffff;
+            background: #ea580c;
+            border-color: #c2410c;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-inicial:not(.active) {
+            background: #e6f6f5;
+            color: #0f766e;
+            border-color: #bae6e3;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-primaria:not(.active) {
+            background: #e8f0ff;
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+
+        .mobile-nivel-tabs .nav-link.mobile-tab-secundaria:not(.active) {
+            background: #fff1e8;
+            color: #c2410c;
+            border-color: #fed7aa;
+        }
+
+        .mobile-nivel-tabs .nav-link:focus {
+            box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.2);
+        }
+
+        .mobile-chip-group {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.4rem;
+            margin: 0.75rem 0 0.9rem;
+        }
+
+        .mobile-chip {
+            border: 1px solid #ced4da;
+            border-radius: 0.4rem;
+            font-size: 0.8rem;
+            text-align: center;
+            padding: 0.3rem 0.2rem;
+            background: #fff;
+        }
+
+        .mobile-absent-list .list-group-item {
+            padding: 0.55rem 0.65rem;
+            font-size: 0.9rem;
+        }
+
+        .mobile-absent-name {
+            font-weight: 500;
+        }
+
         .reporte-compacto {
             font-family: Consolas, "Courier New", monospace;
             font-size: 12px;
@@ -520,7 +649,7 @@ if ($idCurso > 0) {
                             </div>
                         <?php endif; ?>
                         <?php if ($usarTurnoInferidoPorHora): ?>
-                            <div class="alert alert-secondary mb-3">
+                            <div class="alert alert-secondary mb-3 d-none d-md-block">
                                 Clasificacion de turno por hora activa para <?= htmlspecialchars($fecha) ?>:
                                 MANANA <?= htmlspecialchars($horariosGlobales['MANANA']) ?> y TARDE <?= htmlspecialchars($horariosGlobales['TARDE']) ?>.
                             </div>
@@ -531,7 +660,7 @@ if ($idCurso > 0) {
                                 La puntualidad se calcula usando el estado guardado en cada registro.
                             </div>
                         <?php endif; ?>
-                        <form class="row g-3" method="GET" action="" id="filtrosReporteForm">
+                        <form class="row g-3 d-none d-md-flex" method="GET" action="" id="filtrosReporteForm">
                             <input type="hidden" name="accion" id="accion_form" value="ver_reporte">
                             <div class="col-md-4">
                                 <label class="form-label">Nivel</label>
@@ -613,7 +742,7 @@ if ($idCurso > 0) {
                         - <?= $tipoReporte === 'puntualidad' ? 'Puntualidad' : 'Llegada' ?>
                     </div>
                     <div class="card-body p-0">
-                        <div class="table-responsive">
+                        <div class="table-responsive d-none d-md-block">
                             <table class="table table-striped mb-0">
                                 <thead class="table-light">
                                     <tr>
@@ -658,61 +787,195 @@ if ($idCurso > 0) {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
 
-                <?php if ($idCurso > 0): ?>
-                    <div class="card">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span>Reporte del curso seleccionado (<?= htmlspecialchars($fecha) ?> - <?= htmlspecialchars($turno) ?>)</span>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-striped mb-0">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Estudiante</th>
-                                            <th>Llegada</th>
-                                            <th>Hora de entrada</th>
-                                            <th>Puntualidad</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php if (empty($registros)): ?>
-                                            <tr>
-                                                <td colspan="5" class="text-center py-4">No hay registros para los filtros seleccionados.</td>
-                                            </tr>
-                                        <?php else: ?>
-                                            <?php foreach ($registros as $index => $row): ?>
-                                                <?php $llego = (int)($row['llego'] ?? 0) === 1; ?>
+                        <div class="d-md-none p-3">
+                            <?php
+                                $resumenNivel = [];
+                                foreach ($nivelesPermitidos as $nivelBase) {
+                                    $resumenNivel[$nivelBase] = ['total' => 0, 'llegaron' => 0, 'faltan' => 0];
+                                }
+                                foreach ($resumenCursos as $rowResumen) {
+                                    $nivelKey = (string)($rowResumen['nivel'] ?? '');
+                                    if (!isset($resumenNivel[$nivelKey])) {
+                                        continue;
+                                    }
+                                    $totTmp = (int)($rowResumen['total_estudiantes'] ?? 0);
+                                    $llegTmp = (int)($rowResumen['llegaron'] ?? 0);
+                                    $resumenNivel[$nivelKey]['total'] += $totTmp;
+                                    $resumenNivel[$nivelKey]['llegaron'] += $llegTmp;
+                                    $resumenNivel[$nivelKey]['faltan'] += max($totTmp - $llegTmp, 0);
+                                }
+                            ?>
+
+                            <div class="mobile-report-title">Reporte de asistencia</div>
+                            <div class="mobile-report-subtitle"><?= htmlspecialchars($fecha) ?> - <?= htmlspecialchars($turno) ?></div>
+                            <div class="mb-3">
+                                <form method="GET" action="" class="row g-2 align-items-end">
+                                    <input type="hidden" name="accion" value="ver_reporte">
+                                    <input type="hidden" name="turno" value="<?= htmlspecialchars($turno) ?>">
+                                    <input type="hidden" name="tipo_reporte" value="<?= htmlspecialchars($tipoReporte) ?>">
+                                    <input type="hidden" name="nivel" value="">
+                                    <input type="hidden" name="id_curso" value="0">
+                                    <div class="col-8">
+                                        <label class="form-label mb-1">Fecha</label>
+                                        <input type="date" class="form-control form-control-sm" name="fecha" value="<?= htmlspecialchars($fecha) ?>" required>
+                                    </div>
+                                    <div class="col-4 d-grid">
+                                        <button type="submit" class="btn btn-sm btn-primary">Ver</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="mb-3">
+                                <form method="GET" action="" class="d-flex gap-2">
+                                    <input type="hidden" name="accion" value="ver_reporte">
+                                    <input type="hidden" name="fecha" value="<?= htmlspecialchars($fecha) ?>">
+                                    <input type="hidden" name="tipo_reporte" value="<?= htmlspecialchars($tipoReporte) ?>">
+                                    <input type="hidden" name="nivel" value="">
+                                    <input type="hidden" name="id_curso" value="0">
+                                    <button type="submit" name="turno" value="MANANA" class="btn btn-sm <?= $turno === 'MANANA' ? 'btn-dark' : 'btn-outline-dark' ?>">Manana</button>
+                                    <button type="submit" name="turno" value="TARDE" class="btn btn-sm <?= $turno === 'TARDE' ? 'btn-dark' : 'btn-outline-dark' ?>">Tarde</button>
+                                </form>
+                            </div>
+
+                            <div class="card mb-3 mobile-summary-card">
+                                <div class="card-body p-2">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered mobile-table">
+                                            <thead>
                                                 <tr>
-                                                    <td><?= $index + 1 ?></td>
-                                                    <td><?= htmlspecialchars($row['apellido_paterno'] . ' ' . $row['apellido_materno'] . ', ' . $row['nombres']) ?></td>
-                                                    <td class="<?= $llego ? 'text-success' : 'text-danger' ?>"><?= $llego ? 'LLEGO' : 'NO LLEGO' ?></td>
-                                                    <td><?= htmlspecialchars($llego ? (string)($row['hora_entrada'] ?? '-') : '-') ?></td>
-                                                    <td>
-                                                        <?php if (!$llego): ?>
-                                                            -
-                                                        <?php else: ?>
-                                                            <?= htmlspecialchars((string)($row['puntualidad_calculada'] ?? '-')) ?>
-                                                        <?php endif; ?>
-                                                    </td>
+                                                    <th>Nivel</th>
+                                                    <th class="text-center">Llegaron</th>
+                                                    <th class="text-center">Faltan</th>
+                                                    <th class="text-center">Total</th>
                                                 </tr>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </tbody>
-                                </table>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($nivelesPermitidos as $nivelNom): ?>
+                                                    <tr data-nivel-row="<?= htmlspecialchars($nivelNom) ?>">
+                                                        <td><?= htmlspecialchars($nivelNom) ?></td>
+                                                        <td class="text-center" data-field="llegaron"><?= (int)$resumenNivel[$nivelNom]['llegaron'] ?></td>
+                                                        <td class="text-center" data-field="faltan"><?= (int)$resumenNivel[$nivelNom]['faltan'] ?></td>
+                                                        <td class="text-center"><?= (int)$resumenNivel[$nivelNom]['total'] ?></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <ul class="nav nav-tabs mobile-nivel-tabs mb-2" id="mobileNivelTabs" role="tablist">
+                                <?php foreach ($nivelesPermitidos as $idx => $nivelTab): ?>
+                                    <?php
+                                        $tabClass = 'mobile-tab-inicial';
+                                        if ($nivelTab === 'Primaria') {
+                                            $tabClass = 'mobile-tab-primaria';
+                                        } elseif ($nivelTab === 'Secundaria') {
+                                            $tabClass = 'mobile-tab-secundaria';
+                                        }
+                                    ?>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link <?= htmlspecialchars($tabClass) ?> <?= $idx === 0 ? 'active' : '' ?>" id="tab-<?= strtolower($nivelTab) ?>" data-bs-toggle="tab" data-bs-target="#pane-<?= strtolower($nivelTab) ?>" type="button" role="tab" aria-controls="pane-<?= strtolower($nivelTab) ?>" aria-selected="<?= $idx === 0 ? 'true' : 'false' ?>">
+                                            <?= htmlspecialchars($nivelTab) ?>
+                                        </button>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+
+                            <div class="tab-content" id="mobileNivelTabsContent">
+                                <?php foreach ($nivelesPermitidos as $idx => $nivelTab): ?>
+                                    <div class="tab-pane fade <?= $idx === 0 ? 'show active' : '' ?>" id="pane-<?= strtolower($nivelTab) ?>" role="tabpanel" aria-labelledby="tab-<?= strtolower($nivelTab) ?>">
+                                        <div class="card mobile-detail-card">
+                                            <div class="card-body p-2">
+                                                <div class="table-responsive">
+                                                    <table class="table table-bordered mobile-table mb-0">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Curso</th>
+                                                                <th class="text-center">Llegaron</th>
+                                                                <th class="text-center">Faltan</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php $tieneCursosNivel = false; ?>
+                                                            <?php foreach ($resumenCursos as $rc): ?>
+                                                                <?php if (($rc['nivel'] ?? '') !== $nivelTab) { continue; } ?>
+                                                                <?php
+                                                                    $tieneCursosNivel = true;
+                                                                    $totalEst = (int)($rc['total_estudiantes'] ?? 0);
+                                                                    $llegaron = (int)($rc['llegaron'] ?? 0);
+                                                                    $faltan = max($totalEst - $llegaron, 0);
+                                                                ?>
+                                                                <tr data-curso-row="<?= (int)($rc['id_curso'] ?? 0) ?>" data-nivel-row="<?= htmlspecialchars((string)($rc['nivel'] ?? '')) ?>">
+                                                                    <td><?= htmlspecialchars(($rc['curso'] ?? '') . ' ' . ($rc['paralelo'] ?? '')) ?></td>
+                                                                    <td class="text-center" data-field="llegaron"><?= $llegaron ?></td>
+                                                                    <td class="text-center">
+                                                                        <button
+                                                                            type="button"
+                                                                            class="btn btn-sm btn-outline-danger py-0 px-2 mobile-faltan-btn"
+                                                                            data-curso-id="<?= (int)($rc['id_curso'] ?? 0) ?>"
+                                                                            data-curso-nivel="<?= htmlspecialchars((string)($rc['nivel'] ?? '')) ?>"
+                                                                            data-curso-nombre="<?= htmlspecialchars(($rc['nivel'] ?? '') . ' ' . ($rc['curso'] ?? '') . ' "' . ($rc['paralelo'] ?? '') . '"') ?>"
+                                                                            data-faltan="<?= $faltan ?>"
+                                                                        >
+                                                                            <?= $faltan ?>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            <?php endforeach; ?>
+                                                            <?php if (!$tieneCursosNivel): ?>
+                                                                <tr><td colspan="3" class="text-center py-3">Sin cursos en este nivel</td></tr>
+                                                            <?php endif; ?>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
                         </div>
                     </div>
-                <?php endif; ?>
+                </div>
+
+                <div class="modal fade d-md-none" id="modalAusentesCursoMovil" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="modalAusentesTitulo">Ausentes</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="small text-muted mb-2" id="modalAusentesMeta"></div>
+                                <ul class="list-group" id="modalAusentesLista"></ul>
+                                <div class="mt-3 border-top pt-3">
+                                    <label for="modalManualStudentId" class="form-label mb-1"><strong>Registrar por ID</strong></label>
+                                    <div class="input-group">
+                                        <input type="number" min="1" step="1" class="form-control" id="modalManualStudentId" placeholder="Ej: 154">
+                                        <button type="button" class="btn btn-success" id="modalRegistrarIdBtn">Registrar</button>
+                                    </div>
+                                    <div class="form-text">Puedes usar ID manual o escanear QR desde la camara.</div>
+                                </div>
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-outline-success w-100" id="modalToggleQrBtn">Abrir camara QR</button>
+                                </div>
+                                <div class="mt-2 d-none" id="modalQrWrapper">
+                                    <div id="modalQrReader" style="width:100%;"></div>
+                                </div>
+                                <div class="mt-2" id="modalRegistroResultado"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
             </main>
         </div>
     </div>
 
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <script>
         feather.replace();
 
@@ -728,6 +991,24 @@ if ($idCurso > 0) {
             var btnTurnoTarde = document.getElementById('btnTurnoTarde');
             var modalElement = document.getElementById('modalTurnoReporteGlobal');
             var modalTurno = modalElement ? new bootstrap.Modal(modalElement) : null;
+            var modalAusentesElement = document.getElementById('modalAusentesCursoMovil');
+            var modalAusentes = modalAusentesElement ? new bootstrap.Modal(modalAusentesElement) : null;
+            var modalAusentesTitulo = document.getElementById('modalAusentesTitulo');
+            var modalAusentesMeta = document.getElementById('modalAusentesMeta');
+            var modalAusentesLista = document.getElementById('modalAusentesLista');
+            var modalManualStudentId = document.getElementById('modalManualStudentId');
+            var modalRegistrarIdBtn = document.getElementById('modalRegistrarIdBtn');
+            var modalToggleQrBtn = document.getElementById('modalToggleQrBtn');
+            var modalQrWrapper = document.getElementById('modalQrWrapper');
+            var modalRegistroResultado = document.getElementById('modalRegistroResultado');
+            var ausentesPorCurso = <?= json_encode($ausentesPorCurso, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+            var qrReader = null;
+            var qrActivo = false;
+            var cursoActualModal = {
+                id: '0',
+                nivel: '',
+                nombre: '',
+            };
 
             if (!formFiltros || !nivelSelect || !turnoSelect || !cursoSelect || !accionInput) {
                 return;
@@ -801,6 +1082,277 @@ if ($idCurso > 0) {
             if (btnTurnoTarde) {
                 btnTurnoTarde.addEventListener('click', function () {
                     enviarReporteGlobal('TARDE');
+                });
+            }
+
+            function escaparHtml(texto) {
+                return String(texto)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function actualizarMetaModal() {
+                if (!modalAusentesMeta) {
+                    return;
+                }
+                var faltanActual = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id].length : 0;
+                modalAusentesMeta.textContent = 'Fecha: <?= htmlspecialchars($fecha) ?> | Turno: <?= htmlspecialchars($turno) ?> | Faltan: ' + faltanActual;
+            }
+
+            function renderAusentesModal() {
+                if (!modalAusentesLista) {
+                    return;
+                }
+                var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
+                modalAusentesLista.innerHTML = '';
+                if (lista.length === 0) {
+                    modalAusentesLista.innerHTML = '<li class="list-group-item text-center text-muted">Sin ausentes</li>';
+                    actualizarMetaModal();
+                    return;
+                }
+
+                for (var i = 0; i < lista.length; i++) {
+                    var item = lista[i];
+                    var li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.innerHTML = '<span>' + escaparHtml(item.nombre || '') + '</span>' +
+                        '<button type="button" class="btn btn-sm btn-outline-success modal-reg-item-btn" data-id-estudiante="' + escaparHtml(item.id_estudiante || 0) + '">Registrar</button>';
+                    modalAusentesLista.appendChild(li);
+                }
+                actualizarMetaModal();
+            }
+
+            function mostrarResultadoRegistro(tipo, mensaje) {
+                if (!modalRegistroResultado) {
+                    return;
+                }
+                var clase = 'alert-info';
+                if (tipo === 'ok') {
+                    clase = 'alert-success';
+                } else if (tipo === 'error') {
+                    clase = 'alert-danger';
+                } else if (tipo === 'warn') {
+                    clase = 'alert-warning';
+                }
+                modalRegistroResultado.innerHTML = '<div class="alert ' + clase + ' py-2 mb-0">' + escaparHtml(mensaje) + '</div>';
+            }
+
+            function actualizarTablasTrasRegistro(idEstudiante) {
+                var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
+                var nuevaLista = [];
+                for (var i = 0; i < lista.length; i++) {
+                    if (String(lista[i].id_estudiante) !== String(idEstudiante)) {
+                        nuevaLista.push(lista[i]);
+                    }
+                }
+                ausentesPorCurso[cursoActualModal.id] = nuevaLista;
+
+                var faltanNuevo = nuevaLista.length;
+                var cursoRow = document.querySelector('tr[data-curso-row="' + cursoActualModal.id + '"]');
+                if (cursoRow) {
+                    var llegoCell = cursoRow.querySelector('td[data-field="llegaron"]');
+                    if (llegoCell) {
+                        var llegoActual = parseInt(llegoCell.textContent, 10) || 0;
+                        llegoCell.textContent = String(llegoActual + 1);
+                    }
+                    var faltanBtn = cursoRow.querySelector('.mobile-faltan-btn');
+                    if (faltanBtn) {
+                        faltanBtn.textContent = String(faltanNuevo);
+                        faltanBtn.setAttribute('data-faltan', String(faltanNuevo));
+                    }
+                }
+
+                var nivelRow = document.querySelector('tr[data-nivel-row="' + cursoActualModal.nivel + '"]');
+                if (nivelRow) {
+                    var nivelLlegoCell = nivelRow.querySelector('td[data-field="llegaron"]');
+                    var nivelFaltanCell = nivelRow.querySelector('td[data-field="faltan"]');
+                    if (nivelLlegoCell) {
+                        var nivelLlegoActual = parseInt(nivelLlegoCell.textContent, 10) || 0;
+                        nivelLlegoCell.textContent = String(nivelLlegoActual + 1);
+                    }
+                    if (nivelFaltanCell) {
+                        var nivelFaltanActual = parseInt(nivelFaltanCell.textContent, 10) || 0;
+                        nivelFaltanCell.textContent = String(Math.max(nivelFaltanActual - 1, 0));
+                    }
+                }
+
+                renderAusentesModal();
+            }
+
+            function registrarAsistenciaPorId(idEstudiante) {
+                var idNum = parseInt(idEstudiante, 10);
+                if (!(idNum > 0)) {
+                    mostrarResultadoRegistro('warn', 'Ingresa un ID valido.');
+                    return;
+                }
+
+                var lista = Array.isArray(ausentesPorCurso[cursoActualModal.id]) ? ausentesPorCurso[cursoActualModal.id] : [];
+                var existeEnLista = false;
+                for (var i = 0; i < lista.length; i++) {
+                    if (String(lista[i].id_estudiante) === String(idNum)) {
+                        existeEnLista = true;
+                        break;
+                    }
+                }
+                if (!existeEnLista) {
+                    mostrarResultadoRegistro('warn', 'Ese ID no corresponde a un ausente de este curso.');
+                    return;
+                }
+
+                mostrarResultadoRegistro('ok', 'Registrando asistencia...');
+                fetch('asistencia.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    body: 'action=scan_qr&qr_data=' + encodeURIComponent('EST:' + idNum)
+                })
+                    .then(function (response) {
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        if (data && data.success) {
+                            actualizarTablasTrasRegistro(idNum);
+                            mostrarResultadoRegistro('ok', data.message || 'Asistencia registrada correctamente.');
+                            if (modalManualStudentId) {
+                                modalManualStudentId.value = '';
+                                modalManualStudentId.focus();
+                            }
+                        } else {
+                            mostrarResultadoRegistro('error', (data && data.message) ? data.message : 'No se pudo registrar la asistencia.');
+                        }
+                    })
+                    .catch(function () {
+                        mostrarResultadoRegistro('error', 'Error de conexion al registrar asistencia.');
+                    });
+            }
+
+            function iniciarQr() {
+                if (qrActivo || typeof Html5Qrcode === 'undefined') {
+                    return;
+                }
+                qrReader = new Html5Qrcode('modalQrReader');
+                qrReader.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 220, height: 220 } },
+                    function (decodedText) {
+                        var match = String(decodedText || '').match(/^EST:(\d+)$/i);
+                        if (match && match[1]) {
+                            registrarAsistenciaPorId(match[1]);
+                        } else {
+                            mostrarResultadoRegistro('warn', 'QR invalido para registro escolar.');
+                        }
+                    },
+                    function () {}
+                ).then(function () {
+                    qrActivo = true;
+                    if (modalToggleQrBtn) {
+                        modalToggleQrBtn.textContent = 'Cerrar camara QR';
+                    }
+                }).catch(function () {
+                    mostrarResultadoRegistro('error', 'No se pudo iniciar la camara QR.');
+                });
+            }
+
+            function detenerQr() {
+                if (!qrReader || !qrActivo) {
+                    return;
+                }
+                qrReader.stop().then(function () {
+                    qrReader.clear();
+                    qrActivo = false;
+                    qrReader = null;
+                    if (modalToggleQrBtn) {
+                        modalToggleQrBtn.textContent = 'Abrir camara QR';
+                    }
+                }).catch(function () {});
+            }
+
+            document.addEventListener('click', function (event) {
+                var target = event.target;
+                if (!target || !target.classList || !target.classList.contains('mobile-faltan-btn')) {
+                    return;
+                }
+
+                if (!modalAusentes || window.innerWidth >= 768) {
+                    return;
+                }
+
+                var cursoId = target.getAttribute('data-curso-id') || '0';
+                var cursoNivel = target.getAttribute('data-curso-nivel') || '';
+                var cursoNombre = target.getAttribute('data-curso-nombre') || 'Curso';
+                cursoActualModal.id = cursoId;
+                cursoActualModal.nivel = cursoNivel;
+                cursoActualModal.nombre = cursoNombre;
+
+                if (modalAusentesTitulo) {
+                    modalAusentesTitulo.textContent = 'Ausentes - ' + cursoNombre;
+                }
+                if (modalRegistroResultado) {
+                    modalRegistroResultado.innerHTML = '';
+                }
+                renderAusentesModal();
+
+                modalAusentes.show();
+            });
+
+            if (modalAusentesLista) {
+                modalAusentesLista.addEventListener('click', function (event) {
+                    var btn = event.target;
+                    if (!btn || !btn.classList || !btn.classList.contains('modal-reg-item-btn')) {
+                        return;
+                    }
+                    var idEst = btn.getAttribute('data-id-estudiante') || '0';
+                    registrarAsistenciaPorId(idEst);
+                });
+            }
+
+            if (modalRegistrarIdBtn) {
+                modalRegistrarIdBtn.addEventListener('click', function () {
+                    var idVal = modalManualStudentId ? modalManualStudentId.value : '';
+                    registrarAsistenciaPorId(idVal);
+                });
+            }
+
+            if (modalManualStudentId) {
+                modalManualStudentId.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        registrarAsistenciaPorId(modalManualStudentId.value);
+                    }
+                });
+            }
+
+            if (modalToggleQrBtn) {
+                modalToggleQrBtn.addEventListener('click', function () {
+                    if (!modalQrWrapper) {
+                        return;
+                    }
+                    if (modalQrWrapper.classList.contains('d-none')) {
+                        modalQrWrapper.classList.remove('d-none');
+                        iniciarQr();
+                    } else {
+                        modalQrWrapper.classList.add('d-none');
+                        detenerQr();
+                    }
+                });
+            }
+
+            if (modalAusentesElement) {
+                modalAusentesElement.addEventListener('hidden.bs.modal', function () {
+                    detenerQr();
+                    if (modalQrWrapper) {
+                        modalQrWrapper.classList.add('d-none');
+                    }
+                    if (modalManualStudentId) {
+                        modalManualStudentId.value = '';
+                    }
+                    if (modalRegistroResultado) {
+                        modalRegistroResultado.innerHTML = '';
+                    }
                 });
             }
         })();
