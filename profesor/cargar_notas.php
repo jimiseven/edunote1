@@ -30,6 +30,15 @@ function construirUrlPeriodo($idCursoMateria, $trimestre, $parcial, $extra = [])
     return 'cargar_notas.php?' . http_build_query($params);
 }
 
+function construirUrlVistaCelular($idCursoMateria, $trimestre, $parcial, $extra = []) {
+    $params = array_merge([
+        'curso_materia' => $idCursoMateria,
+        'trimestre' => $trimestre,
+        'parcial' => $parcial
+    ], $extra);
+    return 'cargar_notas_cel.php?' . http_build_query($params);
+}
+
 function obtenerModalidadCargaValida($valor) {
     return $valor === 'trimestres' ? 'trimestres' : 'parciales';
 }
@@ -1170,6 +1179,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             transform: translateY(-1px);
             box-shadow: 0 10px 22px rgba(37, 99, 235, .18);
         }
+        .mobile-cell-view-action {
+            display: none;
+            margin: 0 0 0.55rem;
+        }
+        .mobile-cell-view-btn {
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            min-height: 42px;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 0.92rem;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            border: 1px solid #1d4ed8;
+            color: #ffffff;
+            text-decoration: none;
+            box-shadow: 0 12px 24px rgba(37, 99, 235, .24);
+        }
+        .mobile-cell-view-btn:hover,
+        .mobile-cell-view-btn:focus {
+            color: #ffffff;
+            background: linear-gradient(135deg, #1d4ed8, #1e40af);
+            box-shadow: 0 14px 28px rgba(37, 99, 235, .30);
+        }
         body.table-expanded .container-card {
             padding: 10px 12px;
         }
@@ -2060,6 +2095,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             .table-container {
                 max-height: none;
             }
+            .mobile-cell-view-action {
+                display: block;
+            }
             .action-buttons {
                 position: static;
                 flex-direction: column;
@@ -2251,6 +2289,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <?php
+                    $extraVistaCelular = ['confirmar' => 1];
+                    if ($vistaActual === 'trimestral') {
+                        $extraVistaCelular['vista'] = 'trimestral';
+                    }
+                    ?>
+                    <div class="mobile-cell-view-action">
+                        <a class="mobile-cell-view-btn"
+                           href="<?php echo htmlspecialchars(construirUrlVistaCelular($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $extraVistaCelular)); ?>">
+                            Cargar notas por celular
+                        </a>
                     </div>
 
                     <?php if (isset($error)): ?>
