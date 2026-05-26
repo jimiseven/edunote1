@@ -626,7 +626,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (!$es_inicial && !empty($periodoEditable) && isset($_POST['guardar_notas'])) {
-                $etiPost = $_POST['etiquetas_actividades'] ?? [];
+                $etiPost = $_POST['etiquetas_actividades'] ?? null;
                 if (is_array($etiPost)) {
                     guardarEtiquetasActividades($conn, (int)$curso['id_curso'], (int)$curso['id_materia'], $idPeriodoSeleccionado, $etiPost);
                 }
@@ -1017,7 +1017,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $redirectExtra['vista'] = 'trimestral';
         }
 
-        header('Location: ' . construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra));
+        $urlPostGuardado = defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW
+            ? construirUrlVistaCelular($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra)
+            : construirUrlPeriodo($id_curso_materia, $trimestreSeleccionado, $parcialSeleccionado, $redirectExtra);
+        header('Location: ' . $urlPostGuardado);
         exit();
     } catch (Exception $e) {
         if ($conn->inTransaction()) {
@@ -1028,6 +1031,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error .= ". Contacte al administrador del sistema.";
         }
     }
+}
+
+if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
+    require __DIR__ . '/partials/cargar_notas_cel_view.php';
+    exit();
 }
 ?>
 <!DOCTYPE html>
