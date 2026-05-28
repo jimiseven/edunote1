@@ -1,11 +1,11 @@
 -- phpMyAdmin SQL Dump
--- version 5.2.1
+-- version 5.2.2
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Generation Time: May 14, 2026 at 03:12 AM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+-- Servidor: localhost:3306
+-- Tiempo de generación: 28-05-2026 a las 11:19:49
+-- Versión del servidor: 10.11.16-MariaDB-cll-lve
+-- Versión de PHP: 8.4.21
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -18,13 +18,13 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `wiredcom_uni3t`
+-- Base de datos: `wiredcom_uni3t`
 --
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `anuncios`
+-- Estructura de tabla para la tabla `anuncios`
 --
 
 CREATE TABLE `anuncios` (
@@ -39,13 +39,14 @@ CREATE TABLE `anuncios` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `asistencia`
+-- Estructura de tabla para la tabla `asistencia`
 --
 
 CREATE TABLE `asistencia` (
   `id_asistencia` int(11) NOT NULL,
   `id_estudiante` int(11) NOT NULL COMMENT 'FK a estudiantes',
   `fecha` date NOT NULL,
+  `turno` enum('MANANA','TARDE') NOT NULL DEFAULT 'MANANA',
   `hora_entrada` time NOT NULL,
   `tipo_registro` enum('QR','MANUAL') DEFAULT 'QR' COMMENT 'QR: escaneado con QR, MANUAL: registrado manualmente',
   `estado_puntualidad` enum('TEMPRANO','TARDE') DEFAULT NULL,
@@ -58,7 +59,61 @@ CREATE TABLE `asistencia` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `asistencia_horarios_ingreso`
+-- Estructura de tabla para la tabla `asistencia_cursos_turnos`
+--
+
+CREATE TABLE `asistencia_cursos_turnos` (
+  `id_curso_turno` int(11) NOT NULL,
+  `id_curso` int(11) NOT NULL,
+  `doble_turno` tinyint(1) NOT NULL DEFAULT 0 COMMENT '0=una marca diaria, 1=manana+tarde',
+  `estado` tinyint(1) NOT NULL DEFAULT 1,
+  `creado_por` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `asistencia_curso_turno_dias`
+--
+
+CREATE TABLE `asistencia_curso_turno_dias` (
+  `id_curso_turno_dia` int(11) NOT NULL,
+  `id_curso` int(11) NOT NULL,
+  `turno` enum('MANANA','TARDE') NOT NULL DEFAULT 'TARDE',
+  `dia_semana` tinyint(3) UNSIGNED NOT NULL COMMENT '1=Lunes, 2=Martes, 3=Miercoles, 4=Jueves, 5=Viernes, 6=Sabado, 7=Domingo',
+  `estado` tinyint(1) NOT NULL DEFAULT 1,
+  `fecha_inicio` date DEFAULT NULL COMMENT 'Opcional: inicio de vigencia',
+  `fecha_fin` date DEFAULT NULL COMMENT 'Opcional: fin de vigencia',
+  `creado_por` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `asistencia_horarios_curso_turno`
+--
+
+CREATE TABLE `asistencia_horarios_curso_turno` (
+  `id_horario_curso` int(11) NOT NULL,
+  `id_curso` int(11) NOT NULL,
+  `fecha_inicio` date NOT NULL,
+  `fecha_fin` date NOT NULL,
+  `turno` enum('MANANA','TARDE') NOT NULL,
+  `hora_ingreso` time NOT NULL,
+  `tolerancia_min` int(11) NOT NULL DEFAULT 0,
+  `estado` tinyint(1) NOT NULL DEFAULT 1,
+  `creado_por` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `asistencia_horarios_ingreso`
 --
 
 CREATE TABLE `asistencia_horarios_ingreso` (
@@ -75,13 +130,32 @@ CREATE TABLE `asistencia_horarios_ingreso` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `asistencia_lectores`
+-- Estructura de tabla para la tabla `asistencia_horarios_turno_global`
+--
+
+CREATE TABLE `asistencia_horarios_turno_global` (
+  `id_horario_global` int(11) NOT NULL,
+  `fecha_inicio` date NOT NULL,
+  `fecha_fin` date NOT NULL,
+  `turno` enum('MANANA','TARDE') NOT NULL,
+  `hora_ingreso` time NOT NULL,
+  `tolerancia_min` int(11) NOT NULL DEFAULT 0,
+  `estado` tinyint(1) NOT NULL DEFAULT 1,
+  `creado_por` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `asistencia_lectores`
 --
 
 CREATE TABLE `asistencia_lectores` (
   `id_lector` int(11) NOT NULL,
   `id_personal` int(11) NOT NULL,
   `alcance` enum('GLOBAL','POR_CURSO') NOT NULL DEFAULT 'GLOBAL',
+  `tipo_lector` enum('ADMINISTRADOR','LECTURADOR') NOT NULL DEFAULT 'LECTURADOR',
   `estado` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1=habilitado, 0=inhabilitado',
   `fecha_creacion` timestamp NOT NULL DEFAULT current_timestamp(),
   `fecha_actualizacion` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -90,7 +164,7 @@ CREATE TABLE `asistencia_lectores` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `asistencia_lectores_cursos`
+-- Estructura de tabla para la tabla `asistencia_lectores_cursos`
 --
 
 CREATE TABLE `asistencia_lectores_cursos` (
@@ -104,7 +178,24 @@ CREATE TABLE `asistencia_lectores_cursos` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `bimestres_activos`
+-- Estructura de tabla para la tabla `asistencia_permisos`
+--
+
+CREATE TABLE `asistencia_permisos` (
+  `id_permiso` int(11) NOT NULL,
+  `id_estudiante` int(11) NOT NULL,
+  `fecha` date NOT NULL,
+  `motivo` varchar(150) NOT NULL,
+  `detalle` text DEFAULT NULL,
+  `estado` enum('APROBADO','RECHAZADO') NOT NULL DEFAULT 'APROBADO',
+  `registrado_por` int(11) DEFAULT NULL,
+  `fecha_registro` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `bimestres_activos`
 --
 
 CREATE TABLE `bimestres_activos` (
@@ -119,7 +210,7 @@ CREATE TABLE `bimestres_activos` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `calificaciones`
+-- Estructura de tabla para la tabla `calificaciones`
 --
 
 CREATE TABLE `calificaciones` (
@@ -134,7 +225,7 @@ CREATE TABLE `calificaciones` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `calificaciones_parciales`
+-- Estructura de tabla para la tabla `calificaciones_parciales`
 --
 
 CREATE TABLE `calificaciones_parciales` (
@@ -156,7 +247,7 @@ CREATE TABLE `calificaciones_parciales` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `calificaciones_parciales_detalle`
+-- Estructura de tabla para la tabla `calificaciones_parciales_detalle`
 --
 
 CREATE TABLE `calificaciones_parciales_detalle` (
@@ -173,7 +264,7 @@ CREATE TABLE `calificaciones_parciales_detalle` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `calificaciones_trimestrales`
+-- Estructura de tabla para la tabla `calificaciones_trimestrales`
 --
 
 CREATE TABLE `calificaciones_trimestrales` (
@@ -191,7 +282,7 @@ CREATE TABLE `calificaciones_trimestrales` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `configuracion_sistema`
+-- Estructura de tabla para la tabla `configuracion_sistema`
 --
 
 CREATE TABLE `configuracion_sistema` (
@@ -206,7 +297,7 @@ CREATE TABLE `configuracion_sistema` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `cursos`
+-- Estructura de tabla para la tabla `cursos`
 --
 
 CREATE TABLE `cursos` (
@@ -219,7 +310,7 @@ CREATE TABLE `cursos` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `cursos_materias`
+-- Estructura de tabla para la tabla `cursos_materias`
 --
 
 CREATE TABLE `cursos_materias` (
@@ -231,7 +322,7 @@ CREATE TABLE `cursos_materias` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `estudiantes`
+-- Estructura de tabla para la tabla `estudiantes`
 --
 
 CREATE TABLE `estudiantes` (
@@ -252,7 +343,22 @@ CREATE TABLE `estudiantes` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `materias`
+-- Estructura de tabla para la tabla `estudiantes_responsables`
+--
+
+CREATE TABLE `estudiantes_responsables` (
+  `id_estudiante_responsable` int(11) NOT NULL,
+  `id_estudiante` int(11) NOT NULL,
+  `id_responsable` int(11) NOT NULL,
+  `tipo_responsable` enum('PADRE','MADRE','TUTOR') DEFAULT NULL,
+  `es_principal` tinyint(1) NOT NULL DEFAULT 0,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `materias`
 --
 
 CREATE TABLE `materias` (
@@ -266,7 +372,7 @@ CREATE TABLE `materias` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `materias_complementarias`
+-- Estructura de tabla para la tabla `materias_complementarias`
 --
 
 CREATE TABLE `materias_complementarias` (
@@ -282,7 +388,7 @@ CREATE TABLE `materias_complementarias` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `parciales_etiquetas_actividades`
+-- Estructura de tabla para la tabla `parciales_etiquetas_actividades`
 --
 
 CREATE TABLE `parciales_etiquetas_actividades` (
@@ -298,7 +404,7 @@ CREATE TABLE `parciales_etiquetas_actividades` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `periodos_evaluacion`
+-- Estructura de tabla para la tabla `periodos_evaluacion`
 --
 
 CREATE TABLE `periodos_evaluacion` (
@@ -316,7 +422,7 @@ CREATE TABLE `periodos_evaluacion` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `personal`
+-- Estructura de tabla para la tabla `personal`
 --
 
 CREATE TABLE `personal` (
@@ -333,7 +439,7 @@ CREATE TABLE `personal` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `profesores_materias_cursos`
+-- Estructura de tabla para la tabla `profesores_materias_cursos`
 --
 
 CREATE TABLE `profesores_materias_cursos` (
@@ -346,7 +452,7 @@ CREATE TABLE `profesores_materias_cursos` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `responsables`
+-- Estructura de tabla para la tabla `responsables`
 --
 
 CREATE TABLE `responsables` (
@@ -360,7 +466,7 @@ CREATE TABLE `responsables` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `roles`
+-- Estructura de tabla para la tabla `roles`
 --
 
 CREATE TABLE `roles` (
@@ -371,7 +477,7 @@ CREATE TABLE `roles` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `usuarios_activos`
+-- Estructura de tabla para la tabla `usuarios_activos`
 --
 
 CREATE TABLE `usuarios_activos` (
@@ -390,7 +496,7 @@ CREATE TABLE `usuarios_activos` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `usuarios_ingresos`
+-- Estructura de tabla para la tabla `usuarios_ingresos`
 --
 
 CREATE TABLE `usuarios_ingresos` (
@@ -405,57 +511,107 @@ CREATE TABLE `usuarios_ingresos` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Indexes for dumped tables
+-- Índices para tablas volcadas
 --
 
 --
--- Indexes for table `anuncios`
+-- Indices de la tabla `anuncios`
 --
 ALTER TABLE `anuncios`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `asistencia`
+-- Indices de la tabla `asistencia`
 --
 ALTER TABLE `asistencia`
   ADD PRIMARY KEY (`id_asistencia`),
-  ADD UNIQUE KEY `uk_estudiante_fecha` (`id_estudiante`,`fecha`),
+  ADD UNIQUE KEY `uk_estudiante_fecha_turno` (`id_estudiante`,`fecha`,`turno`),
   ADD KEY `idx_fecha` (`fecha`),
-  ADD KEY `idx_estudiante` (`id_estudiante`);
+  ADD KEY `idx_estudiante` (`id_estudiante`),
+  ADD KEY `idx_asistencia_fecha_est_hora` (`fecha`,`id_estudiante`,`hora_entrada`),
+  ADD KEY `idx_fecha_turno` (`fecha`,`turno`);
 
 --
--- Indexes for table `asistencia_horarios_ingreso`
+-- Indices de la tabla `asistencia_cursos_turnos`
+--
+ALTER TABLE `asistencia_cursos_turnos`
+  ADD PRIMARY KEY (`id_curso_turno`),
+  ADD UNIQUE KEY `uk_curso_turno` (`id_curso`),
+  ADD KEY `idx_doble_turno_estado` (`doble_turno`,`estado`);
+
+--
+-- Indices de la tabla `asistencia_curso_turno_dias`
+--
+ALTER TABLE `asistencia_curso_turno_dias`
+  ADD PRIMARY KEY (`id_curso_turno_dia`),
+  ADD UNIQUE KEY `uk_curso_turno_dia_vigencia` (`id_curso`,`turno`,`dia_semana`,`fecha_inicio`,`fecha_fin`),
+  ADD KEY `idx_curso_turno_estado` (`id_curso`,`turno`,`estado`),
+  ADD KEY `idx_turno_dia_estado` (`turno`,`dia_semana`,`estado`),
+  ADD KEY `fk_asistencia_curso_turno_dias_personal` (`creado_por`);
+
+--
+-- Indices de la tabla `asistencia_horarios_curso_turno`
+--
+ALTER TABLE `asistencia_horarios_curso_turno`
+  ADD PRIMARY KEY (`id_horario_curso`),
+  ADD KEY `idx_curso_rango_estado` (`id_curso`,`fecha_inicio`,`fecha_fin`,`estado`),
+  ADD KEY `idx_turno_estado` (`turno`,`estado`);
+
+--
+-- Indices de la tabla `asistencia_horarios_ingreso`
 --
 ALTER TABLE `asistencia_horarios_ingreso`
   ADD PRIMARY KEY (`id_horario`),
   ADD KEY `idx_rango` (`fecha_inicio`,`fecha_fin`),
-  ADD KEY `idx_estado` (`estado`);
+  ADD KEY `idx_estado` (`estado`),
+  ADD KEY `idx_horario_estado_rango` (`estado`,`fecha_inicio`,`fecha_fin`);
 
 --
--- Indexes for table `asistencia_lectores`
+-- Indices de la tabla `asistencia_horarios_turno_global`
+--
+ALTER TABLE `asistencia_horarios_turno_global`
+  ADD PRIMARY KEY (`id_horario_global`),
+  ADD KEY `idx_turno_global_rango_estado` (`turno`,`estado`,`fecha_inicio`,`fecha_fin`),
+  ADD KEY `idx_global_estado` (`estado`);
+
+--
+-- Indices de la tabla `asistencia_lectores`
 --
 ALTER TABLE `asistencia_lectores`
   ADD PRIMARY KEY (`id_lector`),
   ADD UNIQUE KEY `uk_asistencia_lectores_personal` (`id_personal`),
-  ADD KEY `idx_asistencia_lectores_estado` (`estado`);
+  ADD KEY `idx_asistencia_lectores_estado` (`estado`),
+  ADD KEY `idx_lector_personal_estado` (`id_personal`,`estado`);
 
 --
--- Indexes for table `asistencia_lectores_cursos`
+-- Indices de la tabla `asistencia_lectores_cursos`
 --
 ALTER TABLE `asistencia_lectores_cursos`
   ADD PRIMARY KEY (`id_lector_curso`),
   ADD UNIQUE KEY `uk_asistencia_lector_curso` (`id_lector`,`id_curso`),
   ADD KEY `idx_asistencia_lector_curso_estado` (`estado`),
-  ADD KEY `fk_asistencia_lectores_cursos_curso` (`id_curso`);
+  ADD KEY `fk_asistencia_lectores_cursos_curso` (`id_curso`),
+  ADD KEY `idx_lector_curso_estado` (`id_lector`,`id_curso`,`estado`);
 
 --
--- Indexes for table `bimestres_activos`
+-- Indices de la tabla `asistencia_permisos`
+--
+ALTER TABLE `asistencia_permisos`
+  ADD PRIMARY KEY (`id_permiso`),
+  ADD UNIQUE KEY `uk_permiso_estudiante_fecha` (`id_estudiante`,`fecha`),
+  ADD KEY `idx_permiso_fecha` (`fecha`),
+  ADD KEY `idx_permiso_estado` (`estado`),
+  ADD KEY `idx_permiso_estudiante` (`id_estudiante`),
+  ADD KEY `idx_permiso_registrado_por` (`registrado_por`);
+
+--
+-- Indices de la tabla `bimestres_activos`
 --
 ALTER TABLE `bimestres_activos`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `calificaciones`
+-- Indices de la tabla `calificaciones`
 --
 ALTER TABLE `calificaciones`
   ADD PRIMARY KEY (`id_calificacion`),
@@ -463,7 +619,7 @@ ALTER TABLE `calificaciones`
   ADD KEY `id_materia` (`id_materia`);
 
 --
--- Indexes for table `calificaciones_parciales`
+-- Indices de la tabla `calificaciones_parciales`
 --
 ALTER TABLE `calificaciones_parciales`
   ADD PRIMARY KEY (`id_calificacion_parcial`),
@@ -473,7 +629,7 @@ ALTER TABLE `calificaciones_parciales`
   ADD KEY `idx_cp_profesor` (`id_profesor`);
 
 --
--- Indexes for table `calificaciones_parciales_detalle`
+-- Indices de la tabla `calificaciones_parciales_detalle`
 --
 ALTER TABLE `calificaciones_parciales_detalle`
   ADD PRIMARY KEY (`id_detalle`),
@@ -482,7 +638,7 @@ ALTER TABLE `calificaciones_parciales_detalle`
   ADD KEY `idx_detalle_creado_por` (`creado_por`);
 
 --
--- Indexes for table `calificaciones_trimestrales`
+-- Indices de la tabla `calificaciones_trimestrales`
 --
 ALTER TABLE `calificaciones_trimestrales`
   ADD PRIMARY KEY (`id`),
@@ -491,19 +647,19 @@ ALTER TABLE `calificaciones_trimestrales`
   ADD KEY `idx_ct_gestion_trim` (`gestion`,`trimestre`);
 
 --
--- Indexes for table `configuracion_sistema`
+-- Indices de la tabla `configuracion_sistema`
 --
 ALTER TABLE `configuracion_sistema`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `cursos`
+-- Indices de la tabla `cursos`
 --
 ALTER TABLE `cursos`
   ADD PRIMARY KEY (`id_curso`);
 
 --
--- Indexes for table `cursos_materias`
+-- Indices de la tabla `cursos_materias`
 --
 ALTER TABLE `cursos_materias`
   ADD PRIMARY KEY (`id_curso_materia`),
@@ -511,21 +667,32 @@ ALTER TABLE `cursos_materias`
   ADD KEY `id_materia` (`id_materia`);
 
 --
--- Indexes for table `estudiantes`
+-- Indices de la tabla `estudiantes`
 --
 ALTER TABLE `estudiantes`
   ADD PRIMARY KEY (`id_estudiante`),
   ADD KEY `id_curso` (`id_curso`),
-  ADD KEY `idx_estudiantes_id_responsable` (`id_responsable`);
+  ADD KEY `idx_estudiantes_id_responsable` (`id_responsable`),
+  ADD KEY `idx_estudiantes_curso_est` (`id_curso`,`id_estudiante`);
 
 --
--- Indexes for table `materias`
+-- Indices de la tabla `estudiantes_responsables`
+--
+ALTER TABLE `estudiantes_responsables`
+  ADD PRIMARY KEY (`id_estudiante_responsable`),
+  ADD UNIQUE KEY `uk_estudiante_responsable` (`id_estudiante`,`id_responsable`),
+  ADD UNIQUE KEY `uk_estudiante_principal` (`id_estudiante`,`es_principal`),
+  ADD KEY `idx_er_estudiante` (`id_estudiante`),
+  ADD KEY `idx_er_responsable` (`id_responsable`);
+
+--
+-- Indices de la tabla `materias`
 --
 ALTER TABLE `materias`
   ADD PRIMARY KEY (`id_materia`);
 
 --
--- Indexes for table `materias_complementarias`
+-- Indices de la tabla `materias_complementarias`
 --
 ALTER TABLE `materias_complementarias`
   ADD PRIMARY KEY (`id`),
@@ -533,21 +700,21 @@ ALTER TABLE `materias_complementarias`
   ADD KEY `fk_mc_materia_complementaria` (`id_materia_complementaria`);
 
 --
--- Indexes for table `parciales_etiquetas_actividades`
+-- Indices de la tabla `parciales_etiquetas_actividades`
 --
 ALTER TABLE `parciales_etiquetas_actividades`
   ADD PRIMARY KEY (`id_curso`,`id_materia`,`id_periodo_evaluacion`,`area`,`indice`),
   ADD KEY `idx_periodo_materia` (`id_materia`,`id_periodo_evaluacion`);
 
 --
--- Indexes for table `periodos_evaluacion`
+-- Indices de la tabla `periodos_evaluacion`
 --
 ALTER TABLE `periodos_evaluacion`
   ADD PRIMARY KEY (`id_periodo_evaluacion`),
   ADD UNIQUE KEY `uk_gestion_trimestre_parcial` (`gestion`,`trimestre`,`parcial`);
 
 --
--- Indexes for table `personal`
+-- Indices de la tabla `personal`
 --
 ALTER TABLE `personal`
   ADD PRIMARY KEY (`id_personal`),
@@ -555,7 +722,7 @@ ALTER TABLE `personal`
   ADD KEY `id_rol` (`id_rol`);
 
 --
--- Indexes for table `profesores_materias_cursos`
+-- Indices de la tabla `profesores_materias_cursos`
 --
 ALTER TABLE `profesores_materias_cursos`
   ADD PRIMARY KEY (`id_profesor_materia_curso`),
@@ -563,20 +730,20 @@ ALTER TABLE `profesores_materias_cursos`
   ADD KEY `id_curso_materia` (`id_curso_materia`);
 
 --
--- Indexes for table `responsables`
+-- Indices de la tabla `responsables`
 --
 ALTER TABLE `responsables`
   ADD PRIMARY KEY (`id_responsable`),
   ADD UNIQUE KEY `uk_responsables_ci` (`carnet_identidad`);
 
 --
--- Indexes for table `roles`
+-- Indices de la tabla `roles`
 --
 ALTER TABLE `roles`
   ADD PRIMARY KEY (`id_rol`);
 
 --
--- Indexes for table `usuarios_activos`
+-- Indices de la tabla `usuarios_activos`
 --
 ALTER TABLE `usuarios_activos`
   ADD PRIMARY KEY (`id_activo`),
@@ -585,7 +752,7 @@ ALTER TABLE `usuarios_activos`
   ADD KEY `idx_usuarios_activos_personal` (`id_personal`);
 
 --
--- Indexes for table `usuarios_ingresos`
+-- Indices de la tabla `usuarios_ingresos`
 --
 ALTER TABLE `usuarios_ingresos`
   ADD PRIMARY KEY (`id_ingreso`),
@@ -593,173 +760,235 @@ ALTER TABLE `usuarios_ingresos`
   ADD KEY `idx_usuarios_ingresos_fecha` (`fecha_ingreso`);
 
 --
--- AUTO_INCREMENT for dumped tables
+-- AUTO_INCREMENT de las tablas volcadas
 --
 
 --
--- AUTO_INCREMENT for table `anuncios`
+-- AUTO_INCREMENT de la tabla `anuncios`
 --
 ALTER TABLE `anuncios`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `asistencia`
+-- AUTO_INCREMENT de la tabla `asistencia`
 --
 ALTER TABLE `asistencia`
   MODIFY `id_asistencia` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `asistencia_horarios_ingreso`
+-- AUTO_INCREMENT de la tabla `asistencia_cursos_turnos`
+--
+ALTER TABLE `asistencia_cursos_turnos`
+  MODIFY `id_curso_turno` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `asistencia_curso_turno_dias`
+--
+ALTER TABLE `asistencia_curso_turno_dias`
+  MODIFY `id_curso_turno_dia` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `asistencia_horarios_curso_turno`
+--
+ALTER TABLE `asistencia_horarios_curso_turno`
+  MODIFY `id_horario_curso` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `asistencia_horarios_ingreso`
 --
 ALTER TABLE `asistencia_horarios_ingreso`
   MODIFY `id_horario` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `asistencia_lectores`
+-- AUTO_INCREMENT de la tabla `asistencia_horarios_turno_global`
+--
+ALTER TABLE `asistencia_horarios_turno_global`
+  MODIFY `id_horario_global` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `asistencia_lectores`
 --
 ALTER TABLE `asistencia_lectores`
   MODIFY `id_lector` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `asistencia_lectores_cursos`
+-- AUTO_INCREMENT de la tabla `asistencia_lectores_cursos`
 --
 ALTER TABLE `asistencia_lectores_cursos`
   MODIFY `id_lector_curso` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `bimestres_activos`
+-- AUTO_INCREMENT de la tabla `asistencia_permisos`
+--
+ALTER TABLE `asistencia_permisos`
+  MODIFY `id_permiso` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `bimestres_activos`
 --
 ALTER TABLE `bimestres_activos`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `calificaciones`
+-- AUTO_INCREMENT de la tabla `calificaciones`
 --
 ALTER TABLE `calificaciones`
   MODIFY `id_calificacion` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `calificaciones_parciales`
+-- AUTO_INCREMENT de la tabla `calificaciones_parciales`
 --
 ALTER TABLE `calificaciones_parciales`
   MODIFY `id_calificacion_parcial` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `calificaciones_parciales_detalle`
+-- AUTO_INCREMENT de la tabla `calificaciones_parciales_detalle`
 --
 ALTER TABLE `calificaciones_parciales_detalle`
   MODIFY `id_detalle` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `calificaciones_trimestrales`
+-- AUTO_INCREMENT de la tabla `calificaciones_trimestrales`
 --
 ALTER TABLE `calificaciones_trimestrales`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `configuracion_sistema`
+-- AUTO_INCREMENT de la tabla `configuracion_sistema`
 --
 ALTER TABLE `configuracion_sistema`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `cursos`
+-- AUTO_INCREMENT de la tabla `cursos`
 --
 ALTER TABLE `cursos`
   MODIFY `id_curso` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `cursos_materias`
+-- AUTO_INCREMENT de la tabla `cursos_materias`
 --
 ALTER TABLE `cursos_materias`
   MODIFY `id_curso_materia` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `estudiantes`
+-- AUTO_INCREMENT de la tabla `estudiantes`
 --
 ALTER TABLE `estudiantes`
   MODIFY `id_estudiante` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `materias`
+-- AUTO_INCREMENT de la tabla `estudiantes_responsables`
+--
+ALTER TABLE `estudiantes_responsables`
+  MODIFY `id_estudiante_responsable` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `materias`
 --
 ALTER TABLE `materias`
   MODIFY `id_materia` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `materias_complementarias`
+-- AUTO_INCREMENT de la tabla `materias_complementarias`
 --
 ALTER TABLE `materias_complementarias`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `periodos_evaluacion`
+-- AUTO_INCREMENT de la tabla `periodos_evaluacion`
 --
 ALTER TABLE `periodos_evaluacion`
   MODIFY `id_periodo_evaluacion` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `personal`
+-- AUTO_INCREMENT de la tabla `personal`
 --
 ALTER TABLE `personal`
   MODIFY `id_personal` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `profesores_materias_cursos`
+-- AUTO_INCREMENT de la tabla `profesores_materias_cursos`
 --
 ALTER TABLE `profesores_materias_cursos`
   MODIFY `id_profesor_materia_curso` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `responsables`
+-- AUTO_INCREMENT de la tabla `responsables`
 --
 ALTER TABLE `responsables`
   MODIFY `id_responsable` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `roles`
+-- AUTO_INCREMENT de la tabla `roles`
 --
 ALTER TABLE `roles`
   MODIFY `id_rol` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `usuarios_activos`
+-- AUTO_INCREMENT de la tabla `usuarios_activos`
 --
 ALTER TABLE `usuarios_activos`
   MODIFY `id_activo` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `usuarios_ingresos`
+-- AUTO_INCREMENT de la tabla `usuarios_ingresos`
 --
 ALTER TABLE `usuarios_ingresos`
   MODIFY `id_ingreso` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- Constraints for dumped tables
+-- Restricciones para tablas volcadas
 --
 
 --
--- Constraints for table `asistencia_lectores`
+-- Filtros para la tabla `asistencia_cursos_turnos`
+--
+ALTER TABLE `asistencia_cursos_turnos`
+  ADD CONSTRAINT `fk_asistencia_cursos_turnos_curso` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Filtros para la tabla `asistencia_curso_turno_dias`
+--
+ALTER TABLE `asistencia_curso_turno_dias`
+  ADD CONSTRAINT `fk_asistencia_curso_turno_dias_curso` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_asistencia_curso_turno_dias_personal` FOREIGN KEY (`creado_por`) REFERENCES `personal` (`id_personal`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Filtros para la tabla `asistencia_horarios_curso_turno`
+--
+ALTER TABLE `asistencia_horarios_curso_turno`
+  ADD CONSTRAINT `fk_asistencia_horarios_curso_turno_curso` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Filtros para la tabla `asistencia_lectores`
 --
 ALTER TABLE `asistencia_lectores`
   ADD CONSTRAINT `fk_asistencia_lectores_personal` FOREIGN KEY (`id_personal`) REFERENCES `personal` (`id_personal`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
--- Constraints for table `asistencia_lectores_cursos`
+-- Filtros para la tabla `asistencia_lectores_cursos`
 --
 ALTER TABLE `asistencia_lectores_cursos`
   ADD CONSTRAINT `fk_asistencia_lectores_cursos_curso` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_asistencia_lectores_cursos_lector` FOREIGN KEY (`id_lector`) REFERENCES `asistencia_lectores` (`id_lector`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
--- Constraints for table `calificaciones`
+-- Filtros para la tabla `asistencia_permisos`
+--
+ALTER TABLE `asistencia_permisos`
+  ADD CONSTRAINT `fk_asistencia_permisos_estudiante` FOREIGN KEY (`id_estudiante`) REFERENCES `estudiantes` (`id_estudiante`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_asistencia_permisos_registrado_por` FOREIGN KEY (`registrado_por`) REFERENCES `personal` (`id_personal`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+--
+-- Filtros para la tabla `calificaciones`
 --
 ALTER TABLE `calificaciones`
   ADD CONSTRAINT `calificaciones_ibfk_1` FOREIGN KEY (`id_estudiante`) REFERENCES `estudiantes` (`id_estudiante`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `calificaciones_ibfk_2` FOREIGN KEY (`id_materia`) REFERENCES `materias` (`id_materia`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
--- Constraints for table `calificaciones_parciales`
+-- Filtros para la tabla `calificaciones_parciales`
 --
 ALTER TABLE `calificaciones_parciales`
   ADD CONSTRAINT `fk_cp_estudiante` FOREIGN KEY (`id_estudiante`) REFERENCES `estudiantes` (`id_estudiante`) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -768,41 +997,48 @@ ALTER TABLE `calificaciones_parciales`
   ADD CONSTRAINT `fk_cp_profesor` FOREIGN KEY (`id_profesor`) REFERENCES `personal` (`id_personal`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
--- Constraints for table `calificaciones_parciales_detalle`
+-- Filtros para la tabla `calificaciones_parciales_detalle`
 --
 ALTER TABLE `calificaciones_parciales_detalle`
   ADD CONSTRAINT `fk_cpd_cp` FOREIGN KEY (`id_calificacion_parcial`) REFERENCES `calificaciones_parciales` (`id_calificacion_parcial`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_cpd_creado_por` FOREIGN KEY (`creado_por`) REFERENCES `personal` (`id_personal`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
--- Constraints for table `cursos_materias`
+-- Filtros para la tabla `cursos_materias`
 --
 ALTER TABLE `cursos_materias`
   ADD CONSTRAINT `cursos_materias_ibfk_1` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `cursos_materias_ibfk_2` FOREIGN KEY (`id_materia`) REFERENCES `materias` (`id_materia`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
--- Constraints for table `estudiantes`
+-- Filtros para la tabla `estudiantes`
 --
 ALTER TABLE `estudiantes`
   ADD CONSTRAINT `estudiantes_ibfk_1` FOREIGN KEY (`id_curso`) REFERENCES `cursos` (`id_curso`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `estudiantes_ibfk_2` FOREIGN KEY (`id_responsable`) REFERENCES `responsables` (`id_responsable`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
--- Constraints for table `materias_complementarias`
+-- Filtros para la tabla `estudiantes_responsables`
+--
+ALTER TABLE `estudiantes_responsables`
+  ADD CONSTRAINT `fk_er_estudiante` FOREIGN KEY (`id_estudiante`) REFERENCES `estudiantes` (`id_estudiante`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_er_responsable` FOREIGN KEY (`id_responsable`) REFERENCES `responsables` (`id_responsable`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Filtros para la tabla `materias_complementarias`
 --
 ALTER TABLE `materias_complementarias`
   ADD CONSTRAINT `fk_mc_materia_complementaria` FOREIGN KEY (`id_materia_complementaria`) REFERENCES `materias` (`id_materia`),
   ADD CONSTRAINT `fk_mc_materia_principal` FOREIGN KEY (`id_materia_principal`) REFERENCES `materias` (`id_materia`);
 
 --
--- Constraints for table `personal`
+-- Filtros para la tabla `personal`
 --
 ALTER TABLE `personal`
   ADD CONSTRAINT `personal_ibfk_1` FOREIGN KEY (`id_rol`) REFERENCES `roles` (`id_rol`) ON UPDATE CASCADE;
 
 --
--- Constraints for table `profesores_materias_cursos`
+-- Filtros para la tabla `profesores_materias_cursos`
 --
 ALTER TABLE `profesores_materias_cursos`
   ADD CONSTRAINT `profesores_materias_cursos_ibfk_1` FOREIGN KEY (`id_personal`) REFERENCES `personal` (`id_personal`) ON DELETE CASCADE ON UPDATE CASCADE,

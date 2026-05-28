@@ -48,7 +48,7 @@ function getOrCreateResponsable(PDO $conn, string $nombreCompleto, string $telef
     }
 
     [$nombre, $apellido] = splitNombreApellido($nombreCompleto);
-    $ciTemporal = 'AUTO-' . strtoupper(bin2hex(random_bytes(8)));
+    $ciTemporal = 'AUTO' . strtoupper(bin2hex(random_bytes(8)));
 
     $stmtIns = $conn->prepare('INSERT INTO responsables (nombre, apellido, carnet_identidad, telefono) VALUES (:nombre, :apellido, :ci, :telefono)');
     $stmtIns->bindValue(':nombre', $nombre);
@@ -58,6 +58,19 @@ function getOrCreateResponsable(PDO $conn, string $nombreCompleto, string $telef
     $stmtIns->execute();
 
     return (int)$conn->lastInsertId();
+}
+
+$tablaEstRespDisponible = false;
+$avisoMigracion = '';
+try {
+    $stmtTabla = $conn->query("SHOW TABLES LIKE 'estudiantes_responsables'");
+    $tablaEstRespDisponible = (bool)$stmtTabla->fetchColumn();
+} catch (Throwable $e) {
+    $tablaEstRespDisponible = false;
+}
+
+if (!$tablaEstRespDisponible) {
+    $avisoMigracion = 'La tabla estudiantes_responsables no existe en esta base de datos. Ejecute la migracion bds/27 may/migracion_dos_responsables.txt para habilitar 2 responsables.';
 }
 
 $nivelesValidos = [];
@@ -100,6 +113,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'guard
     $telefonos2 = $_POST['telefono_2'] ?? [];
 
     try {
+        if (!$tablaEstRespDisponible) {
+            throw new RuntimeException('No existe la tabla estudiantes_responsables. Ejecute la migracion antes de guardar responsables.');
+        }
+
         $conn->beginTransaction();
 
         foreach ($idsEstudiantes as $idx => $idEstudianteRaw) {
@@ -165,54 +182,91 @@ if ($nivelSeleccionado !== '') {
         $whereCurso = ' AND c.id_curso = :id_curso ';
     }
 
-    $sql = "
-        SELECT
-            c.id_curso,
-            c.nivel,
-            c.curso,
-            c.paralelo,
-            e.id_estudiante,
-            e.apellido_paterno,
-            e.apellido_materno,
-            e.nombres,
-            MAX(CASE WHEN er.rn = 1 THEN TRIM(CONCAT(r.nombre, ' ', r.apellido)) END) AS responsable_1,
-            MAX(CASE WHEN er.rn = 1 THEN r.telefono END) AS telefono_1,
-            MAX(CASE WHEN er.rn = 2 THEN TRIM(CONCAT(r.nombre, ' ', r.apellido)) END) AS responsable_2,
-            MAX(CASE WHEN er.rn = 2 THEN r.telefono END) AS telefono_2
-        FROM cursos c
-        LEFT JOIN estudiantes e ON e.id_curso = c.id_curso
-        LEFT JOIN (
+    if ($tablaEstRespDisponible) {
+        $sql = "
             SELECT
-                er.id_estudiante,
-                er.id_responsable,
-                ROW_NUMBER() OVER (
-                    PARTITION BY er.id_estudiante
-                    ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
-                ) AS rn
-            FROM estudiantes_responsables er
-        ) er ON er.id_estudiante = e.id_estudiante AND er.rn <= 2
-        LEFT JOIN responsables r ON r.id_responsable = er.id_responsable
-        WHERE c.nivel = :nivel
-        {$whereCurso}
-        GROUP BY
-            c.id_curso,
-            c.nivel,
-            c.curso,
-            c.paralelo,
-            e.id_estudiante,
-            e.apellido_paterno,
-            e.apellido_materno,
-            e.nombres
-        ORDER BY c.curso ASC, c.paralelo ASC, e.apellido_paterno ASC, e.apellido_materno ASC, e.nombres ASC
-    ";
-
-    $stmt = $conn->prepare($sql);
-    $stmt->bindValue(':nivel', $nivelSeleccionado);
-    if ($cursoSeleccionado > 0) {
-        $stmt->bindValue(':id_curso', $cursoSeleccionado, PDO::PARAM_INT);
+                c.id_curso,
+                c.nivel,
+                c.curso,
+                c.paralelo,
+                e.id_estudiante,
+                e.apellido_paterno,
+                e.apellido_materno,
+                e.nombres,
+                (
+                    SELECT TRIM(CONCAT(r1.nombre, ' ', r1.apellido))
+                    FROM estudiantes_responsables er1
+                    INNER JOIN responsables r1 ON r1.id_responsable = er1.id_responsable
+                    WHERE er1.id_estudiante = e.id_estudiante
+                    ORDER BY er1.es_principal DESC, er1.id_estudiante_responsable ASC
+                    LIMIT 1
+                ) AS responsable_1,
+                (
+                    SELECT r1.telefono
+                    FROM estudiantes_responsables er1
+                    INNER JOIN responsables r1 ON r1.id_responsable = er1.id_responsable
+                    WHERE er1.id_estudiante = e.id_estudiante
+                    ORDER BY er1.es_principal DESC, er1.id_estudiante_responsable ASC
+                    LIMIT 1
+                ) AS telefono_1,
+                (
+                    SELECT TRIM(CONCAT(r2.nombre, ' ', r2.apellido))
+                    FROM estudiantes_responsables er2
+                    INNER JOIN responsables r2 ON r2.id_responsable = er2.id_responsable
+                    WHERE er2.id_estudiante = e.id_estudiante
+                    ORDER BY er2.es_principal DESC, er2.id_estudiante_responsable ASC
+                    LIMIT 1 OFFSET 1
+                ) AS responsable_2,
+                (
+                    SELECT r2.telefono
+                    FROM estudiantes_responsables er2
+                    INNER JOIN responsables r2 ON r2.id_responsable = er2.id_responsable
+                    WHERE er2.id_estudiante = e.id_estudiante
+                    ORDER BY er2.es_principal DESC, er2.id_estudiante_responsable ASC
+                    LIMIT 1 OFFSET 1
+                ) AS telefono_2
+            FROM cursos c
+            LEFT JOIN estudiantes e ON e.id_curso = c.id_curso
+            WHERE c.nivel = :nivel
+            {$whereCurso}
+            ORDER BY c.curso ASC, c.paralelo ASC, e.apellido_paterno ASC, e.apellido_materno ASC, e.nombres ASC
+        ";
+    } else {
+        $sql = "
+            SELECT
+                c.id_curso,
+                c.nivel,
+                c.curso,
+                c.paralelo,
+                e.id_estudiante,
+                e.apellido_paterno,
+                e.apellido_materno,
+                e.nombres,
+                TRIM(CONCAT(r.nombre, ' ', r.apellido)) AS responsable_1,
+                r.telefono AS telefono_1,
+                NULL AS responsable_2,
+                NULL AS telefono_2
+            FROM cursos c
+            LEFT JOIN estudiantes e ON e.id_curso = c.id_curso
+            LEFT JOIN responsables r ON r.id_responsable = e.id_responsable
+            WHERE c.nivel = :nivel
+            {$whereCurso}
+            ORDER BY c.curso ASC, c.paralelo ASC, e.apellido_paterno ASC, e.apellido_materno ASC, e.nombres ASC
+        ";
     }
-    $stmt->execute();
-    $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    try {
+        $stmt = $conn->prepare($sql);
+        $stmt->bindValue(':nivel', $nivelSeleccionado);
+        if ($cursoSeleccionado > 0) {
+            $stmt->bindValue(':id_curso', $cursoSeleccionado, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $_SESSION['error'] = 'No se pudo cargar la lista de responsables: ' . $e->getMessage();
+        $filas = [];
+    }
 }
 
 function nombreEstudiante(array $row): string
@@ -253,6 +307,11 @@ function nombreEstudiante(array $row): string
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                     <?php unset($_SESSION['error']); ?>
+                <?php endif; ?>
+                <?php if ($avisoMigracion !== ''): ?>
+                    <div class="alert alert-warning mt-3" role="alert">
+                        <?php echo htmlspecialchars($avisoMigracion); ?>
+                    </div>
                 <?php endif; ?>
 
                 <div class="d-flex justify-content-between align-items-center mt-3 mb-3">

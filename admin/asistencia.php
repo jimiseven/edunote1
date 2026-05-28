@@ -1882,6 +1882,10 @@ if ($id_curso) {
 
         async function cargarImagenComoDataUrl(url) {
             try {
+                if (typeof url === 'string' && url.startsWith('data:image/')) {
+                    return url;
+                }
+
                 const response = await fetch(url, { mode: 'cors' });
                 if (!response.ok) {
                     throw new Error('No se pudo cargar el QR');
@@ -1895,6 +1899,21 @@ if ($id_curso) {
                 });
             } catch (e) {
                 return null;
+            }
+        }
+
+        function agregarImagenPdfSeguro(pdf, dataUrl, x, y, w, h) {
+            if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+                return false;
+            }
+
+            try {
+                const formato = dataUrl.slice(5, dataUrl.indexOf(';')).toUpperCase().replace('IMAGE/', '');
+                pdf.addImage(dataUrl, formato || 'PNG', x, y, w, h);
+                return true;
+            } catch (e) {
+                console.error('No se pudo insertar imagen en PDF', e);
+                return false;
             }
         }
 
@@ -1978,9 +1997,7 @@ if ($id_curso) {
                     const qrX = x + (cardW - qrSize) / 2;
                     const qrY = y + 42;
                     const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
-                    if (qrDataUrl) {
-                        pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-                    } else {
+                    if (!agregarImagenPdfSeguro(pdf, qrDataUrl, qrX, qrY, qrSize, qrSize)) {
                         pdf.setDrawColor(160, 160, 160);
                         pdf.rect(qrX, qrY, qrSize, qrSize);
                         pdf.setFont('helvetica', 'normal');
@@ -2107,9 +2124,7 @@ if ($id_curso) {
                         const qrX = x + (cardW - qrSize) / 2;
                         const qrY = y + 42;
                         const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
-                        if (qrDataUrl) {
-                            pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-                        } else {
+                        if (!agregarImagenPdfSeguro(pdf, qrDataUrl, qrX, qrY, qrSize, qrSize)) {
                             pdf.setDrawColor(160, 160, 160);
                             pdf.rect(qrX, qrY, qrSize, qrSize);
                             pdf.setFont('helvetica', 'normal');
@@ -2395,9 +2410,7 @@ if ($id_curso) {
                 const qrX = x + (cardW - qrSize) / 2;
                 const qrY = y + 42;
                 const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
-                if (qrDataUrl) {
-                    pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-                } else {
+                if (!agregarImagenPdfSeguro(pdf, qrDataUrl, qrX, qrY, qrSize, qrSize)) {
                     pdf.setDrawColor(160, 160, 160);
                     pdf.rect(qrX, qrY, qrSize, qrSize);
                     pdf.setFont('helvetica', 'normal');
