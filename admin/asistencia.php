@@ -1555,7 +1555,7 @@ if ($id_curso) {
                             </button>
                         </form>
                         <button type="button" class="btn btn-danger" id="btnGenerarPdf" onclick="generarPdfGafetes()">
-                            <i class="ri-file-pdf-2-line"></i> Generar PDF
+                            <i class="ri-file-pdf-2-line"></i> Generar PDF de QRs
                         </button>
                     </div>
 

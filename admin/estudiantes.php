@@ -279,30 +279,80 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </select>
                             </div>
 
-                            <input type="hidden" id="id_responsable" name="id_responsable" value="">
-
                             <div class="col-12 mt-2">
                                 <hr class="my-2">
                             </div>
 
+                            <div class="col-12">
+                                <h6 class="mb-1">Responsable 1 (opcional)</h6>
+                                <small class="text-muted">Puede guardar 0, 1 o 2 responsables.</small>
+                            </div>
+
+                            <input type="hidden" id="id_responsable_1" name="id_responsable_1" value="">
+
                             <div class="col-md-4">
-                                <label for="responsable_ci" class="form-label">CI Responsable*</label>
+                                <label for="responsable_ci_1" class="form-label">CI Responsable 1</label>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="responsable_ci" name="responsable_ci">
-                                    <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable">Buscar</button>
+                                    <input type="text" class="form-control" id="responsable_ci_1" name="responsable_ci_1">
+                                    <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable_1">Buscar</button>
                                 </div>
                             </div>
                             <div class="col-md-4">
-                                <label for="responsable_nombre" class="form-label">Nombre Responsable*</label>
-                                <input type="text" class="form-control" id="responsable_nombre" name="responsable_nombre">
+                                <label for="responsable_nombre_1" class="form-label">Nombre Responsable 1</label>
+                                <input type="text" class="form-control" id="responsable_nombre_1" name="responsable_nombre_1">
                             </div>
                             <div class="col-md-4">
-                                <label for="responsable_apellido" class="form-label">Apellido Responsable*</label>
-                                <input type="text" class="form-control" id="responsable_apellido" name="responsable_apellido">
+                                <label for="responsable_apellido_1" class="form-label">Apellido Responsable 1</label>
+                                <input type="text" class="form-control" id="responsable_apellido_1" name="responsable_apellido_1">
                             </div>
                             <div class="col-md-4">
-                                <label for="responsable_telefono" class="form-label">Teléfono Responsable</label>
-                                <input type="text" class="form-control" id="responsable_telefono" name="responsable_telefono">
+                                <label for="responsable_telefono_1" class="form-label">Teléfono Responsable 1</label>
+                                <input type="text" class="form-control" id="responsable_telefono_1" name="responsable_telefono_1">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tipo_responsable_1" class="form-label">Tipo Responsable 1</label>
+                                <select class="form-select" id="tipo_responsable_1" name="tipo_responsable_1">
+                                    <option value="">-</option>
+                                    <option value="PADRE">Padre</option>
+                                    <option value="MADRE">Madre</option>
+                                    <option value="TUTOR">Tutor</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12 mt-2">
+                                <hr class="my-2">
+                                <h6 class="mb-1">Responsable 2 (opcional)</h6>
+                            </div>
+
+                            <input type="hidden" id="id_responsable_2" name="id_responsable_2" value="">
+
+                            <div class="col-md-4">
+                                <label for="responsable_ci_2" class="form-label">CI Responsable 2</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="responsable_ci_2" name="responsable_ci_2">
+                                    <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable_2">Buscar</button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_nombre_2" class="form-label">Nombre Responsable 2</label>
+                                <input type="text" class="form-control" id="responsable_nombre_2" name="responsable_nombre_2">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_apellido_2" class="form-label">Apellido Responsable 2</label>
+                                <input type="text" class="form-control" id="responsable_apellido_2" name="responsable_apellido_2">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="responsable_telefono_2" class="form-label">Teléfono Responsable 2</label>
+                                <input type="text" class="form-control" id="responsable_telefono_2" name="responsable_telefono_2">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tipo_responsable_2" class="form-label">Tipo Responsable 2</label>
+                                <select class="form-select" id="tipo_responsable_2" name="tipo_responsable_2">
+                                    <option value="">-</option>
+                                    <option value="PADRE">Padre</option>
+                                    <option value="MADRE">Madre</option>
+                                    <option value="TUTOR">Tutor</option>
+                                </select>
                             </div>
                         </div>
                     </form>
@@ -317,48 +367,56 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
-        const btnBuscarResponsable = document.getElementById('btnBuscarResponsable');
-        const responsableCi = document.getElementById('responsable_ci');
-        const idResponsable = document.getElementById('id_responsable');
-        const responsableNombre = document.getElementById('responsable_nombre');
-        const responsableApellido = document.getElementById('responsable_apellido');
-        const responsableTelefono = document.getElementById('responsable_telefono');
+        function getResponsableElements(idx) {
+            return {
+                btnBuscar: document.getElementById(`btnBuscarResponsable_${idx}`),
+                ci: document.getElementById(`responsable_ci_${idx}`),
+                id: document.getElementById(`id_responsable_${idx}`),
+                nombre: document.getElementById(`responsable_nombre_${idx}`),
+                apellido: document.getElementById(`responsable_apellido_${idx}`),
+                telefono: document.getElementById(`responsable_telefono_${idx}`)
+            };
+        }
 
-        async function buscarResponsablePorCi() {
-            const ci = (responsableCi.value || '').trim();
+        async function buscarResponsablePorCi(idx) {
+            const refs = getResponsableElements(idx);
+            const ci = (refs.ci.value || '').trim();
             if (ci === '') {
                 return;
             }
 
-            btnBuscarResponsable.disabled = true;
+            refs.btnBuscar.disabled = true;
             try {
                 const res = await fetch(`estudiantes.php?action=buscar_responsable&ci=${encodeURIComponent(ci)}`);
                 const data = await res.json();
 
                 if (data && data.found && data.responsable) {
-                    idResponsable.value = data.responsable.id_responsable || '';
-                    responsableNombre.value = data.responsable.nombre || '';
-                    responsableApellido.value = data.responsable.apellido || '';
-                    responsableTelefono.value = data.responsable.telefono || '';
+                    refs.id.value = data.responsable.id_responsable || '';
+                    refs.nombre.value = data.responsable.nombre || '';
+                    refs.apellido.value = data.responsable.apellido || '';
+                    refs.telefono.value = data.responsable.telefono || '';
                 } else {
-                    idResponsable.value = '';
-                    responsableNombre.value = '';
-                    responsableApellido.value = '';
-                    responsableTelefono.value = '';
+                    refs.id.value = '';
+                    refs.nombre.value = '';
+                    refs.apellido.value = '';
+                    refs.telefono.value = '';
                 }
             } catch (e) {
-                idResponsable.value = '';
+                refs.id.value = '';
             } finally {
-                btnBuscarResponsable.disabled = false;
+                refs.btnBuscar.disabled = false;
             }
         }
 
-        btnBuscarResponsable.addEventListener('click', buscarResponsablePorCi);
-        responsableCi.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                buscarResponsablePorCi();
-            }
+        [1, 2].forEach((idx) => {
+            const refs = getResponsableElements(idx);
+            refs.btnBuscar.addEventListener('click', () => buscarResponsablePorCi(idx));
+            refs.ci.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    buscarResponsablePorCi(idx);
+                }
+            });
         });
     </script>
 </body>

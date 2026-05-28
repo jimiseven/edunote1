@@ -539,6 +539,12 @@ function active($str, $current)
                             <span class="nav-label">Estudiantes</span>
                         </a>
                     </li>
+                    <li>
+                        <a class="nav-link <?php echo active('responsables_por_nivel.php', $current); ?>" href="responsables_por_nivel.php">
+                            <span data-feather="list"></span>
+                            <span class="nav-label">Responsables por nivel</span>
+                        </a>
+                    </li>
                 </ul>
 
                 <!-- Asistencia -->

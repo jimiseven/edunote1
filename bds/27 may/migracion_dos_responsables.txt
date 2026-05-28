@@ -1,0 +1,82 @@
+-- Migracion: permitir hasta 2 responsables por estudiante
+-- Base: wiredcom_uni3t (MariaDB/MySQL)
+-- Fecha: 2026-05-27
+
+START TRANSACTION;
+
+-- 1) Tabla puente estudiante <-> responsables (1 estudiante puede tener 2 responsables)
+CREATE TABLE IF NOT EXISTS `estudiantes_responsables` (
+  `id_estudiante_responsable` INT(11) NOT NULL AUTO_INCREMENT,
+  `id_estudiante` INT(11) NOT NULL,
+  `id_responsable` INT(11) NOT NULL,
+  `tipo_responsable` ENUM('PADRE','MADRE','TUTOR') DEFAULT NULL,
+  `es_principal` TINYINT(1) NOT NULL DEFAULT 0,
+  `creado_en` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id_estudiante_responsable`),
+  UNIQUE KEY `uk_estudiante_responsable` (`id_estudiante`, `id_responsable`),
+  UNIQUE KEY `uk_estudiante_principal` (`id_estudiante`, `es_principal`),
+  KEY `idx_er_estudiante` (`id_estudiante`),
+  KEY `idx_er_responsable` (`id_responsable`),
+  CONSTRAINT `fk_er_estudiante`
+    FOREIGN KEY (`id_estudiante`) REFERENCES `estudiantes` (`id_estudiante`)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_er_responsable`
+    FOREIGN KEY (`id_responsable`) REFERENCES `responsables` (`id_responsable`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 2) Migrar los responsables actuales (columna estudiantes.id_responsable)
+INSERT INTO `estudiantes_responsables` (`id_estudiante`, `id_responsable`, `tipo_responsable`, `es_principal`)
+SELECT e.`id_estudiante`, e.`id_responsable`, NULL, 1
+FROM `estudiantes` e
+WHERE e.`id_responsable` IS NOT NULL
+ON DUPLICATE KEY UPDATE
+  `es_principal` = VALUES(`es_principal`);
+
+-- 3) Trigger para asegurar maximo 2 responsables por estudiante
+DELIMITER $$
+
+DROP TRIGGER IF EXISTS `trg_er_max_dos_responsables_ins`;
+CREATE TRIGGER `trg_er_max_dos_responsables_ins`
+BEFORE INSERT ON `estudiantes_responsables`
+FOR EACH ROW
+BEGIN
+  DECLARE v_total INT DEFAULT 0;
+
+  SELECT COUNT(*) INTO v_total
+  FROM `estudiantes_responsables`
+  WHERE `id_estudiante` = NEW.`id_estudiante`;
+
+  IF v_total >= 2 THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'No se puede registrar mas de 2 responsables por estudiante';
+  END IF;
+END;
+
+DROP TRIGGER IF EXISTS `trg_er_max_dos_responsables_upd`;
+CREATE TRIGGER `trg_er_max_dos_responsables_upd`
+BEFORE UPDATE ON `estudiantes_responsables`
+FOR EACH ROW
+BEGIN
+  DECLARE v_total INT DEFAULT 0;
+
+  IF OLD.`id_estudiante` <> NEW.`id_estudiante` THEN
+    SELECT COUNT(*) INTO v_total
+    FROM `estudiantes_responsables`
+    WHERE `id_estudiante` = NEW.`id_estudiante`;
+
+    IF v_total >= 2 THEN
+      SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'No se puede registrar mas de 2 responsables por estudiante';
+    END IF;
+  END IF;
+END;
+
+DELIMITER ;
+
+COMMIT;
+
+-- NOTA IMPORTANTE:
+-- Esta migracion NO elimina estudiantes.id_responsable para mantener compatibilidad
+-- con codigo existente. Cuando el sistema ya use la nueva tabla, se puede retirar
+-- la columna antigua en una segunda migracion controlada.

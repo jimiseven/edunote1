@@ -32,15 +32,8 @@ if (!$id_estudiante) {
 
 // Obtener datos del estudiante
 $sql = "
-    SELECT 
-        e.*, 
-        r.id_responsable AS resp_id_responsable,
-        r.nombre AS resp_nombre,
-        r.apellido AS resp_apellido,
-        r.carnet_identidad AS resp_carnet_identidad,
-        r.telefono AS resp_telefono
+    SELECT e.*
     FROM estudiantes e
-    LEFT JOIN responsables r ON e.id_responsable = r.id_responsable
     WHERE e.id_estudiante = ?
 ";
 $stmt = $conn->prepare($sql);
@@ -50,6 +43,44 @@ $estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$estudiante) {
     header('Location: estudiantes.php');
     exit();
+}
+
+$responsablesEstudiante = [];
+
+try {
+    $stmtResp = $conn->prepare("SELECT er.id_responsable, er.tipo_responsable, er.es_principal, r.nombre, r.apellido, r.carnet_identidad, r.telefono
+        FROM estudiantes_responsables er
+        INNER JOIN responsables r ON er.id_responsable = r.id_responsable
+        WHERE er.id_estudiante = ?
+        ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
+        LIMIT 2");
+    $stmtResp->execute([$id_estudiante]);
+    $responsablesEstudiante = $stmtResp->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $responsablesEstudiante = [];
+}
+
+if (empty($responsablesEstudiante) && !empty($estudiante['id_responsable'])) {
+    $stmtRespLegacy = $conn->prepare('SELECT id_responsable, nombre, apellido, carnet_identidad, telefono FROM responsables WHERE id_responsable = ? LIMIT 1');
+    $stmtRespLegacy->execute([(int)$estudiante['id_responsable']]);
+    $legacy = $stmtRespLegacy->fetch(PDO::FETCH_ASSOC);
+    if ($legacy) {
+        $legacy['tipo_responsable'] = null;
+        $legacy['es_principal'] = 1;
+        $responsablesEstudiante[] = $legacy;
+    }
+}
+
+for ($i = count($responsablesEstudiante); $i < 2; $i++) {
+    $responsablesEstudiante[] = [
+        'id_responsable' => '',
+        'tipo_responsable' => '',
+        'es_principal' => ($i === 0 ? 1 : 0),
+        'nombre' => '',
+        'apellido' => '',
+        'carnet_identidad' => '',
+        'telefono' => ''
+    ];
 }
 
 // Procesar formulario
@@ -83,7 +114,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rude = trim($_POST['rude']);
         $fecha_nacimiento = isset($_POST['fecha_nacimiento']) ? trim($_POST['fecha_nacimiento']) : null;
         $id_curso = $_POST['curso'];
-        $id_responsable = isset($_POST['id_responsable']) ? trim($_POST['id_responsable']) : '';
+        $responsablesInput = [];
+        for ($i = 1; $i <= 2; $i++) {
+            $responsablesInput[] = [
+                'id_responsable' => trim($_POST['id_responsable_' . $i] ?? ''),
+                'ci' => trim($_POST['responsable_ci_' . $i] ?? ''),
+                'nombre' => trim($_POST['responsable_nombre_' . $i] ?? ''),
+                'apellido' => trim($_POST['responsable_apellido_' . $i] ?? ''),
+                'telefono' => trim($_POST['responsable_telefono_' . $i] ?? ''),
+                'tipo_responsable' => trim($_POST['tipo_responsable_' . $i] ?? '')
+            ];
+        }
         $estado_1 = isset($_POST['estado_1']) ? trim($_POST['estado_1']) : '';
         $estado_2 = isset($_POST['estado_2']) ? trim($_POST['estado_2']) : '';
 
@@ -93,10 +134,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ci = ($ci === '') ? null : $ci;
         $rude = ($rude === '') ? null : $rude;
 
-        $id_responsable = ($id_responsable === '') ? null : (int)$id_responsable;
         $fecha_nacimiento = ($fecha_nacimiento === '') ? null : $fecha_nacimiento;
         $estado_1 = ($estado_1 === '') ? null : $estado_1;
         $estado_2 = ($estado_2 === '') ? null : $estado_2;
+
+        foreach ($responsablesInput as $index => $responsable) {
+            $slot = $index + 1;
+            $tieneDatos = ($responsable['ci'] !== '' || $responsable['nombre'] !== '' || $responsable['apellido'] !== '' || $responsable['telefono'] !== '');
+
+            if (!$tieneDatos) {
+                continue;
+            }
+
+            if ($responsable['ci'] === '') {
+                throw new PDOException("Si registra el responsable {$slot}, debe completar su CI.");
+            }
+
+            if ($responsable['id_responsable'] === '' && ($responsable['nombre'] === '' || $responsable['apellido'] === '')) {
+                throw new PDOException("Si registra el responsable {$slot}, complete Nombre y Apellido.");
+            }
+        }
+
+        $conn->beginTransaction();
+
+        $responsablesFinales = [];
+        foreach ($responsablesInput as $index => $responsable) {
+            $tieneDatos = ($responsable['ci'] !== '' || $responsable['nombre'] !== '' || $responsable['apellido'] !== '' || $responsable['telefono'] !== '');
+            if (!$tieneDatos && $responsable['id_responsable'] === '') {
+                continue;
+            }
+
+            $finalIdResponsable = null;
+            if ($responsable['id_responsable'] !== '') {
+                $finalIdResponsable = (int)$responsable['id_responsable'];
+            } else {
+                $stmtFind = $conn->prepare('SELECT id_responsable FROM responsables WHERE carnet_identidad = :ci LIMIT 1');
+                $stmtFind->bindParam(':ci', $responsable['ci']);
+                $stmtFind->execute();
+                $existente = $stmtFind->fetch(PDO::FETCH_ASSOC);
+
+                if ($existente) {
+                    $finalIdResponsable = (int)$existente['id_responsable'];
+                } else {
+                    $stmtNew = $conn->prepare('INSERT INTO responsables (nombre, apellido, carnet_identidad, telefono) VALUES (:nombre, :apellido, :ci, :telefono)');
+                    $stmtNew->bindParam(':nombre', $responsable['nombre']);
+                    $stmtNew->bindParam(':apellido', $responsable['apellido']);
+                    $stmtNew->bindParam(':ci', $responsable['ci']);
+                    $stmtNew->bindParam(':telefono', $responsable['telefono']);
+                    $stmtNew->execute();
+                    $finalIdResponsable = (int)$conn->lastInsertId();
+                }
+            }
+
+            if ($finalIdResponsable !== null && !isset($responsablesFinales[$finalIdResponsable])) {
+                $tipo = $responsable['tipo_responsable'];
+                if (!in_array($tipo, ['PADRE', 'MADRE', 'TUTOR'], true)) {
+                    $tipo = null;
+                }
+
+                $responsablesFinales[$finalIdResponsable] = [
+                    'id_responsable' => $finalIdResponsable,
+                    'tipo_responsable' => $tipo,
+                    'es_principal' => ($index === 0) ? 1 : 0
+                ];
+            }
+        }
+
+        $responsablesFinales = array_values($responsablesFinales);
+        $idResponsableLegacy = isset($responsablesFinales[0]) ? (int)$responsablesFinales[0]['id_responsable'] : null;
 
         $sql = "UPDATE estudiantes SET 
                 nombres = ?, 
@@ -122,16 +227,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $rude,
             $fecha_nacimiento,
             $id_curso,
-            $id_responsable,
+            $idResponsableLegacy,
             $estado_1,
             $estado_2,
             $id_estudiante
         ]);
 
+        $stmtDelRel = $conn->prepare('DELETE FROM estudiantes_responsables WHERE id_estudiante = ?');
+        $stmtDelRel->execute([$id_estudiante]);
+
+        if (!empty($responsablesFinales)) {
+            $stmtRel = $conn->prepare('INSERT INTO estudiantes_responsables (id_estudiante, id_responsable, tipo_responsable, es_principal) VALUES (?, ?, ?, ?)');
+            foreach ($responsablesFinales as $rel) {
+                $stmtRel->execute([
+                    (int)$id_estudiante,
+                    (int)$rel['id_responsable'],
+                    $rel['tipo_responsable'],
+                    (int)$rel['es_principal']
+                ]);
+            }
+        }
+
+        $conn->commit();
+
         $_SESSION['success'] = 'Estudiante actualizado correctamente';
         header('Location: ' . ($returnUrl ?? 'estudiantes.php'));
         exit();
     } catch (PDOException $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
         $error = 'Error al actualizar: ' . $e->getMessage();
     }
 }
@@ -294,34 +419,82 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 </div>
 
-                <input type="hidden" id="id_responsable" name="id_responsable" value="<?php echo htmlspecialchars($estudiante['resp_id_responsable'] ?? ''); ?>">
-
                 <div class="row g-3 mb-2">
                     <div class="col-12">
                         <hr>
                     </div>
+                    <div class="col-12">
+                        <h6 class="mb-1">Responsable 1 (opcional)</h6>
+                    </div>
+                    <input type="hidden" id="id_responsable_1" name="id_responsable_1" value="<?php echo htmlspecialchars($responsablesEstudiante[0]['id_responsable'] ?? ''); ?>">
                     <div class="col-md-4">
-                        <label for="responsable_ci" class="form-label">CI Responsable*</label>
+                        <label for="responsable_ci_1" class="form-label">CI Responsable 1</label>
                         <div class="input-group">
-                            <input type="text" class="form-control" id="responsable_ci" name="responsable_ci"
-                                   value="<?php echo htmlspecialchars($estudiante['resp_carnet_identidad'] ?? ''); ?>">
-                            <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable">Buscar</button>
+                            <input type="text" class="form-control" id="responsable_ci_1" name="responsable_ci_1"
+                                   value="<?php echo htmlspecialchars($responsablesEstudiante[0]['carnet_identidad'] ?? ''); ?>">
+                            <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable_1">Buscar</button>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <label for="responsable_nombre" class="form-label">Nombre Responsable*</label>
-                        <input type="text" class="form-control" id="responsable_nombre" name="responsable_nombre"
-                               value="<?php echo htmlspecialchars($estudiante['resp_nombre'] ?? ''); ?>">
+                        <label for="responsable_nombre_1" class="form-label">Nombre Responsable 1</label>
+                        <input type="text" class="form-control" id="responsable_nombre_1" name="responsable_nombre_1"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[0]['nombre'] ?? ''); ?>">
                     </div>
                     <div class="col-md-4">
-                        <label for="responsable_apellido" class="form-label">Apellido Responsable*</label>
-                        <input type="text" class="form-control" id="responsable_apellido" name="responsable_apellido"
-                               value="<?php echo htmlspecialchars($estudiante['resp_apellido'] ?? ''); ?>">
+                        <label for="responsable_apellido_1" class="form-label">Apellido Responsable 1</label>
+                        <input type="text" class="form-control" id="responsable_apellido_1" name="responsable_apellido_1"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[0]['apellido'] ?? ''); ?>">
                     </div>
                     <div class="col-md-4">
-                        <label for="responsable_telefono" class="form-label">Teléfono Responsable</label>
-                        <input type="text" class="form-control" id="responsable_telefono" name="responsable_telefono"
-                               value="<?php echo htmlspecialchars($estudiante['resp_telefono'] ?? ''); ?>">
+                        <label for="responsable_telefono_1" class="form-label">Teléfono Responsable 1</label>
+                        <input type="text" class="form-control" id="responsable_telefono_1" name="responsable_telefono_1"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[0]['telefono'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="tipo_responsable_1" class="form-label">Tipo Responsable 1</label>
+                        <select class="form-select" id="tipo_responsable_1" name="tipo_responsable_1">
+                            <option value="">-</option>
+                            <option value="PADRE" <?php echo ($responsablesEstudiante[0]['tipo_responsable'] ?? '') === 'PADRE' ? 'selected' : ''; ?>>Padre</option>
+                            <option value="MADRE" <?php echo ($responsablesEstudiante[0]['tipo_responsable'] ?? '') === 'MADRE' ? 'selected' : ''; ?>>Madre</option>
+                            <option value="TUTOR" <?php echo ($responsablesEstudiante[0]['tipo_responsable'] ?? '') === 'TUTOR' ? 'selected' : ''; ?>>Tutor</option>
+                        </select>
+                    </div>
+                    <div class="col-12 mt-2">
+                        <hr>
+                        <h6 class="mb-1">Responsable 2 (opcional)</h6>
+                    </div>
+                    <input type="hidden" id="id_responsable_2" name="id_responsable_2" value="<?php echo htmlspecialchars($responsablesEstudiante[1]['id_responsable'] ?? ''); ?>">
+                    <div class="col-md-4">
+                        <label for="responsable_ci_2" class="form-label">CI Responsable 2</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="responsable_ci_2" name="responsable_ci_2"
+                                   value="<?php echo htmlspecialchars($responsablesEstudiante[1]['carnet_identidad'] ?? ''); ?>">
+                            <button class="btn btn-outline-secondary" type="button" id="btnBuscarResponsable_2">Buscar</button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_nombre_2" class="form-label">Nombre Responsable 2</label>
+                        <input type="text" class="form-control" id="responsable_nombre_2" name="responsable_nombre_2"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[1]['nombre'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_apellido_2" class="form-label">Apellido Responsable 2</label>
+                        <input type="text" class="form-control" id="responsable_apellido_2" name="responsable_apellido_2"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[1]['apellido'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="responsable_telefono_2" class="form-label">Teléfono Responsable 2</label>
+                        <input type="text" class="form-control" id="responsable_telefono_2" name="responsable_telefono_2"
+                               value="<?php echo htmlspecialchars($responsablesEstudiante[1]['telefono'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="tipo_responsable_2" class="form-label">Tipo Responsable 2</label>
+                        <select class="form-select" id="tipo_responsable_2" name="tipo_responsable_2">
+                            <option value="">-</option>
+                            <option value="PADRE" <?php echo ($responsablesEstudiante[1]['tipo_responsable'] ?? '') === 'PADRE' ? 'selected' : ''; ?>>Padre</option>
+                            <option value="MADRE" <?php echo ($responsablesEstudiante[1]['tipo_responsable'] ?? '') === 'MADRE' ? 'selected' : ''; ?>>Madre</option>
+                            <option value="TUTOR" <?php echo ($responsablesEstudiante[1]['tipo_responsable'] ?? '') === 'TUTOR' ? 'selected' : ''; ?>>Tutor</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -359,48 +532,56 @@ $cursos = $conn->query($sqlCursos)->fetchAll(PDO::FETCH_ASSOC);
     
     <script src="../js/bootstrap.bundle.min.js"></script>
     <script>
-        const btnBuscarResponsable = document.getElementById('btnBuscarResponsable');
-        const responsableCi = document.getElementById('responsable_ci');
-        const idResponsable = document.getElementById('id_responsable');
-        const responsableNombre = document.getElementById('responsable_nombre');
-        const responsableApellido = document.getElementById('responsable_apellido');
-        const responsableTelefono = document.getElementById('responsable_telefono');
+        function getResponsableElements(idx) {
+            return {
+                btnBuscar: document.getElementById(`btnBuscarResponsable_${idx}`),
+                ci: document.getElementById(`responsable_ci_${idx}`),
+                id: document.getElementById(`id_responsable_${idx}`),
+                nombre: document.getElementById(`responsable_nombre_${idx}`),
+                apellido: document.getElementById(`responsable_apellido_${idx}`),
+                telefono: document.getElementById(`responsable_telefono_${idx}`)
+            };
+        }
 
-        async function buscarResponsablePorCi() {
-            const ci = (responsableCi.value || '').trim();
+        async function buscarResponsablePorCi(idx) {
+            const refs = getResponsableElements(idx);
+            const ci = (refs.ci.value || '').trim();
             if (ci === '') {
                 return;
             }
 
-            btnBuscarResponsable.disabled = true;
+            refs.btnBuscar.disabled = true;
             try {
                 const res = await fetch(`estudiantes.php?action=buscar_responsable&ci=${encodeURIComponent(ci)}`);
                 const data = await res.json();
 
                 if (data && data.found && data.responsable) {
-                    idResponsable.value = data.responsable.id_responsable || '';
-                    responsableNombre.value = data.responsable.nombre || '';
-                    responsableApellido.value = data.responsable.apellido || '';
-                    responsableTelefono.value = data.responsable.telefono || '';
+                    refs.id.value = data.responsable.id_responsable || '';
+                    refs.nombre.value = data.responsable.nombre || '';
+                    refs.apellido.value = data.responsable.apellido || '';
+                    refs.telefono.value = data.responsable.telefono || '';
                 } else {
-                    idResponsable.value = '';
-                    responsableNombre.value = '';
-                    responsableApellido.value = '';
-                    responsableTelefono.value = '';
+                    refs.id.value = '';
+                    refs.nombre.value = '';
+                    refs.apellido.value = '';
+                    refs.telefono.value = '';
                 }
             } catch (e) {
-                idResponsable.value = '';
+                refs.id.value = '';
             } finally {
-                btnBuscarResponsable.disabled = false;
+                refs.btnBuscar.disabled = false;
             }
         }
 
-        btnBuscarResponsable.addEventListener('click', buscarResponsablePorCi);
-        responsableCi.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                buscarResponsablePorCi();
-            }
+        [1, 2].forEach((idx) => {
+            const refs = getResponsableElements(idx);
+            refs.btnBuscar.addEventListener('click', () => buscarResponsablePorCi(idx));
+            refs.ci.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    buscarResponsablePorCi(idx);
+                }
+            });
         });
     </script>
 </body>

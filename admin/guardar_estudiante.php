@@ -18,11 +18,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha_nacimiento = trim($_POST['fecha_nacimiento'] ?? null);
     $id_curso = intval($_POST['curso'] ?? 0);
 
-    $id_responsable = isset($_POST['id_responsable']) ? trim($_POST['id_responsable']) : '';
-    $responsable_ci = trim($_POST['responsable_ci'] ?? '');
-    $responsable_nombre = trim($_POST['responsable_nombre'] ?? '');
-    $responsable_apellido = trim($_POST['responsable_apellido'] ?? '');
-    $responsable_telefono = trim($_POST['responsable_telefono'] ?? '');
+    $responsablesInput = [];
+    for ($i = 1; $i <= 2; $i++) {
+        $responsablesInput[] = [
+            'id_responsable' => trim($_POST['id_responsable_' . $i] ?? ''),
+            'ci' => trim($_POST['responsable_ci_' . $i] ?? ''),
+            'nombre' => trim($_POST['responsable_nombre_' . $i] ?? ''),
+            'apellido' => trim($_POST['responsable_apellido_' . $i] ?? ''),
+            'telefono' => trim($_POST['responsable_telefono_' . $i] ?? ''),
+            'tipo_responsable' => trim($_POST['tipo_responsable_' . $i] ?? '')
+        ];
+    }
 
     // Validaciones básicas
     if (
@@ -35,10 +41,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    if ($id_responsable === '' && $responsable_ci !== '' && ($responsable_nombre === '' || $responsable_apellido === '')) {
-        $_SESSION['error'] = "Si registra un responsable, complete Nombre y Apellido del responsable.";
-        header('Location: estudiantes.php');
-        exit();
+    foreach ($responsablesInput as $index => $responsable) {
+        $slot = $index + 1;
+        $tieneDatos = ($responsable['ci'] !== '' || $responsable['nombre'] !== '' || $responsable['apellido'] !== '' || $responsable['telefono'] !== '');
+
+        if (!$tieneDatos) {
+            continue;
+        }
+
+        if ($responsable['ci'] === '') {
+            $_SESSION['error'] = "Si registra el responsable {$slot}, debe completar su CI.";
+            header('Location: estudiantes.php');
+            exit();
+        }
+
+        if ($responsable['id_responsable'] === '' && ($responsable['nombre'] === '' || $responsable['apellido'] === '')) {
+            $_SESSION['error'] = "Si registra el responsable {$slot}, complete Nombre y Apellido.";
+            header('Location: estudiantes.php');
+            exit();
+        }
     }
 
     try {
@@ -50,27 +71,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $conn->beginTransaction();
 
-        $final_id_responsable = null;
-        if ($id_responsable !== '') {
-            $final_id_responsable = (int)$id_responsable;
-        } elseif ($responsable_ci !== '') {
-            $stmt = $conn->prepare('SELECT id_responsable FROM responsables WHERE carnet_identidad = :ci LIMIT 1');
-            $stmt->bindParam(':ci', $responsable_ci);
-            $stmt->execute();
-            $existente = $stmt->fetch(PDO::FETCH_ASSOC);
+        $responsablesFinales = [];
+        foreach ($responsablesInput as $index => $responsable) {
+            $tieneDatos = ($responsable['ci'] !== '' || $responsable['nombre'] !== '' || $responsable['apellido'] !== '' || $responsable['telefono'] !== '');
+            if (!$tieneDatos && $responsable['id_responsable'] === '') {
+                continue;
+            }
 
-            if ($existente) {
-                $final_id_responsable = (int)$existente['id_responsable'];
+            $finalIdResponsable = null;
+            if ($responsable['id_responsable'] !== '') {
+                $finalIdResponsable = (int)$responsable['id_responsable'];
             } else {
-                $stmt = $conn->prepare('INSERT INTO responsables (nombre, apellido, carnet_identidad, telefono) VALUES (:nombre, :apellido, :ci, :telefono)');
-                $stmt->bindParam(':nombre', $responsable_nombre);
-                $stmt->bindParam(':apellido', $responsable_apellido);
-                $stmt->bindParam(':ci', $responsable_ci);
-                $stmt->bindParam(':telefono', $responsable_telefono);
+                $stmt = $conn->prepare('SELECT id_responsable FROM responsables WHERE carnet_identidad = :ci LIMIT 1');
+                $stmt->bindParam(':ci', $responsable['ci']);
                 $stmt->execute();
-                $final_id_responsable = (int)$conn->lastInsertId();
+                $existente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($existente) {
+                    $finalIdResponsable = (int)$existente['id_responsable'];
+                } else {
+                    $stmt = $conn->prepare('INSERT INTO responsables (nombre, apellido, carnet_identidad, telefono) VALUES (:nombre, :apellido, :ci, :telefono)');
+                    $stmt->bindParam(':nombre', $responsable['nombre']);
+                    $stmt->bindParam(':apellido', $responsable['apellido']);
+                    $stmt->bindParam(':ci', $responsable['ci']);
+                    $stmt->bindParam(':telefono', $responsable['telefono']);
+                    $stmt->execute();
+                    $finalIdResponsable = (int)$conn->lastInsertId();
+                }
+            }
+
+            if ($finalIdResponsable !== null && !isset($responsablesFinales[$finalIdResponsable])) {
+                $tipo = $responsable['tipo_responsable'];
+                if (!in_array($tipo, ['PADRE', 'MADRE', 'TUTOR'], true)) {
+                    $tipo = null;
+                }
+                $responsablesFinales[$finalIdResponsable] = [
+                    'id_responsable' => $finalIdResponsable,
+                    'tipo_responsable' => $tipo,
+                    'es_principal' => ($index === 0) ? 1 : 0
+                ];
             }
         }
+
+        $responsablesFinales = array_values($responsablesFinales);
+        $responsableLegacy = isset($responsablesFinales[0]) ? (int)$responsablesFinales[0]['id_responsable'] : null;
 
         $sql = "INSERT INTO estudiantes 
             (nombres, apellido_paterno, apellido_materno, genero, rude, carnet_identidad, fecha_nacimiento, id_curso, id_responsable, estado_1, estado_2)
@@ -85,11 +129,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bindParam(':carnet_identidad', $carnet_identidad);
         $stmt->bindParam(':fecha_nacimiento', $fecha_nacimiento);
         $stmt->bindParam(':id_curso', $id_curso, PDO::PARAM_INT);
-        $stmt->bindValue(':id_responsable', $final_id_responsable, $final_id_responsable === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+        $stmt->bindValue(':id_responsable', $responsableLegacy, $responsableLegacy === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
         $stmt->bindValue(':estado_1', 'EFECTIVO');
         $stmt->bindValue(':estado_2', null, PDO::PARAM_NULL);
 
         $stmt->execute();
+
+        $idEstudianteNuevo = (int)$conn->lastInsertId();
+
+        if (!empty($responsablesFinales)) {
+            $stmtRel = $conn->prepare('INSERT INTO estudiantes_responsables (id_estudiante, id_responsable, tipo_responsable, es_principal) VALUES (:id_estudiante, :id_responsable, :tipo_responsable, :es_principal)');
+            foreach ($responsablesFinales as $item) {
+                $stmtRel->bindValue(':id_estudiante', $idEstudianteNuevo, PDO::PARAM_INT);
+                $stmtRel->bindValue(':id_responsable', $item['id_responsable'], PDO::PARAM_INT);
+                $stmtRel->bindValue(':tipo_responsable', $item['tipo_responsable'], $item['tipo_responsable'] === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+                $stmtRel->bindValue(':es_principal', $item['es_principal'], PDO::PARAM_INT);
+                $stmtRel->execute();
+            }
+        }
 
         $conn->commit();
 
