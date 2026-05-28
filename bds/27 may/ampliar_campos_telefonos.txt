@@ -1,0 +1,8 @@
+-- Migracion: ampliar campos de telefono/celular para aceptar varios numeros y texto
+-- Ejemplos permitidos: 63908748 - 63838093, 63908748 padre, llamar despues de clases
+
+ALTER TABLE `responsables`
+  MODIFY `telefono` VARCHAR(80) DEFAULT NULL;
+
+ALTER TABLE `personal`
+  MODIFY `celular` VARCHAR(80) DEFAULT NULL COMMENT 'Ej: Numero de contacto del usuario';

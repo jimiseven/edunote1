@@ -27,25 +27,10 @@ function splitNombreApellido(string $nombreCompleto): array
     return [$nombre, $apellido];
 }
 
-function getOrCreateResponsable(PDO $conn, string $nombreCompleto, string $telefono): int
+function crearResponsable(PDO $conn, string $nombreCompleto, string $telefono): int
 {
     $nombreCompleto = trim(preg_replace('/\s+/', ' ', $nombreCompleto));
     $telefono = trim($telefono);
-
-    $stmt = $conn->prepare("SELECT id_responsable FROM responsables WHERE TRIM(CONCAT(nombre, ' ', apellido)) = :nombre_completo LIMIT 1");
-    $stmt->bindValue(':nombre_completo', $nombreCompleto);
-    $stmt->execute();
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($row) {
-        $idResponsable = (int)$row['id_responsable'];
-        if ($telefono !== '') {
-            $stmtUpd = $conn->prepare('UPDATE responsables SET telefono = :telefono WHERE id_responsable = :id_responsable');
-            $stmtUpd->bindValue(':telefono', $telefono);
-            $stmtUpd->bindValue(':id_responsable', $idResponsable, PDO::PARAM_INT);
-            $stmtUpd->execute();
-        }
-        return $idResponsable;
-    }
 
     [$nombre, $apellido] = splitNombreApellido($nombreCompleto);
     $ciTemporal = 'AUTO' . strtoupper(bin2hex(random_bytes(8)));
@@ -61,16 +46,35 @@ function getOrCreateResponsable(PDO $conn, string $nombreCompleto, string $telef
 }
 
 $tablaEstRespDisponible = false;
+$tablaEstRespTieneSnapshot = false;
+$tablaCargaDisponible = false;
 $avisoMigracion = '';
 try {
     $stmtTabla = $conn->query("SHOW TABLES LIKE 'estudiantes_responsables'");
     $tablaEstRespDisponible = (bool)$stmtTabla->fetchColumn();
+    $stmtTablaCarga = $conn->query("SHOW TABLES LIKE 'estudiantes_responsables_carga'");
+    $tablaCargaDisponible = (bool)$stmtTablaCarga->fetchColumn();
 } catch (Throwable $e) {
     $tablaEstRespDisponible = false;
 }
 
 if (!$tablaEstRespDisponible) {
     $avisoMigracion = 'La tabla estudiantes_responsables no existe en esta base de datos. Ejecute la migracion bds/27 may/migracion_dos_responsables.txt para habilitar 2 responsables.';
+} else {
+    try {
+        $stmtCols = $conn->query("SHOW COLUMNS FROM estudiantes_responsables LIKE 'nombre_responsable'");
+        $tablaEstRespTieneSnapshot = (bool)$stmtCols->fetchColumn();
+    } catch (Throwable $e) {
+        $tablaEstRespTieneSnapshot = false;
+    }
+
+    if (!$tablaEstRespTieneSnapshot) {
+        $avisoMigracion = 'Para evitar que se mezclen o cambien responsables entre cursos, ejecute la migracion bds/27 may/agregar_snapshot_responsables_estudiantes.txt.';
+    }
+}
+
+if ($tablaEstRespDisponible && !$tablaCargaDisponible) {
+    $avisoMigracion = 'Para estabilizar la carga por curso, ejecute la migracion bds/27 may/crear_responsables_carga_estudiantes.txt.';
 }
 
 $nivelesValidos = [];
@@ -125,32 +129,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'guard
                 continue;
             }
 
-            $resp1 = trim($responsables1[$idx] ?? '');
-            $resp2 = trim($responsables2[$idx] ?? '');
-            $tel1 = trim($telefonos1[$idx] ?? '');
-            $tel2 = trim($telefonos2[$idx] ?? '');
+            $filaCompletaPost = array_key_exists($idEstudiante, $responsables1)
+                && array_key_exists($idEstudiante, $responsables2)
+                && array_key_exists($idEstudiante, $telefonos1)
+                && array_key_exists($idEstudiante, $telefonos2);
+
+            if (!$filaCompletaPost) {
+                continue;
+            }
+
+            $resp1 = trim($responsables1[$idEstudiante] ?? '');
+            $resp2 = trim($responsables2[$idEstudiante] ?? '');
+            $tel1 = trim($telefonos1[$idEstudiante] ?? '');
+            $tel2 = trim($telefonos2[$idEstudiante] ?? '');
 
             $relaciones = [];
 
+            if ($tablaCargaDisponible) {
+                $stmtCarga = $conn->prepare("INSERT INTO estudiantes_responsables_carga
+                    (id_estudiante, padre_nombre, padre_telefono, madre_nombre, madre_telefono)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        padre_nombre = VALUES(padre_nombre),
+                        padre_telefono = VALUES(padre_telefono),
+                        madre_nombre = VALUES(madre_nombre),
+                        madre_telefono = VALUES(madre_telefono)");
+                $stmtCarga->execute([
+                    $idEstudiante,
+                    $resp1 === '' ? null : $resp1,
+                    $tel1 === '' ? null : $tel1,
+                    $resp2 === '' ? null : $resp2,
+                    $tel2 === '' ? null : $tel2
+                ]);
+            }
+
             if ($resp1 !== '') {
-                $idResp1 = getOrCreateResponsable($conn, $resp1, $tel1);
-                $relaciones[] = ['id_responsable' => $idResp1, 'es_principal' => 1];
+                $idResp1 = crearResponsable($conn, $resp1, $tel1);
+                $relaciones[] = ['id_responsable' => $idResp1, 'tipo_responsable' => 'PADRE', 'es_principal' => 1, 'nombre_responsable' => $resp1, 'telefono_responsable' => $tel1];
             }
 
             if ($resp2 !== '') {
-                $idResp2 = getOrCreateResponsable($conn, $resp2, $tel2);
-                if (empty($relaciones) || $relaciones[0]['id_responsable'] !== $idResp2) {
-                    $relaciones[] = ['id_responsable' => $idResp2, 'es_principal' => 0];
-                }
+                $idResp2 = crearResponsable($conn, $resp2, $tel2);
+                $relaciones[] = ['id_responsable' => $idResp2, 'tipo_responsable' => 'MADRE', 'es_principal' => 0, 'nombre_responsable' => $resp2, 'telefono_responsable' => $tel2];
             }
 
             $stmtDel = $conn->prepare('DELETE FROM estudiantes_responsables WHERE id_estudiante = ?');
             $stmtDel->execute([$idEstudiante]);
 
             if (!empty($relaciones)) {
-                $stmtInsRel = $conn->prepare('INSERT INTO estudiantes_responsables (id_estudiante, id_responsable, tipo_responsable, es_principal) VALUES (?, ?, NULL, ?)');
-                foreach ($relaciones as $rel) {
-                    $stmtInsRel->execute([$idEstudiante, (int)$rel['id_responsable'], (int)$rel['es_principal']]);
+                if ($tablaEstRespTieneSnapshot) {
+                    $stmtInsRel = $conn->prepare('INSERT INTO estudiantes_responsables (id_estudiante, id_responsable, tipo_responsable, es_principal, nombre_responsable, telefono_responsable) VALUES (?, ?, ?, ?, ?, ?)');
+                    foreach ($relaciones as $rel) {
+                        $stmtInsRel->execute([$idEstudiante, (int)$rel['id_responsable'], $rel['tipo_responsable'], (int)$rel['es_principal'], $rel['nombre_responsable'], $rel['telefono_responsable']]);
+                    }
+                } else {
+                    $stmtInsRel = $conn->prepare('INSERT INTO estudiantes_responsables (id_estudiante, id_responsable, tipo_responsable, es_principal) VALUES (?, ?, ?, ?)');
+                    foreach ($relaciones as $rel) {
+                        $stmtInsRel->execute([$idEstudiante, (int)$rel['id_responsable'], $rel['tipo_responsable'], (int)$rel['es_principal']]);
+                    }
                 }
             }
 
@@ -193,38 +229,66 @@ if ($nivelSeleccionado !== '') {
                 e.apellido_paterno,
                 e.apellido_materno,
                 e.nombres,
-                (
+                COALESCE((
+                    SELECT TRIM(CONCAT(r1p.nombre, ' ', r1p.apellido))
+                    FROM estudiantes_responsables er1p
+                    INNER JOIN responsables r1p ON r1p.id_responsable = er1p.id_responsable
+                    WHERE er1p.id_estudiante = e.id_estudiante AND er1p.tipo_responsable = 'PADRE'
+                    ORDER BY er1p.es_principal DESC, er1p.id_estudiante_responsable ASC
+                    LIMIT 1
+                ), (
                     SELECT TRIM(CONCAT(r1.nombre, ' ', r1.apellido))
                     FROM estudiantes_responsables er1
                     INNER JOIN responsables r1 ON r1.id_responsable = er1.id_responsable
                     WHERE er1.id_estudiante = e.id_estudiante
                     ORDER BY er1.es_principal DESC, er1.id_estudiante_responsable ASC
                     LIMIT 1
-                ) AS responsable_1,
-                (
+                )) AS responsable_1,
+                COALESCE((
+                    SELECT r1p.telefono
+                    FROM estudiantes_responsables er1p
+                    INNER JOIN responsables r1p ON r1p.id_responsable = er1p.id_responsable
+                    WHERE er1p.id_estudiante = e.id_estudiante AND er1p.tipo_responsable = 'PADRE'
+                    ORDER BY er1p.es_principal DESC, er1p.id_estudiante_responsable ASC
+                    LIMIT 1
+                ), (
                     SELECT r1.telefono
                     FROM estudiantes_responsables er1
                     INNER JOIN responsables r1 ON r1.id_responsable = er1.id_responsable
                     WHERE er1.id_estudiante = e.id_estudiante
                     ORDER BY er1.es_principal DESC, er1.id_estudiante_responsable ASC
                     LIMIT 1
-                ) AS telefono_1,
-                (
+                )) AS telefono_1,
+                COALESCE((
+                    SELECT TRIM(CONCAT(r2m.nombre, ' ', r2m.apellido))
+                    FROM estudiantes_responsables er2m
+                    INNER JOIN responsables r2m ON r2m.id_responsable = er2m.id_responsable
+                    WHERE er2m.id_estudiante = e.id_estudiante AND er2m.tipo_responsable = 'MADRE'
+                    ORDER BY er2m.es_principal DESC, er2m.id_estudiante_responsable ASC
+                    LIMIT 1
+                ), (
                     SELECT TRIM(CONCAT(r2.nombre, ' ', r2.apellido))
                     FROM estudiantes_responsables er2
                     INNER JOIN responsables r2 ON r2.id_responsable = er2.id_responsable
                     WHERE er2.id_estudiante = e.id_estudiante
                     ORDER BY er2.es_principal DESC, er2.id_estudiante_responsable ASC
                     LIMIT 1 OFFSET 1
-                ) AS responsable_2,
-                (
+                )) AS responsable_2,
+                COALESCE((
+                    SELECT r2m.telefono
+                    FROM estudiantes_responsables er2m
+                    INNER JOIN responsables r2m ON r2m.id_responsable = er2m.id_responsable
+                    WHERE er2m.id_estudiante = e.id_estudiante AND er2m.tipo_responsable = 'MADRE'
+                    ORDER BY er2m.es_principal DESC, er2m.id_estudiante_responsable ASC
+                    LIMIT 1
+                ), (
                     SELECT r2.telefono
                     FROM estudiantes_responsables er2
                     INNER JOIN responsables r2 ON r2.id_responsable = er2.id_responsable
                     WHERE er2.id_estudiante = e.id_estudiante
                     ORDER BY er2.es_principal DESC, er2.id_estudiante_responsable ASC
                     LIMIT 1 OFFSET 1
-                ) AS telefono_2
+                )) AS telefono_2
             FROM cursos c
             LEFT JOIN estudiantes e ON e.id_curso = c.id_curso
             WHERE c.nivel = :nivel
@@ -263,6 +327,83 @@ if ($nivelSeleccionado !== '') {
         }
         $stmt->execute();
         $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if ($tablaEstRespTieneSnapshot) {
+            $stmtSnapshot = $conn->prepare("SELECT tipo_responsable, nombre_responsable, telefono_responsable
+                FROM estudiantes_responsables
+                WHERE id_estudiante = ?
+                ORDER BY es_principal DESC, id_estudiante_responsable ASC
+                LIMIT 2");
+
+            foreach ($filas as &$fila) {
+                if (empty($fila['id_estudiante'])) {
+                    continue;
+                }
+
+                $stmtSnapshot->execute([(int)$fila['id_estudiante']]);
+                $snapshots = $stmtSnapshot->fetchAll(PDO::FETCH_ASSOC);
+
+                $fila['responsable_1'] = '';
+                $fila['telefono_1'] = '';
+                $fila['responsable_2'] = '';
+                $fila['telefono_2'] = '';
+
+                $padre = null;
+                $madre = null;
+                $sinTipo = [];
+                foreach ($snapshots as $snapshot) {
+                    $tipo = strtoupper((string)($snapshot['tipo_responsable'] ?? ''));
+                    if ($tipo === 'PADRE' && $padre === null) {
+                        $padre = $snapshot;
+                    } elseif ($tipo === 'MADRE' && $madre === null) {
+                        $madre = $snapshot;
+                    } elseif ($tipo === '') {
+                        $sinTipo[] = $snapshot;
+                    }
+                }
+
+                if ($padre === null && isset($sinTipo[0])) {
+                    $padre = $sinTipo[0];
+                }
+                if ($madre === null && isset($sinTipo[1])) {
+                    $madre = $sinTipo[1];
+                }
+
+                if ($padre !== null) {
+                    $fila['responsable_1'] = $padre['nombre_responsable'] ?? '';
+                    $fila['telefono_1'] = $padre['telefono_responsable'] ?? '';
+                }
+                if ($madre !== null) {
+                    $fila['responsable_2'] = $madre['nombre_responsable'] ?? '';
+                    $fila['telefono_2'] = $madre['telefono_responsable'] ?? '';
+                }
+            }
+            unset($fila);
+        }
+
+        if ($tablaCargaDisponible) {
+            $stmtCargaLeer = $conn->prepare("SELECT padre_nombre, padre_telefono, madre_nombre, madre_telefono
+                FROM estudiantes_responsables_carga
+                WHERE id_estudiante = ?");
+
+            foreach ($filas as &$filaCarga) {
+                if (empty($filaCarga['id_estudiante'])) {
+                    continue;
+                }
+
+                $stmtCargaLeer->execute([(int)$filaCarga['id_estudiante']]);
+                $carga = $stmtCargaLeer->fetch(PDO::FETCH_ASSOC);
+                if (!$carga) {
+                    continue;
+                }
+
+                $filaCarga['responsable_1'] = $carga['padre_nombre'] ?? '';
+                $filaCarga['telefono_1'] = $carga['padre_telefono'] ?? '';
+                $filaCarga['responsable_2'] = $carga['madre_nombre'] ?? '';
+                $filaCarga['telefono_2'] = $carga['madre_telefono'] ?? '';
+            }
+            unset($filaCarga);
+        }
     } catch (Throwable $e) {
         $_SESSION['error'] = 'No se pudo cargar la lista de responsables: ' . $e->getMessage();
         $filas = [];
@@ -390,10 +531,10 @@ function nombreEstudiante(array $row): string
                                             <?php echo htmlspecialchars(nombreEstudiante($row)); ?>
                                             <input type="hidden" name="id_estudiante[]" value="<?php echo (int)$row['id_estudiante']; ?>">
                                         </td>
-                                        <td><input type="text" class="form-control form-control-sm" name="responsable_1[]" value="<?php echo htmlspecialchars($row['responsable_1'] ?? ''); ?>"></td>
-                                        <td><input type="text" class="form-control form-control-sm" name="responsable_2[]" value="<?php echo htmlspecialchars($row['responsable_2'] ?? ''); ?>"></td>
-                                        <td><input type="text" class="form-control form-control-sm" name="telefono_1[]" value="<?php echo htmlspecialchars($row['telefono_1'] ?? ''); ?>"></td>
-                                        <td><input type="text" class="form-control form-control-sm" name="telefono_2[]" value="<?php echo htmlspecialchars($row['telefono_2'] ?? ''); ?>"></td>
+                                        <td><input type="text" class="form-control form-control-sm" name="responsable_1[<?php echo (int)$row['id_estudiante']; ?>]" value="<?php echo htmlspecialchars($row['responsable_1'] ?? ''); ?>"></td>
+                                        <td><input type="text" class="form-control form-control-sm" name="responsable_2[<?php echo (int)$row['id_estudiante']; ?>]" value="<?php echo htmlspecialchars($row['responsable_2'] ?? ''); ?>"></td>
+                                        <td><input type="text" class="form-control form-control-sm" name="telefono_1[<?php echo (int)$row['id_estudiante']; ?>]" value="<?php echo htmlspecialchars($row['telefono_1'] ?? ''); ?>"></td>
+                                        <td><input type="text" class="form-control form-control-sm" name="telefono_2[<?php echo (int)$row['id_estudiante']; ?>]" value="<?php echo htmlspecialchars($row['telefono_2'] ?? ''); ?>"></td>
                                     </tr>
                                 <?php endforeach; ?>
 
@@ -459,7 +600,7 @@ function nombreEstudiante(array $row): string
                 }
 
                 const lineas = txt.value.split(/\r?\n/);
-                const inputs = document.querySelectorAll(`input[name="${columnaActual}[]"]`);
+                const inputs = document.querySelectorAll(`input[name^="${columnaActual}["]`);
 
                 inputs.forEach((input, idx) => {
                     input.value = (lineas[idx] || '').trim();

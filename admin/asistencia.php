@@ -1730,6 +1730,18 @@ if ($id_curso) {
         const datosGafetesPdf = <?php
             $datosPdf = [];
             if ($id_curso && !empty($estudiantes) && $isAdminAsistencia) {
+                $usaSnapshotResponsablesPdf = false;
+                $usaCargaResponsablesPdf = false;
+                try {
+                    $stmtSnapshotPdf = $conn->query("SHOW COLUMNS FROM estudiantes_responsables LIKE 'nombre_responsable'");
+                    $usaSnapshotResponsablesPdf = (bool)$stmtSnapshotPdf->fetchColumn();
+                    $stmtCargaPdf = $conn->query("SHOW TABLES LIKE 'estudiantes_responsables_carga'");
+                    $usaCargaResponsablesPdf = (bool)$stmtCargaPdf->fetchColumn();
+                } catch (Throwable $e) {
+                    $usaSnapshotResponsablesPdf = false;
+                    $usaCargaResponsablesPdf = false;
+                }
+
                 foreach ($estudiantes as $estPdf) {
                     $padre = '';
                     $madre = '';
@@ -1737,17 +1749,41 @@ if ($id_curso) {
                     $celRef = '';
 
                     try {
-                        $stmtRespPdf = $conn->prepare("SELECT er.tipo_responsable, er.es_principal, r.nombre, r.apellido, r.telefono
-                            FROM estudiantes_responsables er
-                            INNER JOIN responsables r ON r.id_responsable = er.id_responsable
-                            WHERE er.id_estudiante = ?
-                            ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
-                            LIMIT 2");
+                        if ($usaCargaResponsablesPdf) {
+                            $stmtCargaRespPdf = $conn->prepare("SELECT padre_nombre, padre_telefono, madre_nombre, madre_telefono
+                                FROM estudiantes_responsables_carga
+                                WHERE id_estudiante = ?
+                                LIMIT 1");
+                            $stmtCargaRespPdf->execute([(int)$estPdf['id_estudiante']]);
+                            $cargaRespPdf = $stmtCargaRespPdf->fetch(PDO::FETCH_ASSOC);
+                            if ($cargaRespPdf) {
+                                $padre = strtoupper(trim((string)($cargaRespPdf['padre_nombre'] ?? '')));
+                                $madre = strtoupper(trim((string)($cargaRespPdf['madre_nombre'] ?? '')));
+                                $celRef = (string)(($cargaRespPdf['padre_telefono'] ?? '') ?: ($cargaRespPdf['madre_telefono'] ?? ''));
+                            }
+                        } elseif ($usaSnapshotResponsablesPdf) {
+                            $stmtRespPdf = $conn->prepare("SELECT er.tipo_responsable, er.es_principal,
+                                    er.nombre_responsable AS nombre_completo,
+                                    er.telefono_responsable AS telefono
+                                FROM estudiantes_responsables er
+                                WHERE er.id_estudiante = ?
+                                ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
+                                LIMIT 2");
+                        } else {
+                            $stmtRespPdf = $conn->prepare("SELECT er.tipo_responsable, er.es_principal,
+                                    TRIM(CONCAT(r.nombre, ' ', r.apellido)) AS nombre_completo,
+                                    r.telefono
+                                FROM estudiantes_responsables er
+                                INNER JOIN responsables r ON r.id_responsable = er.id_responsable
+                                WHERE er.id_estudiante = ?
+                                ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
+                                LIMIT 2");
+                        }
                         $stmtRespPdf->execute([(int)$estPdf['id_estudiante']]);
                         $respRowsPdf = $stmtRespPdf->fetchAll(PDO::FETCH_ASSOC);
 
                         foreach ($respRowsPdf as $idxResp => $respPdf) {
-                            $full = strtoupper(trim(($respPdf['nombre'] ?? '') . ' ' . ($respPdf['apellido'] ?? '')));
+                            $full = strtoupper(trim((string)($respPdf['nombre_completo'] ?? '')));
                             $tipo = strtoupper((string)($respPdf['tipo_responsable'] ?? ''));
                             if ($idxResp === 0 && $celRef === '') {
                                 $celRef = (string)($respPdf['telefono'] ?? '');

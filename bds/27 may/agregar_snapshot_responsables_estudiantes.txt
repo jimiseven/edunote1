@@ -1,0 +1,12 @@
+-- Migracion: guardar nombre/telefono del responsable en la relacion estudiante-responsable
+-- Objetivo: evitar que los datos se mezclen cuando varios estudiantes comparten responsables
+
+ALTER TABLE `estudiantes_responsables`
+  ADD COLUMN `nombre_responsable` VARCHAR(255) DEFAULT NULL AFTER `tipo_responsable`,
+  ADD COLUMN `telefono_responsable` VARCHAR(80) DEFAULT NULL AFTER `nombre_responsable`;
+
+UPDATE `estudiantes_responsables` er
+INNER JOIN `responsables` r ON r.`id_responsable` = er.`id_responsable`
+SET er.`nombre_responsable` = TRIM(CONCAT(r.`nombre`, ' ', r.`apellido`)),
+    er.`telefono_responsable` = r.`telefono`
+WHERE er.`nombre_responsable` IS NULL;
