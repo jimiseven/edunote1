@@ -1557,6 +1557,9 @@ if ($id_curso) {
                         <button type="button" class="btn btn-danger" id="btnGenerarPdf" onclick="generarPdfGafetes()">
                             <i class="ri-file-pdf-2-line"></i> Generar PDF de QRs
                         </button>
+                        <button type="button" class="btn btn-warning" id="btnGenerarPdfCarnet" onclick="generarPdfCarnetDobleCara()">
+                            <i class="ri-file-pdf-2-line"></i> Generar PDF carnet doble cara
+                        </button>
                     </div>
 
                     <div class="row" id="qr-container">
@@ -1728,12 +1731,55 @@ if ($id_curso) {
             $datosPdf = [];
             if ($id_curso && !empty($estudiantes) && $isAdminAsistencia) {
                 foreach ($estudiantes as $estPdf) {
+                    $padre = '';
+                    $madre = '';
+                    $tutor = '';
+                    $celRef = '';
+
+                    try {
+                        $stmtRespPdf = $conn->prepare("SELECT er.tipo_responsable, er.es_principal, r.nombre, r.apellido, r.telefono
+                            FROM estudiantes_responsables er
+                            INNER JOIN responsables r ON r.id_responsable = er.id_responsable
+                            WHERE er.id_estudiante = ?
+                            ORDER BY er.es_principal DESC, er.id_estudiante_responsable ASC
+                            LIMIT 2");
+                        $stmtRespPdf->execute([(int)$estPdf['id_estudiante']]);
+                        $respRowsPdf = $stmtRespPdf->fetchAll(PDO::FETCH_ASSOC);
+
+                        foreach ($respRowsPdf as $idxResp => $respPdf) {
+                            $full = strtoupper(trim(($respPdf['nombre'] ?? '') . ' ' . ($respPdf['apellido'] ?? '')));
+                            $tipo = strtoupper((string)($respPdf['tipo_responsable'] ?? ''));
+                            if ($idxResp === 0 && $celRef === '') {
+                                $celRef = (string)($respPdf['telefono'] ?? '');
+                            }
+                            if ($tipo === 'PADRE') {
+                                $padre = $full;
+                            } elseif ($tipo === 'MADRE') {
+                                $madre = $full;
+                            } elseif ($tipo === 'TUTOR') {
+                                $tutor = $full;
+                            } elseif ($idxResp === 0 && $padre === '') {
+                                $padre = $full;
+                            } elseif ($idxResp === 1 && $madre === '') {
+                                $madre = $full;
+                            }
+                        }
+                    } catch (Throwable $e) {
+                    }
+
                     $nombreMayus = strtoupper(trim(($estPdf['apellido_paterno'] ?? '') . ' ' . ($estPdf['apellido_materno'] ?? '') . ', ' . ($estPdf['nombres'] ?? '')));
                     $qrDataPdf = 'EST:' . (int)$estPdf['id_estudiante'];
                     $datosPdf[] = [
                         'id_estudiante' => (int)$estPdf['id_estudiante'],
                         'nombre' => $nombreMayus,
+                        'nivel' => (string)($estPdf['nivel'] ?? ''),
+                        'curso_valor' => (string)($estPdf['curso'] ?? ''),
+                        'paralelo' => (string)($estPdf['paralelo'] ?? ''),
                         'curso_texto' => trim(($estPdf['nivel'] ?? '') . ' ' . ($estPdf['curso'] ?? '') . ' "' . ($estPdf['paralelo'] ?? '') . '"'),
+                        'padre' => $padre,
+                        'madre' => $madre,
+                        'tutor' => $tutor,
+                        'cel_ref' => $celRef,
                         'qr_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=' . urlencode($qrDataPdf),
                     ];
                 }
@@ -1785,8 +1831,12 @@ if ($id_curso) {
 
         function mostrarCargaPdf() {
             const botonPdf = document.getElementById('btnGenerarPdf');
+            const botonPdfCarnet = document.getElementById('btnGenerarPdfCarnet');
             if (botonPdf) {
                 botonPdf.disabled = true;
+            }
+            if (botonPdfCarnet) {
+                botonPdfCarnet.disabled = true;
             }
             const modal = obtenerModalPdfCarga();
             if (modal) {
@@ -1817,8 +1867,12 @@ if ($id_curso) {
 
         function ocultarCargaPdf() {
             const botonPdf = document.getElementById('btnGenerarPdf');
+            const botonPdfCarnet = document.getElementById('btnGenerarPdfCarnet');
             if (botonPdf) {
                 botonPdf.disabled = false;
+            }
+            if (botonPdfCarnet) {
+                botonPdfCarnet.disabled = false;
             }
             const modal = obtenerModalPdfCarga();
             if (modal) {
@@ -1962,6 +2016,259 @@ if ($id_curso) {
 
                 const nombreCursoArchivo = <?= json_encode($id_curso ? ('curso_' . (int)$id_curso) : 'curso') ?>;
                 pdf.save('gafetes_pdf_' + nombreCursoArchivo + '.pdf');
+                actualizarProgresoPdf(100, 'PDF completado', '');
+            } finally {
+                isGeneratingPdf = false;
+                ocultarCargaPdf();
+            }
+        }
+
+        async function generarPdfCarnetDobleCara() {
+            if (isGeneratingPdf) {
+                return;
+            }
+
+            if (!Array.isArray(datosGafetesPdf) || datosGafetesPdf.length === 0) {
+                alert('No hay estudiantes para generar el PDF.');
+                return;
+            }
+
+            isGeneratingPdf = true;
+            mostrarCargaPdf();
+            actualizarProgresoPdf(1, 'Generando PDF doble cara', '');
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+                const pageW = 612;
+                const pageH = 792;
+                const cardW = cmToPt(6);
+                const cardH = cmToPt(10);
+                const qrSize = cmToPt(4.5);
+                const cardsPerPage = 6;
+                const cursoPagina = (datosGafetesPdf[0] && datosGafetesPdf[0].curso_texto) ? datosGafetesPdf[0].curso_texto : '';
+
+                const cols = 3;
+                const rows = 2;
+                const gapX = (pageW - (cols * cardW)) / (cols + 1);
+                const gapY = (pageH - (rows * cardH)) / (rows + 1);
+
+                const slots = [];
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        slots.push({
+                            x: gapX + col * (cardW + gapX),
+                            y: gapY + row * (cardH + gapY)
+                        });
+                    }
+                }
+
+                const totalPaginas = Math.ceil(datosGafetesPdf.length / cardsPerPage);
+
+                for (let pagina = 0; pagina < totalPaginas; pagina++) {
+                    const start = pagina * cardsPerPage;
+                    const end = Math.min(start + cardsPerPage, datosGafetesPdf.length);
+
+                    if (pagina > 0) {
+                        pdf.addPage('letter', 'portrait');
+                    }
+
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(25, 25, 25);
+                    pdf.text('Curso: ' + cursoPagina + ' - Cara QR', pageW / 2, 28, { align: 'center' });
+
+                    for (let i = start; i < end; i++) {
+                        const pct = 1 + Math.floor(((i + 1) / datosGafetesPdf.length) * 95);
+                        actualizarProgresoPdf(pct, 'Generando cara QR', '');
+
+                        const est = datosGafetesPdf[i];
+                        const slot = slots[i - start];
+                        const x = slot.x;
+                        const y = slot.y;
+
+                        pdf.setFillColor(255, 255, 255);
+                        pdf.setDrawColor(170, 170, 170);
+                        pdf.setLineWidth(0.5);
+                        pdf.rect(x, y, cardW, cardH, 'FD');
+
+                        pdf.setFillColor(15, 15, 15);
+                        pdf.rect(x, y, cardW, 13, 'F');
+
+                        pdf.setTextColor(255, 255, 255);
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.setFontSize(8);
+                        pdf.text('GAFETE ESTUDIANTIL', x + (cardW / 2), y + 9, { align: 'center' });
+                        pdf.setTextColor(20, 20, 20);
+                        pdf.setFontSize(7.5);
+                        pdf.text('Unidad Educativa Simon Bolivar', x + (cardW / 2), y + 20, { align: 'center' });
+
+                        const qrX = x + (cardW - qrSize) / 2;
+                        const qrY = y + 42;
+                        const qrDataUrl = await cargarImagenComoDataUrl(est.qr_url);
+                        if (qrDataUrl) {
+                            pdf.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+                        } else {
+                            pdf.setDrawColor(160, 160, 160);
+                            pdf.rect(qrX, qrY, qrSize, qrSize);
+                            pdf.setFont('helvetica', 'normal');
+                            pdf.setFontSize(8);
+                            pdf.text('QR no disponible', x + (cardW / 2), qrY + (qrSize / 2), { align: 'center' });
+                        }
+
+                        const idY = qrY + qrSize + 11;
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.setFontSize(8);
+                        pdf.text('Id estudiante: ' + est.id_estudiante, x + (cardW / 2), idY, { align: 'center' });
+
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.setFontSize(10);
+                        const nombreBase = (est.nombre || '').toUpperCase();
+                        let nombreLineas = pdf.splitTextToSize(nombreBase, cardW - 12);
+                        if (nombreLineas.length > 2) {
+                            nombreLineas = nombreLineas.slice(0, 2);
+                            nombreLineas[1] = nombreLineas[1].slice(0, Math.max(nombreLineas[1].length - 3, 0)) + '...';
+                        }
+                        pdf.text(nombreLineas, x + (cardW / 2), idY + 14, { align: 'center', maxWidth: cardW - 12 });
+
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.setFontSize(8);
+                        const pieTexto = est.curso_texto || '';
+                        let pieLineas = pdf.splitTextToSize(pieTexto, cardW - 12);
+                        if (pieLineas.length > 2) {
+                            pieLineas = pieLineas.slice(0, 2);
+                            pieLineas[1] = pieLineas[1].slice(0, Math.max(pieLineas[1].length - 3, 0)) + '...';
+                        }
+                        pdf.text(pieLineas, x + (cardW / 2), y + cardH - 20, { align: 'center', maxWidth: cardW - 12 });
+                    }
+
+                    pdf.addPage('letter', 'portrait');
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(11);
+                    pdf.setTextColor(25, 25, 25);
+                    pdf.text('Curso: ' + cursoPagina + ' - Cara datos', pageW / 2, 28, { align: 'center' });
+
+                    for (let i = start; i < end; i++) {
+                        const est = datosGafetesPdf[i];
+                        const localIndex = i - start;
+                        const mirroredIndex = (Math.floor(localIndex / cols) * cols) + (cols - 1 - (localIndex % cols));
+                        const slot = slots[mirroredIndex];
+                        const x = slot.x;
+                        const y = slot.y;
+
+                        pdf.setFillColor(255, 255, 255);
+                        pdf.setDrawColor(170, 170, 170);
+                        pdf.setLineWidth(0.5);
+                        pdf.rect(x, y, cardW, cardH, 'FD');
+
+                        pdf.setDrawColor(25, 25, 25);
+                        pdf.setLineWidth(0.7);
+                        pdf.roundedRect(x + 1.5, y + 1.5, cardW - 3, cardH - 3, 4, 4, 'S');
+
+                        const headerH = 35;
+                        pdf.setFillColor(235, 235, 235);
+                        pdf.rect(x + 1.5, y + 1.5, cardW - 3, headerH, 'F');
+                        pdf.setTextColor(0, 0, 0);
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.setFontSize(13);
+                        pdf.text('CARNET ESTUDIANTIL', x + (cardW / 2), y + 14, { align: 'center' });
+                        pdf.setFontSize(8.3);
+                        pdf.text('UNIDAD EDUCATIVA SIMON BOLIVAR', x + (cardW / 2), y + 26, { align: 'center' });
+
+                        const bodyX = x + 5;
+                        const bodyY = y + headerH + 7;
+                        const bodyW = cardW - 10;
+                        const footerH = 42;
+                        const footerY = y + cardH - footerH - 5;
+                        const bodyH = footerY - bodyY - 6;
+                        const rowH = bodyH / 7;
+                        const labelX = bodyX + 7;
+                        const valueX = bodyX + 48;
+                        const valueW = bodyW - 54;
+
+                        pdf.setDrawColor(35, 35, 35);
+                        pdf.setLineWidth(0.45);
+                        pdf.roundedRect(bodyX, bodyY, bodyW, bodyH, 3, 3, 'S');
+
+                        const fitLines = (value, maxLines, width) => {
+                            let lines = pdf.splitTextToSize((value || '').toString(), width);
+                            if (lines.length > maxLines) {
+                                lines = lines.slice(0, maxLines);
+                                lines[maxLines - 1] = lines[maxLines - 1].slice(0, Math.max(lines[maxLines - 1].length - 3, 0)) + '...';
+                            }
+                            return lines;
+                        };
+
+                        const drawRow = (idx, label, value, maxLines = 1) => {
+                            const rowY = bodyY + (idx * rowH);
+                            const textY = rowY + 12;
+                            pdf.setTextColor(0, 0, 0);
+                            pdf.setFont('helvetica', 'bold');
+                            pdf.setFontSize(7.7);
+                            pdf.text(label, labelX, textY);
+
+                            pdf.setFont('helvetica', 'normal');
+                            pdf.setFontSize(label === 'NOMBRE' ? 7.6 : 8.1);
+                            const lines = fitLines(value, maxLines, valueW);
+                            const valueY = lines.length > 1 ? rowY + 9.5 : textY;
+                            pdf.text(lines, valueX, valueY);
+
+                            if (idx < 6) {
+                                pdf.setDrawColor(170, 170, 170);
+                                pdf.setLineWidth(0.25);
+                                pdf.line(bodyX + 6, rowY + rowH, bodyX + bodyW - 6, rowY + rowH);
+                            }
+                        };
+
+                        drawRow(0, 'NOMBRE', est.nombre || '', 2);
+                        drawRow(1, 'NIVEL', est.nivel || '', 1);
+                        drawRow(2, 'CURSO', est.curso_texto || '', 1);
+                        drawRow(3, 'MADRE', est.madre || '', 1);
+                        drawRow(4, 'PADRE', est.padre || '', 1);
+                        drawRow(5, 'TUTOR', est.tutor || '', 1);
+                        drawRow(6, 'CEL REF', est.cel_ref || '', 1);
+
+                        pdf.setDrawColor(35, 35, 35);
+                        pdf.setLineWidth(0.45);
+                        pdf.roundedRect(bodyX, footerY, bodyW, footerH, 3, 3, 'S');
+
+                        const colW = bodyW / 2;
+                        pdf.setDrawColor(90, 90, 90);
+                        pdf.setLineWidth(0.25);
+                        pdf.line(bodyX + colW, footerY + 5, bodyX + colW, footerY + footerH - 5);
+
+                        const footerCol = (col, title, text, maxLines = 5) => {
+                            const colX = bodyX + (col * colW) + 5;
+                            const centerX = bodyX + (col * colW) + (colW / 2);
+                            const maxW = colW - 12;
+                            pdf.setFont('helvetica', 'bold');
+                            pdf.setFontSize(6.1);
+                            pdf.text(title, centerX, footerY + 8, { align: 'center' });
+                            pdf.setFont('helvetica', 'normal');
+                            pdf.setFontSize(5.3);
+
+                            let splitLines = pdf.splitTextToSize(text, maxW);
+                            if (splitLines.length > maxLines) {
+                                splitLines = splitLines.slice(0, maxLines);
+                                splitLines[maxLines - 1] = splitLines[maxLines - 1].slice(0, Math.max(splitLines[maxLines - 1].length - 3, 0)) + '...';
+                            }
+
+                            const lineHeight = 5.8;
+                            let yy = footerY + 15 + Math.max(0, ((footerH - 21) - (splitLines.length * lineHeight)) / 2);
+                            splitLines.forEach((line) => {
+                                pdf.text(line, centerX, yy, { align: 'center' });
+                                yy += lineHeight;
+                            });
+                        };
+
+                        footerCol(0, 'Directora:', 'Norka Vilma Maldonado Rocha\nCel: 79796319', 5);
+                        footerCol(1, 'Direccion:', 'Av. Final Libertador Simon Bolivar Km 8 1/2 Blanco Galindo', 5);
+                    }
+                }
+
+                const nombreCursoArchivo = <?= json_encode($id_curso ? ('curso_' . (int)$id_curso) : 'curso') ?>;
+                pdf.save('carnet_doble_cara_' + nombreCursoArchivo + '.pdf');
                 actualizarProgresoPdf(100, 'PDF completado', '');
             } finally {
                 isGeneratingPdf = false;
