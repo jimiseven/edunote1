@@ -2260,9 +2260,10 @@ if ($id_curso) {
                             pdf.text(label, labelX, textY);
 
                             pdf.setFont('helvetica', 'normal');
-                            pdf.setFontSize(label === 'NOMBRE' ? 7.6 : 8.1);
+                            const esResponsable = ['MADRE', 'PADRE', 'TUTOR'].includes(label);
+                            pdf.setFontSize(label === 'NOMBRE' ? 7.6 : (esResponsable ? 7.2 : 8.1));
                             const lines = fitLines(value, maxLines, valueW);
-                            const valueY = lines.length > 1 ? rowY + 9.5 : textY;
+                            const valueY = lines.length > 1 ? rowY + 8.6 : textY;
                             pdf.text(lines, valueX, valueY);
 
                             if (idx < 6) {
@@ -2275,9 +2276,9 @@ if ($id_curso) {
                         drawRow(0, 'NOMBRE', est.nombre || '', 2);
                         drawRow(1, 'NIVEL', est.nivel || '', 1);
                         drawRow(2, 'CURSO', est.curso_texto || '', 1);
-                        drawRow(3, 'MADRE', est.madre || '', 1);
-                        drawRow(4, 'PADRE', est.padre || '', 1);
-                        drawRow(5, 'TUTOR', est.tutor || '', 1);
+                        drawRow(3, 'MADRE', est.madre || '', 2);
+                        drawRow(4, 'PADRE', est.padre || '', 2);
+                        drawRow(5, 'TUTOR', est.tutor || '', 2);
                         drawRow(6, 'CEL REF', est.cel_ref || '', 1);
 
                         pdf.setDrawColor(35, 35, 35);
