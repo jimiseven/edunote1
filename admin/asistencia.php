@@ -624,11 +624,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'success' => false,
                 'message' => 'El estudiante ya registró asistencia en MANANA y TARDE hoy.'
             ]);
+            exit();
         } elseif (($puntualidad['turno'] ?? '') === 'SIN_TARDE_HOY') {
             echo json_encode([
                 'success' => false,
                 'message' => 'Este curso no tiene clases en turno TARDE para hoy. No se permite un segundo registro.'
             ]);
+            exit();
         } else {
             $stmt_check = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ?");
             $stmt_check->execute([$id_estudiante, $hoy, $puntualidad['turno']]);
@@ -646,42 +648,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $stmt = $conn->prepare("INSERT INTO asistencia
                 (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
                 VALUES (?, ?, ?, ?, 'QR', ?, ?, ?)");
-            if ($stmt->execute([
-                $id_estudiante,
-                $hoy,
-                $puntualidad['turno'],
-                $hora_actual,
-                $puntualidad['estado_puntualidad'],
-                $puntualidad['hora_ingreso_programada'],
-                $puntualidad['tolerancia_min']
-            ])) {
-                // Obtener información del estudiante
-                $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
-                $stmt_est->execute([$id_estudiante]);
-                $estudiante = $stmt_est->fetch(PDO::FETCH_ASSOC) ?: [];
-                $nombreEstudiante = trim(implode(' ', array_filter([
-                    (string)($estudiante['apellido_paterno'] ?? ''),
-                    (string)($estudiante['apellido_materno'] ?? ''),
-                    (string)($estudiante['nombres'] ?? '')
-                ])));
-                if ($nombreEstudiante === '') {
-                    $nombreEstudiante = 'ID ' . (int)$id_estudiante;
+            try {
+                $insertOk = $stmt->execute([
+                    $id_estudiante,
+                    $hoy,
+                    $puntualidad['turno'],
+                    $hora_actual,
+                    $puntualidad['estado_puntualidad'],
+                    $puntualidad['hora_ingreso_programada'],
+                    $puntualidad['tolerancia_min']
+                ]);
+
+                if ($insertOk) {
+                    $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
+                    $stmt_est->execute([$id_estudiante]);
+                    $estudiante = $stmt_est->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $nombreEstudiante = trim(implode(' ', array_filter([
+                        (string)($estudiante['apellido_paterno'] ?? ''),
+                        (string)($estudiante['apellido_materno'] ?? ''),
+                        (string)($estudiante['nombres'] ?? '')
+                    ])));
+                    if ($nombreEstudiante === '') {
+                        $nombreEstudiante = 'ID ' . (int)$id_estudiante;
+                    }
+
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'Asistencia registrada correctamente (' . $puntualidad['turno'] . ')',
+                        'id_estudiante' => (int)$id_estudiante,
+                        'turno' => $puntualidad['turno'],
+                        'estudiante' => $nombreEstudiante,
+                        'hora' => $hora_actual,
+                        'puntualidad' => $puntualidad['estado_puntualidad']
+                    ]);
+                } else {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Error al registrar la asistencia'
+                    ]);
                 }
-                
-                echo json_encode([
-                    'success' => true,
-                    'message' => 'Asistencia registrada correctamente (' . $puntualidad['turno'] . ')',
-                    'id_estudiante' => (int)$id_estudiante,
-                    'turno' => $puntualidad['turno'],
-                    'estudiante' => $nombreEstudiante,
-                    'hora' => $hora_actual,
-                    'puntualidad' => $puntualidad['estado_puntualidad']
-                ]);
-            } else {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Error al registrar la asistencia'
-                ]);
+            } catch (PDOException $e) {
+                if ($e->getCode() === '23000') {
+                    $stmt_existente_dup = $conn->prepare("SELECT id_asistencia, hora_entrada FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ?");
+                    $stmt_existente_dup->execute([$id_estudiante, $hoy, $puntualidad['turno']]);
+                    $dup = $stmt_existente_dup->fetch(PDO::FETCH_ASSOC);
+                    if ($dup) {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => 'El estudiante ya registró el turno ' . $puntualidad['turno'] . ' hoy a las ' . $dup['hora_entrada']
+                        ]);
+                    } else {
+                        echo json_encode([
+                            'success' => false,
+                            'message' => 'El estudiante ya registró asistencia hoy.'
+                        ]);
+                    }
+                } else {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Error al registrar la asistencia'
+                    ]);
+                }
             }
         }
     } else {
