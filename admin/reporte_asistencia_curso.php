@@ -464,7 +464,7 @@ if ($mostrarReporteGlobal) {
 
 $registros = [];
 if ($idCurso > 0) {
-    $stmt = $conn->prepare("SELECT e.apellido_paterno, e.apellido_materno, e.nombres,
+    $stmt = $conn->prepare("SELECT e.id_estudiante, e.apellido_paterno, e.apellido_materno, e.nombres,
             a.fecha, a.hora_entrada, a.estado_puntualidad,
             " . $puntualidadDetalleSql . ",
             CASE WHEN a.id_asistencia IS NULL THEN 0 ELSE 1 END AS llego
@@ -475,6 +475,117 @@ if ($idCurso > 0) {
     $paramsDetalle = array_merge($paramsPuntualidadDetalle, [$fecha], $turnoFiltroParams, [$idCurso]);
     $stmt->execute($paramsDetalle);
     $registros = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Procesar registro manual de asistencia extra dentro de la tabla del reporte
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'registrar_asistencia_extra') {
+    header('Content-Type: application/json; charset=utf-8');
+    $idEstudiante = (int)($_POST['id_estudiante'] ?? 0);
+    $fechaReg = trim((string)($_POST['fecha'] ?? ''));
+    $turnoReg = strtoupper(trim((string)($_POST['turno'] ?? '')));
+    $horaEntrada = trim((string)($_POST['hora_entrada'] ?? ''));
+
+    if ($idEstudiante <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaReg) || !in_array($turnoReg, ['MANANA', 'TARDE'], true) || $horaEntrada === '') {
+        echo json_encode(['success' => false, 'message' => 'Datos incompletos o invalidos.']);
+        exit();
+    }
+
+    if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $horaEntrada)) {
+        echo json_encode(['success' => false, 'message' => 'Hora de entrada invalida.']);
+        exit();
+    }
+
+    if (strlen($horaEntrada) === 5) {
+        $horaEntrada .= ':00';
+    }
+
+    $stmtEst = $conn->prepare("SELECT e.id_curso FROM estudiantes e WHERE e.id_estudiante = ? LIMIT 1");
+    $stmtEst->execute([$idEstudiante]);
+    $idCursoEst = (int)$stmtEst->fetchColumn();
+
+    if ($idCursoEst <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Estudiante no encontrado.']);
+        exit();
+    }
+
+    $lectorInfo = $userRole === 1 ? null : asistencia_auth_get_lector($conn, $userId);
+    $puede = $userRole === 1;
+    if (!$puede && $lectorInfo) {
+        if ($lectorInfo['alcance'] === 'GLOBAL') {
+            $puede = true;
+        } elseif ($lectorInfo['alcance'] === 'POR_CURSO') {
+            $stmtLC = $conn->prepare("SELECT 1 FROM asistencia_lectores_cursos WHERE id_lector = ? AND id_curso = ? AND estado = 1 LIMIT 1");
+            $stmtLC->execute([(int)$lectorInfo['id_lector'], $idCursoEst]);
+            $puede = (bool)$stmtLC->fetchColumn();
+        }
+    }
+
+    if (!$puede) {
+        echo json_encode(['success' => false, 'message' => 'No tienes permiso para registrar asistencia en este curso.']);
+        exit();
+    }
+
+    $stmtCheck = $conn->prepare("SELECT 1 FROM asistencia WHERE id_estudiante = ? AND fecha = ? AND turno = ? LIMIT 1");
+    $stmtCheck->execute([$idEstudiante, $fechaReg, $turnoReg]);
+    if ($stmtCheck->fetchColumn()) {
+        echo json_encode(['success' => false, 'message' => 'El estudiante ya tiene asistencia registrada para el turno ' . $turnoReg . ' en la fecha ' . $fechaReg . '.']);
+        exit();
+    }
+
+    $validacionTurno = asistencia_auth_turno_habilitado_para_fecha($conn, $idCursoEst, $turnoReg, $fechaReg);
+    if (!$validacionTurno['habilitado']) {
+        echo json_encode(['success' => false, 'message' => $validacionTurno['motivo']]);
+        exit();
+    }
+
+    $estadoPuntualidad = null;
+    $horaProgramada = null;
+    $toleranciaMin = null;
+
+    $stmtHor = $conn->prepare("SELECT hora_ingreso, tolerancia_min
+        FROM asistencia_horarios_turno_global
+        WHERE estado = 1 AND turno = ? AND ? BETWEEN fecha_inicio AND fecha_fin
+        ORDER BY fecha_inicio DESC, id_horario_global DESC LIMIT 1");
+    $stmtHor->execute([$turnoReg, $fechaReg]);
+    $horario = $stmtHor->fetch(PDO::FETCH_ASSOC);
+
+    if ($horario) {
+        $horaProgramada = (string)$horario['hora_ingreso'];
+        $toleranciaMin = max((int)$horario['tolerancia_min'], 0);
+        $limite = date('H:i:s', strtotime($fechaReg . ' ' . $horaProgramada . ' +' . $toleranciaMin . ' minutes'));
+        $estadoPuntualidad = ($horaEntrada <= $limite) ? 'TEMPRANO' : 'TARDE';
+    }
+
+    try {
+        $stmtIns = $conn->prepare("INSERT INTO asistencia
+            (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min, registrado_por)
+            VALUES (?, ?, ?, ?, 'MANUAL', ?, ?, ?, ?)");
+        $stmtIns->execute([$idEstudiante, $fechaReg, $turnoReg, $horaEntrada, $estadoPuntualidad, $horaProgramada, $toleranciaMin, $userId]);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Asistencia registrada correctamente.',
+            'id_estudiante' => $idEstudiante,
+            'hora_entrada' => $horaEntrada,
+            'puntualidad' => $estadoPuntualidad,
+            'es_tarde' => $estadoPuntualidad === 'TARDE',
+        ]);
+    } catch (PDOException $e) {
+        if ($e->getCode() === '23000') {
+            echo json_encode(['success' => false, 'message' => 'El estudiante ya tiene asistencia registrada para esta fecha y turno.']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Error al registrar la asistencia.']);
+        }
+    }
+    exit();
+}
+
+$tardeHabilitadaCursoFecha = null;
+$motivoTardeDeshabilitada = '';
+if ($idCurso > 0 && $fecha !== '' && $turno === 'TARDE') {
+    $validacionCursoFecha = asistencia_auth_turno_habilitado_para_fecha($conn, $idCurso, 'TARDE', $fecha);
+    $tardeHabilitadaCursoFecha = $validacionCursoFecha['habilitado'];
+    $motivoTardeDeshabilitada = (string)($validacionCursoFecha['motivo'] ?? '');
 }
 ?>
 <!DOCTYPE html>
@@ -1004,28 +1115,46 @@ if ($idCurso > 0) {
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span>Reporte detallado por curso (PC)</span>
                         <?php if ($idCurso > 0): ?>
-                            <span class="small text-muted"><?= htmlspecialchars($resumenPorCurso[$idCurso]['nombre'] ?? '') ?></span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="small text-muted"><?= htmlspecialchars($resumenPorCurso[$idCurso]['nombre'] ?? '') ?></span>
+                                <?php if ($turno === 'TARDE' && $tardeHabilitadaCursoFecha === false): ?>
+                                    <span class="badge bg-warning text-dark" title="<?= htmlspecialchars($motivoTardeDeshabilitada) ?>">
+                                        <i class="ri-alert-line"></i> Sin TARDE configurado
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                         <?php endif; ?>
                     </div>
                     <div class="card-body p-0">
                         <?php if ($idCurso <= 0): ?>
                             <div class="p-3 text-muted">Selecciona un curso en los filtros para ver el reporte detallado.</div>
                         <?php else: ?>
+                            <?php if ($turno === 'TARDE' && $tardeHabilitadaCursoFecha === false): ?>
+                                <div class="alert alert-warning rounded-0 mb-0 py-2 small">
+                                    <i class="ri-alert-line"></i>
+                                    <strong>Este curso no tiene turno TARDE habilitado para la fecha <?= htmlspecialchars($fecha) ?>.</strong>
+                                    <?php if ($motivoTardeDeshabilitada !== ''): ?>
+                                        <?= htmlspecialchars($motivoTardeDeshabilitada) ?>
+                                    <?php endif; ?>
+                                    Los registros manuales para TARDE estan deshabilitados.
+                                </div>
+                            <?php endif; ?>
                             <div class="table-responsive">
                                 <table class="table table-striped mb-0">
                                     <thead class="table-light">
-                                        <tr>
-                                            <th>N°</th>
-                                            <th>Nombre completo</th>
-                                            <th>Hora que llego</th>
-                                            <th>Retrasado</th>
-                                            <th>Estado</th>
-                                        </tr>
+                                                                        <tr>
+                                                                            <th>N°</th>
+                                                                            <th>Nombre completo</th>
+                                                                            <th>Hora que llego</th>
+                                                                            <th>Retrasado</th>
+                                                                            <th>Estado</th>
+                                                                            <th>Registrar</th>
+                                                                        </tr>
                                     </thead>
                                     <tbody>
                                         <?php if (empty($registros)): ?>
                                             <tr>
-                                                <td colspan="5" class="text-center py-4">No hay registros para este curso y filtros seleccionados.</td>
+                                                <td colspan="6" class="text-center py-4">No hay registros para este curso y filtros seleccionados.</td>
                                             </tr>
                                         <?php else: ?>
                                             <?php foreach ($registros as $index => $row): ?>
@@ -1038,12 +1167,33 @@ if ($idCurso > 0) {
                                                 <tr>
                                                     <td><?= $index + 1 ?></td>
                                                     <td><?= htmlspecialchars($nombreCompleto) ?></td>
-                                                    <td><?= htmlspecialchars($llego ? (string)($row['hora_entrada'] ?? '-') : '-') ?></td>
-                                                    <td class="<?= $esRetrasado ? 'text-warning fw-semibold' : 'text-success' ?>">
-                                                        <?= $llego ? ($esRetrasado ? 'SI' : 'NO') : '-' ?>
+                                                    <td class="celda-hora"><?= htmlspecialchars($llego ? (string)($row['hora_entrada'] ?? '-') : '-') ?></td>
+                                                    <td class="celda-retrasado <?= $esRetrasado ? 'text-warning fw-semibold' : 'text-success' ?>">
+                                                        <span class="celda-retrasado-texto"><?= $llego ? ($esRetrasado ? 'SI' : 'NO') : '-' ?></span>
                                                     </td>
-                                                    <td class="<?= $llego ? 'text-success fw-semibold' : 'text-danger fw-semibold' ?>">
-                                                        <?= $llego ? 'LLEGO' : 'NO LLEGO' ?>
+                                                    <td class="celda-estado <?= $llego ? 'text-success fw-semibold' : 'text-danger fw-semibold' ?>">
+                                                        <span class="celda-estado-texto"><?= $llego ? 'LLEGO' : 'NO LLEGO' ?></span>
+                                                    </td>
+                                                    <td class="celda-registro">
+                                                        <?php
+                                                            $tardeBloqueadaCurso = ($turno === 'TARDE' && $tardeHabilitadaCursoFecha === false);
+                                                        ?>
+                                                        <?php if (!$llego && !$tardeBloqueadaCurso): ?>
+                                                            <form class="registro-extra-form d-flex align-items-center gap-1" data-id="<?= (int)($row['id_estudiante'] ?? 0) ?>">
+                                                                <input type="time" name="hora_entrada" class="form-control form-control-sm registro-extra-hora" style="width:110px" value="<?= date('H:i') ?>" required>
+                                                                <input type="hidden" name="fecha" value="<?= htmlspecialchars($fecha) ?>">
+                                                                <input type="hidden" name="turno" value="<?= htmlspecialchars($turno) ?>">
+                                                                <input type="hidden" name="id_estudiante" value="<?= (int)($row['id_estudiante'] ?? 0) ?>">
+                                                                <button type="submit" class="btn btn-sm btn-success registro-extra-btn">
+                                                                    <i class="ri-check-line"></i> OK
+                                                                </button>
+                                                            </form>
+                                                            <div class="registro-extra-msg small mt-1"></div>
+                                                        <?php elseif (!$llego && $tardeBloqueadaCurso): ?>
+                                                            <span class="badge bg-secondary" title="<?= htmlspecialchars($motivoTardeDeshabilitada) ?>">Sin TARDE</span>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">—</span>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -1657,6 +1807,108 @@ if ($idCurso > 0) {
                     }
                 });
             }
+
+            // Manejo de los formularios inline de registro extra en la tabla del reporte
+            function inicializarFormulariosRegistroExtra() {
+                var forms = document.querySelectorAll('.registro-extra-form');
+                if (!forms || forms.length === 0) {
+                    return;
+                }
+
+                Array.prototype.forEach.call(forms, function (form) {
+                    form.addEventListener('submit', function (event) {
+                        event.preventDefault();
+                        var btn = form.querySelector('.registro-extra-btn');
+                        var horaInput = form.querySelector('.registro-extra-hora');
+                        var msgEl = form.parentElement.querySelector('.registro-extra-msg');
+                        var horaValor = (horaInput && horaInput.value) ? horaInput.value : '';
+                        if (!horaValor) {
+                            if (msgEl) {
+                                msgEl.innerHTML = '<span class="text-danger">Ingrese una hora valida.</span>';
+                            }
+                            return;
+                        }
+
+                        if (btn) {
+                            btn.disabled = true;
+                        }
+                        if (msgEl) {
+                            msgEl.innerHTML = '<span class="text-muted">Registrando...</span>';
+                        }
+
+                        var data = new FormData(form);
+                        data.append('action', 'registrar_asistencia_extra');
+
+                        fetch('reporte_asistencia_curso.php', {
+                            method: 'POST',
+                            body: data
+                        })
+                        .then(function (response) { return response.json(); })
+                        .then(function (resp) {
+                            if (!resp || !resp.success) {
+                                var errMsg = (resp && resp.message) ? resp.message : 'No se pudo registrar la asistencia.';
+                                if (msgEl) {
+                                    msgEl.innerHTML = '<span class="text-danger">' + escaparHtml(errMsg) + '</span>';
+                                }
+                                if (btn) {
+                                    btn.disabled = false;
+                                }
+                                return;
+                            }
+
+                            var tr = form.closest('tr');
+                            if (tr) {
+                                var celdaHora = tr.querySelector('.celda-hora');
+                                if (celdaHora) {
+                                    celdaHora.textContent = resp.hora_entrada || '-';
+                                }
+                                var celdaRetrasado = tr.querySelector('.celda-retrasado');
+                                var celdaRetrasadoTxt = tr.querySelector('.celda-retrasado-texto');
+                                if (celdaRetrasado) {
+                                    if (resp.es_tarde) {
+                                        celdaRetrasado.className = 'celda-retrasado text-warning fw-semibold';
+                                        if (celdaRetrasadoTxt) { celdaRetrasadoTxt.textContent = 'SI'; }
+                                    } else {
+                                        celdaRetrasado.className = 'celda-retrasado text-success';
+                                        if (celdaRetrasadoTxt) { celdaRetrasadoTxt.textContent = 'NO'; }
+                                    }
+                                }
+                                var celdaEstado = tr.querySelector('.celda-estado');
+                                var celdaEstadoTxt = tr.querySelector('.celda-estado-texto');
+                                if (celdaEstado) {
+                                    celdaEstado.className = 'celda-estado text-success fw-semibold';
+                                }
+                                if (celdaEstadoTxt) {
+                                    celdaEstadoTxt.textContent = 'LLEGO';
+                                }
+                                var celdaRegistro = tr.querySelector('.celda-registro');
+                                if (celdaRegistro) {
+                                    celdaRegistro.innerHTML = '<span class="text-success"><i class="ri-check-double-line"></i> Registrado</span>';
+                                }
+                            }
+                        })
+                        .catch(function () {
+                            if (msgEl) {
+                                msgEl.innerHTML = '<span class="text-danger">Error de conexion al registrar la asistencia.</span>';
+                            }
+                            if (btn) {
+                                btn.disabled = false;
+                            }
+                        });
+                    });
+                });
+            }
+
+            function escaparHtml(texto) {
+                return String(texto == null ? '' : texto)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            inicializarFormulariosRegistroExtra();
         })();
     </script>
 </body>
