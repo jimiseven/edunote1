@@ -301,9 +301,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
         $existente = $stmt_check->fetch(PDO::FETCH_ASSOC);
 
         if ($existente) {
+            $mensaje = 'El estudiante ya registró el turno ' . $puntualidad['turno'] . ' hoy a las ' . $existente['hora_entrada'];
+            if ($puntualidad['turno'] === 'MANANA' && $idCursoEscaneado > 0) {
+                $validacionTarde = asistencia_auth_turno_habilitado_para_fecha($conn, $idCursoEscaneado, 'TARDE', $hoy);
+                if ($validacionTarde['habilitado']) {
+                    $mensaje = 'Ya registraste MANANA hoy. Vuelve despues de las 12:00 para registrar TARDE.';
+                } else {
+                    $mensaje = 'Este curso no tiene turno TARDE. Ya registraste MANANA hoy.';
+                }
+            }
             echo json_encode([
                 'success' => false,
-                'message' => 'El estudiante ya registró el turno ' . $puntualidad['turno'] . ' hoy a las ' . $existente['hora_entrada']
+                'message' => $mensaje
             ]);
         } else {
 
