@@ -195,24 +195,12 @@ function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $i
         ];
     }
 
-    $stmtReg = $conn->prepare("SELECT turno FROM asistencia WHERE id_estudiante = ? AND fecha = ?");
-    $stmtReg->execute([$idEstudiante, $fecha]);
-    $registros = $stmtReg->fetchAll(PDO::FETCH_COLUMN);
-    $registrados = [];
-    foreach ($registros as $t) {
-        $turnoReg = strtoupper((string)$t);
-        if ($turnoReg !== '') {
-            $registrados[$turnoReg] = true;
-        }
-    }
-
-    $yaManana = isset($registrados['MANANA']);
-    $yaTarde = isset($registrados['TARDE']);
     $tardeHabilitadaHoy = asistencia_curso_tarde_habilitado_fecha($conn, $idCurso, $fecha);
+    $horaCorte = '12:00:00';
 
-    if (!$yaManana) {
+    if ($horaActual < $horaCorte) {
         $turnoAsignado = 'MANANA';
-    } elseif (!$yaTarde) {
+    } else {
         if (!$tardeHabilitadaHoy) {
             return [
                 'turno' => 'SIN_TARDE_HOY',
@@ -222,13 +210,6 @@ function asistencia_resolver_turno_y_puntualidad(PDO $conn, int $idCurso, int $i
             ];
         }
         $turnoAsignado = 'TARDE';
-    } else {
-        return [
-            'turno' => 'COMPLETO',
-            'estado_puntualidad' => null,
-            'hora_ingreso_programada' => null,
-            'tolerancia_min' => null,
-        ];
     }
 
     if (!isset($horarios[$turnoAsignado])) {
@@ -619,13 +600,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             exit();
         }
 
-        if (($puntualidad['turno'] ?? '') === 'COMPLETO') {
-            echo json_encode([
-                'success' => false,
-                'message' => 'El estudiante ya registró asistencia en MANANA y TARDE hoy.'
-            ]);
-            exit();
-        } elseif (($puntualidad['turno'] ?? '') === 'SIN_TARDE_HOY') {
+        if (($puntualidad['turno'] ?? '') === 'SIN_TARDE_HOY') {
             echo json_encode([
                 'success' => false,
                 'message' => 'Este curso no tiene clases en turno TARDE para hoy. No se permite un segundo registro.'

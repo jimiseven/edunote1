@@ -98,17 +98,8 @@ foreach ($stmtHorariosGlobales->fetchAll(PDO::FETCH_ASSOC) as $hRow) {
     }
 }
 
-$usarTurnoInferidoPorHora = $horariosGlobales['MANANA'] !== '' && $horariosGlobales['TARDE'] !== '';
 $turnoFiltroSql = "UPPER(COALESCE(a.turno, 'MANANA')) = ?";
 $turnoFiltroParams = [$turno];
-if ($usarTurnoInferidoPorHora) {
-    $turnoFiltroSql = "CASE
-            WHEN a.hora_entrada IS NULL THEN UPPER(COALESCE(a.turno, 'MANANA'))
-            WHEN ABS(TIME_TO_SEC(TIMEDIFF(a.hora_entrada, ?))) <= ABS(TIME_TO_SEC(TIMEDIFF(a.hora_entrada, ?))) THEN 'MANANA'
-            ELSE 'TARDE'
-        END = ?";
-    $turnoFiltroParams = [$horariosGlobales['MANANA'], $horariosGlobales['TARDE'], $turno];
-}
 
 $usarPuntualidadPorHorario = $horariosGlobales[$turno] !== '';
 $puntualidadTempranoSql = "COUNT(DISTINCT CASE WHEN a.id_asistencia IS NOT NULL AND UPPER(COALESCE(a.estado_puntualidad, '')) <> 'TARDE' THEN a.id_estudiante END) AS temprano";
@@ -819,12 +810,6 @@ if ($idCurso > 0 && $fecha !== '' && $turno === 'TARDE') {
                             <div class="alert alert-info mb-3">
                                 Para la fecha <strong><?= htmlspecialchars($fecha) ?></strong> no hay horario global activo en
                                 <strong><?= htmlspecialchars($turno) ?></strong>. Se muestran igualmente los registros guardados en asistencia.
-                            </div>
-                        <?php endif; ?>
-                        <?php if ($usarTurnoInferidoPorHora): ?>
-                            <div class="alert alert-secondary mb-3 d-none d-md-block">
-                                Clasificacion de turno por hora activa para <?= htmlspecialchars($fecha) ?>:
-                                MANANA <?= htmlspecialchars($horariosGlobales['MANANA']) ?> y TARDE <?= htmlspecialchars($horariosGlobales['TARDE']) ?>.
                             </div>
                         <?php endif; ?>
                         <?php if ($tipoReporte === 'puntualidad' && !$usarPuntualidadPorHorario): ?>
