@@ -12,7 +12,7 @@ use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill, Color};
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Worksheet\PageSetup;
 
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], true)) {
     http_response_code(403);
     exit("Acceso no autorizado.");
 }

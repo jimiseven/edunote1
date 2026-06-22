@@ -3,7 +3,7 @@ session_start();
 require_once '../config/database.php';
 
 // Verificar acceso
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2, 4])) {
     header('Location: ../index.php');
     exit();
 }

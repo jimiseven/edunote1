@@ -674,6 +674,58 @@ function active($str, $current)
                         </a>
                     </li>
                 </ul>
+                                    <?php elseif ($role == 4): // Invitado (mismas vistas que admin, se restringirá gradualmente)
+            ?>
+                <div class="sidebar-section-title">CLASES Y CURSOS</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('dash_iniciales', $current); ?>" href="dash_iniciales.php">
+                            <span data-feather="user"></span>
+                            <span class="nav-label">Inicial</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('dashboard_primaria', $current); ?>" href="dashboard_primaria.php">
+                            <span data-feather="book"></span>
+                            <span class="nav-label">Primaria</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('dashboard_secundaria', $current); ?>" href="dashboard_secundaria.php">
+                            <span data-feather="layers"></span>
+                            <span class="nav-label">Secundaria</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Informacion de estudiantes -->
+                <div class="sidebar-section-title">INFORMACIÓN DE ESTUDIANTES</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('estudiantes', $current); ?>" href="estudiantes.php">
+                            <span data-feather="users"></span>
+                            <span class="nav-label">Estudiantes</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Asistencia -->
+                <div class="sidebar-section-title">ASISTENCIA</div>
+                <ul class="nav flex-column sidebar-group-list">
+                    <li>
+                        <a class="nav-link <?php echo active('reporte_asistencia_curso.php', $current); ?>" href="reporte_asistencia_curso.php">
+                            <span data-feather="file-text"></span>
+                            <span class="nav-label">Reporte por curso</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link <?php echo active('estadisticas_asistencia.php', $current); ?>" href="estadisticas_asistencia.php">
+                            <span data-feather="bar-chart-2"></span>
+                            <span class="nav-label">Estadísticas</span>
+                        </a>
+                    </li>
+                </ul>
+
             <?php endif; ?>
 
         </div>

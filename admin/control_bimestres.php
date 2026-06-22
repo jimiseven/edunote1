@@ -135,7 +135,7 @@ function migrarNotasEntreModalidades($conn, $gestionActual, $gestionAlternativa,
     }
 }
 
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], true)) {
     header('Location: ../index.php');
     exit();
 }

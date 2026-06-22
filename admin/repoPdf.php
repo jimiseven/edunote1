@@ -18,7 +18,7 @@ if (!class_exists('TCPDF')) {
 }
 
 // Verificar autenticación y permisos
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2, 4])) {
     header('Location: ../index.php');
     exit();
 }

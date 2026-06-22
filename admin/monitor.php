@@ -3,7 +3,7 @@ session_start();
 require_once '../config/database.php';
 
 // Verificar si el usuario está logueado y es admin
-if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 1) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], true)) {
     header('Location: ../login.php');
     exit();
 }

@@ -11,7 +11,7 @@ if (!isset($_SESSION['user_id'])) {
 $conn = (new Database())->connect();
 $userId = (int)$_SESSION['user_id'];
 $userRole = (int)($_SESSION['user_role'] ?? 0);
-$isAdminAsistencia = $userRole === 1;
+$isAdminAsistencia = $userRole === 1 || $userRole === 4;
 
 function escaneo_get_lector(PDO $conn, $userId)
 {

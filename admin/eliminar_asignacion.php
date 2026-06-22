@@ -3,7 +3,7 @@ session_start();
 require_once '../config/database.php';
 
 // Verificar acceso y método
-if ($_SERVER['REQUEST_METHOD'] !== 'DELETE' || !isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1])) {
+if ($_SERVER['REQUEST_METHOD'] !== 'DELETE' || !isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4])) {
     http_response_code(403);
     exit();
 }

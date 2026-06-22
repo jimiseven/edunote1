@@ -1,7 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
-if ($_SESSION['user_role'] != 1) { header('Location: ../index.php'); exit(); }
+if (!in_array($_SESSION['user_role'] ?? 0, [1, 4], true)) { header('Location: ../index.php'); exit(); }
 $conn = (new Database())->connect();
 
 // Eliminar anuncio si se pidió

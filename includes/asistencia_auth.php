@@ -23,7 +23,7 @@ function asistencia_auth_es_lector_admin(?array $lectorInfo): bool
 
 function asistencia_auth_puede_ver_reportes(int $userRole, ?array $lectorInfo): bool
 {
-    return $userRole === 1 || asistencia_auth_es_lector_admin($lectorInfo);
+    return $userRole === 1 || $userRole === 4 || asistencia_auth_es_lector_admin($lectorInfo);
 }
 
 function asistencia_auth_puede_gestionar_permisos(int $userRole, ?array $lectorInfo): bool

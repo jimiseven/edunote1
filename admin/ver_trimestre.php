@@ -2,7 +2,7 @@
 session_start();
 require_once '../config/database.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2, 4])) {
     header('Location: ../index.php');
     exit();
 }
@@ -129,7 +129,7 @@ if (!empty($gestionesConsulta)) {
     }
 }
 
-$puedeEditarParciales = isset($_SESSION['user_role']) && (int)$_SESSION['user_role'] === 1;
+$puedeEditarParciales = isset($_SESSION['user_role']) && in_array((int)$_SESSION['user_role'], [1, 4], true);
 
 $materiasPorId = [];
 foreach ($todas_materias as $materia) {

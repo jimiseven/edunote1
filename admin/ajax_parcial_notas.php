@@ -10,7 +10,7 @@ function json_response(array $payload, int $statusCode = 200): void
     exit;
 }
 
-if (!isset($_SESSION['user_id']) || !in_array((int)($_SESSION['user_role'] ?? 0), [1, 2], true)) {
+if (!isset($_SESSION['user_id']) || !in_array((int)($_SESSION['user_role'] ?? 0), [1, 2, 4], true)) {
     json_response(['success' => false, 'message' => 'No autorizado.'], 403);
 }
 
@@ -251,7 +251,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'POST') {
-    if (!isset($_SESSION['user_role']) || (int)$_SESSION['user_role'] !== 1) {
+    if (!isset($_SESSION['user_role']) || !in_array((int)$_SESSION['user_role'], [1, 4], true)) {
         json_response(['success' => false, 'message' => 'Solo administradores pueden editar.'], 403);
     }
 

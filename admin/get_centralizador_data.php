@@ -2,7 +2,7 @@
 session_start();
 require_once '../config/database.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2, 4])) {
     header('Content-Type: application/json');
     echo json_encode(['error' => 'No autorizado']);
     exit();

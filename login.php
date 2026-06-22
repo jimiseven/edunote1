@@ -89,6 +89,10 @@ if ($stmt->rowCount() > 0) {
             header('Location: direc/iniv.php'); // Directora_SV (solo centralizadores)
             exit();
         }
+        elseif ($user['id_rol'] == 4) {
+            header('Location: admin/dash_iniciales.php'); // Invitado (vistas)
+            exit();
+        }
         exit();
     }
 }
