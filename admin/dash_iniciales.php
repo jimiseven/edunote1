@@ -8,6 +8,8 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], tr
     exit();
 }
 
+$esAdmin = (int)$_SESSION['user_role'] === 1;
+
 $conn = (new Database())->connect();
 
 // Obtener cursos iniciales
@@ -276,11 +278,13 @@ if (!empty($cursos)) {
                     <div class="title-box mb-4">
                         <h2 class="mb-0" style="color:#4682B4;">Cursos de Nivel Inicial</h2>
                         <small class="text-secondary">Seleccione el curso que desea visualizar:</small>
+                        <?php if ($esAdmin): ?>
                         <div class="mt-3">
                             <button type="button" id="btnDescargarZipInicial" class="btn btn-danger btn-sm">
                                 <i class="ri-file-zip-line"></i> Descargar ZIP Boletines Inicial
                             </button>
                         </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Tabla de Cursos -->
@@ -312,12 +316,14 @@ if (!empty($cursos)) {
                                                 <a href="ver_c_inicial.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
                                                     Ver Centralizador
                                                 </a>
+                                                <?php if ($esAdmin): ?>
                                                 <button type="button"
                                                         class="btn btn-boletin"
                                                         data-id-curso="<?php echo (int)$curso['id_curso']; ?>"
                                                         data-curso="<?php echo htmlspecialchars("{$curso['curso']} {$curso['paralelo']}", ENT_QUOTES, 'UTF-8'); ?>">
                                                     Generar Boletines PDF
                                                 </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>

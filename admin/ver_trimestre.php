@@ -129,7 +129,7 @@ if (!empty($gestionesConsulta)) {
     }
 }
 
-$puedeEditarParciales = isset($_SESSION['user_role']) && in_array((int)$_SESSION['user_role'], [1, 4], true);
+$puedeEditarParciales = isset($_SESSION['user_role']) && (int)$_SESSION['user_role'] === 1;
 
 $materiasPorId = [];
 foreach ($todas_materias as $materia) {

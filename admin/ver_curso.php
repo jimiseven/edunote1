@@ -1440,13 +1440,13 @@ $estudiantes_ordenados = $estudiantes;
                                 Siguiente <i class="bi bi-chevron-right"></i>
                             </button>
                         <?php endif; ?>
-                        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
-                            <i class="bi bi-pencil"></i> Editar
-                        </a>
                         <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
                            <i class="bi bi-calendar-week"></i> Ver Trimestre
                        </a>
                        <?php if ($esAdmin): ?>
+                       <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
+                           <i class="bi bi-pencil"></i> Editar
+                       </a>
                        <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
                            <i class="bi bi-file-earmark-excel"></i> Reporte Excel
                        </a>
