@@ -7,6 +7,8 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 2, 4])
     exit();
 }
 
+$esAdmin = (int)$_SESSION['user_role'] === 1;
+
 // Mostrar mensajes de éxito/error
 if (isset($_SESSION['success_message'])) {
     $success_message = $_SESSION['success_message'];
@@ -1444,12 +1446,14 @@ $estudiantes_ordenados = $estudiantes;
                         <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
                            <i class="bi bi-calendar-week"></i> Ver Trimestre
                        </a>
+                       <?php if ($esAdmin): ?>
                        <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
                            <i class="bi bi-file-earmark-excel"></i> Reporte Excel
                        </a>
                        <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
                            <i class="bi bi-arrow-down-up"></i> Ordenar Materias
                        </button>
+                       <?php endif; ?>
                    </div>
                 </div>
                 <?php if (isset($success_message)): ?>
