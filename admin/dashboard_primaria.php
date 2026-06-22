@@ -10,6 +10,8 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], tr
 
 $conn = (new Database())->connect();
 
+$esAdmin = (int)$_SESSION['user_role'] === 1;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cambiar_curso') {
     $idEstudiante = isset($_POST['id_estudiante']) ? (int)$_POST['id_estudiante'] : 0;
     $nuevoCurso = isset($_POST['id_curso']) ? (int)$_POST['id_curso'] : 0;
@@ -325,11 +327,13 @@ if (!empty($cursos)) {
                     <div class="title-box mb-4">
                         <h2 class="mb-0" style="color:#99b898;">Cursos de Primaria</h2>
                         <small class="text-secondary">Seleccione el curso que desea visualizar:</small>
+                        <?php if ($esAdmin): ?>
                         <div class="mt-3">
                             <button type="button" id="btnDescargarZipPrimaria" class="btn btn-danger btn-sm">
                                 <i class="ri-file-zip-line"></i> Descargar ZIP Boletines Primaria
                             </button>
                         </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Tabla de Cursos -->
@@ -340,14 +344,13 @@ if (!empty($cursos)) {
                                     <th style="width: 80px;">#</th>
                                     <th>Curso</th>
                                     <th>Estudiantes</th>
-                                    <th>Estados</th>
                                     <th>Centralizador</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($cursos)): ?>
                                     <tr>
-                                        <td colspan="5">
+                                        <td colspan="4">
                                             <div class="alert alert-warning mb-0">
                                                 No hay cursos de primaria registrados.
                                             </div>
@@ -372,155 +375,11 @@ if (!empty($cursos)) {
                                                 ?>
                                             </td>
                                             <td>
-                                                <?php
-                                                $modalId = 'modalEstadosCurso' . (int)$curso['id_curso'];
-
-                                                $totalEfectivo = (int)($curso['total_efectivo'] ?? 0);
-                                                $totalNoEfectivo = (int)($curso['total_no_efectivo'] ?? 0);
-
-                                                $efectivoAprobado = (int)($curso['efectivo_aprobado'] ?? 0);
-                                                $efectivoReprobado = (int)($curso['efectivo_reprobado'] ?? 0);
-                                                $efectivoSinEstado2 = (int)($curso['efectivo_sin_estado2'] ?? 0);
-
-                                                $noEfectivoNoIncorporado = (int)($curso['no_efectivo_no_incorporado'] ?? 0);
-                                                $noEfectivoRetiroAbandono = (int)($curso['no_efectivo_retiro_abandono'] ?? 0);
-                                                $noEfectivoRetiroTraslado = (int)($curso['no_efectivo_retiro_traslado'] ?? 0);
-                                                $noEfectivoSinEstado2 = (int)($curso['no_efectivo_sin_estado2'] ?? 0);
-
-                                                $sinEstado1 = (int)($curso['sin_estado1'] ?? 0);
-                                                $sinEstado1Aprobado = (int)($curso['sin_estado1_aprobado'] ?? 0);
-                                                $sinEstado1Reprobado = (int)($curso['sin_estado1_reprobado'] ?? 0);
-                                                $sinEstado1NoIncorporado = (int)($curso['sin_estado1_no_incorporado'] ?? 0);
-                                                $sinEstado1RetiroAbandono = (int)($curso['sin_estado1_retiro_abandono'] ?? 0);
-                                                $sinEstado1RetiroTraslado = (int)($curso['sin_estado1_retiro_traslado'] ?? 0);
-                                                $sinEstado1SinEstado2 = (int)($curso['sin_estado1_sin_estado2'] ?? 0);
-
-                                                $totalEstudiantes = (int)($curso['total_estudiantes'] ?? 0);
-                                                ?>
-
-                                                <button type="button" class="btn btn-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#<?php echo $modalId; ?>">
-                                                    Ver
-                                                </button>
-
-                                                <div class="modal fade" id="<?php echo $modalId; ?>" tabindex="-1" aria-hidden="true">
-                                                    <div class="modal-dialog modal-dialog-centered modal-lg">
-                                                        <div class="modal-content">
-                                                            <div class="modal-header">
-                                                                <h5 class="modal-title">
-                                                                    Estados - <?php echo htmlspecialchars("{$curso['curso']} {$curso['paralelo']}"); ?>
-                                                                </h5>
-                                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                            </div>
-                                                            <div class="modal-body">
-                                                                <div class="row g-3">
-                                                                    <div class="col-md-6">
-                                                                        <div class="border rounded p-3">
-                                                                            <h6 class="mb-3">EFECTIVO</h6>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>APROBADO</span>
-                                                                                <span class="fw-bold"><?php echo $efectivoAprobado; ?></span>
-                                                                            </div>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>REPROBADO</span>
-                                                                                <span class="fw-bold"><?php echo $efectivoReprobado; ?></span>
-                                                                            </div>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>SIN ESTADO 2</span>
-                                                                                <span class="fw-bold"><?php echo $efectivoSinEstado2; ?></span>
-                                                                            </div>
-                                                                            <hr class="my-2">
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span class="fw-semibold">Subtotal EFECTIVO</span>
-                                                                                <span class="fw-bold"><?php echo $totalEfectivo; ?></span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div class="col-md-6">
-                                                                        <div class="border rounded p-3">
-                                                                            <h6 class="mb-3">NO_EFECTIVO</h6>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>NO_INCORPORADO</span>
-                                                                                <span class="fw-bold"><?php echo $noEfectivoNoIncorporado; ?></span>
-                                                                            </div>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>RETIRO_ABANDONO</span>
-                                                                                <span class="fw-bold"><?php echo $noEfectivoRetiroAbandono; ?></span>
-                                                                            </div>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>RETIRO_TRASLADO</span>
-                                                                                <span class="fw-bold"><?php echo $noEfectivoRetiroTraslado; ?></span>
-                                                                            </div>
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span>SIN ESTADO 2</span>
-                                                                                <span class="fw-bold"><?php echo $noEfectivoSinEstado2; ?></span>
-                                                                            </div>
-                                                                            <hr class="my-2">
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span class="fw-semibold">Subtotal NO_EFECTIVO</span>
-                                                                                <span class="fw-bold"><?php echo $totalNoEfectivo; ?></span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div class="col-12">
-                                                                        <div class="border rounded p-3 d-flex justify-content-between align-items-center">
-                                                                            <span class="fw-semibold">Total estudiantes</span>
-                                                                            <span class="fw-bold fs-5"><?php echo $totalEstudiantes; ?></span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div class="col-12">
-                                                                        <div class="border rounded p-3">
-                                                                            <h6 class="mb-3">SIN ESTADO 1</h6>
-                                                                            <div class="row g-2">
-                                                                                <div class="col-md-6">
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>APROBADO</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1Aprobado; ?></span>
-                                                                                    </div>
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>REPROBADO</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1Reprobado; ?></span>
-                                                                                    </div>
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>SIN ESTADO 2</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1SinEstado2; ?></span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="col-md-6">
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>NO_INCORPORADO</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1NoIncorporado; ?></span>
-                                                                                    </div>
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>RETIRO_ABANDONO</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1RetiroAbandono; ?></span>
-                                                                                    </div>
-                                                                                    <div class="d-flex justify-content-between">
-                                                                                        <span>RETIRO_TRASLADO</span>
-                                                                                        <span class="fw-bold"><?php echo $sinEstado1RetiroTraslado; ?></span>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                            <hr class="my-2">
-                                                                            <div class="d-flex justify-content-between">
-                                                                                <span class="fw-semibold">Subtotal SIN ESTADO 1</span>
-                                                                                <span class="fw-bold"><?php echo $sinEstado1; ?></span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div class="modal-footer">
-                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td>
                                                 <div class="d-flex gap-2 justify-content-center flex-wrap">
                                                     <a href="ver_curso.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
                                                         Ver Centralizador
                                                     </a>
+                                                    <?php if ($esAdmin): ?>
                                                     <a href="boletin_primaria.php?id_curso=<?= $curso['id_curso'] ?>"
                                                         class="btn btn-success btn-action">
                                                         <i class="ri-printer-line"></i> Boletín
@@ -607,6 +466,7 @@ if (!empty($cursos)) {
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>

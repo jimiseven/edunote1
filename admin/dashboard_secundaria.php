@@ -8,6 +8,8 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], tr
     exit();
 }
 
+$esAdmin = (int)$_SESSION['user_role'] === 1;
+
 $conn = (new Database())->connect();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'cambiar_curso') {
@@ -301,11 +303,13 @@ if (!empty($cursos)) {
                     <div class="title-box mb-4">
                         <h2 class="mb-0" style="color:#99b898;">Cursos de Secundaria</h2>
                         <small class="text-secondary">Seleccione el curso que desea visualizar:</small>
+                        <?php if ($esAdmin): ?>
                         <div class="mt-3">
                             <button type="button" id="btnDescargarZipSecundaria" class="btn btn-danger btn-sm">
                                 <i class="ri-file-zip-line"></i> Descargar ZIP Boletines Secundaria
                             </button>
                         </div>
+                        <?php endif; ?>
                     </div>
                     <div class="table-responsive js-dashboard-table">
                         <table class="table table-cursos table-bordered align-middle">
@@ -349,6 +353,7 @@ if (!empty($cursos)) {
                                                     <a href="ver_curso.php?id=<?php echo $curso['id_curso']; ?>" class="btn btn-centralizador">
                                                         Ver Centralizador
                                                     </a>
+                                                    <?php if ($esAdmin): ?>
                                                     <a href="boletin_secundaria.php?id_curso=<?= $curso['id_curso'] ?>"
                                                         class="btn btn-success btn-action">
                                                         <i class="ri-printer-line"></i> Boletín
@@ -433,8 +438,9 @@ if (!empty($cursos)) {
                                                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                                                                 </div>
                                                             </div>
-                                                        </div>
                                                     </div>
+                                                </div>
+                                            <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>
