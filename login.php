@@ -53,7 +53,7 @@ if ($stmt->rowCount() > 0) {
         }
         $_SESSION['user_id'] = $user['id_personal'];
         $_SESSION['user_name'] = $user['nombres'] . ' ' . $user['apellidos'];
-        $_SESSION['user_role'] = $user['id_rol'];
+        $_SESSION['user_role'] = (int)$user['id_rol'];
 
         try {
             $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
@@ -79,11 +79,13 @@ if ($stmt->rowCount() > 0) {
         } catch (Throwable $e) {
         }
 
-        // Redirigir según el rol (mantenemos la lógica existente)
+// Redirigir según el rol (mantenemos la lógica existente)
         if ($_SESSION['user_role'] == 1) {
             header('Location: admin/dash_iniciales.php');
+            exit();
         } elseif ($_SESSION['user_role'] == 2) {
             header('Location: profesor/dashboard.php');
+            exit();
         }
         elseif ($user['id_rol'] == 3) {
             header('Location: direc/iniv.php'); // Directora_SV (solo centralizadores)

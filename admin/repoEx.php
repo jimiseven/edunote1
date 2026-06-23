@@ -18,6 +18,15 @@ $id_curso = intval($_GET['id_curso']);
 $database = new Database();
 $conn = $database->connect();
 
+$stmt_gestion = $conn->query("SELECT anio_escolar FROM configuracion_sistema ORDER BY id DESC LIMIT 1");
+$gestionConfigurada = $stmt_gestion->fetchColumn();
+$gestionConfigurada = $gestionConfigurada ? trim((string)$gestionConfigurada) : '';
+$gestionActual = $gestionConfigurada !== '' ? $gestionConfigurada : date('Y');
+$gestionAlternativa = null;
+if (preg_match('/\b(20\d{2})\b/', $gestionActual, $matches)) {
+    $gestionAlternativa = $matches[1];
+}
+
 // Función auxiliar para normalizar strings en español
 function normalizeSpanishString($str) {
     // Convertir a minúsculas para comparación
@@ -109,20 +118,96 @@ foreach ($materias_padre_con_hijas as $padre) {
     $materias = array_merge($materias, $padre['hijas']);
 }
 
-// Obtener calificaciones
+// Obtener calificaciones desde parciales por trimestre
 $calificaciones = [];
 foreach ($estudiantes as $estudiante) {
     foreach ($todas_materias as $materia) {
         for ($i = 1; $i <= 3; $i++) {
-            $stmt = $conn->prepare("
-                SELECT calificacion 
-                FROM calificaciones 
-                WHERE id_estudiante = ? AND id_materia = ? AND bimestre = ?
-            ");
-            $stmt->execute([$estudiante['id_estudiante'], $materia['id_materia'], $i]);
-            $nota = $stmt->fetchColumn();
-            $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$i] = $nota !== false ? $nota : '';
+            $calificaciones[$estudiante['id_estudiante']][$materia['id_materia']][$i] = '';
         }
+    }
+}
+
+$sqlCalificaciones = "SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, cp.calificacion
+                      FROM calificaciones_parciales cp
+                      INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+                      INNER JOIN estudiantes e ON e.id_estudiante = cp.id_estudiante
+                      INNER JOIN cursos_materias cm ON cm.id_materia = cp.id_materia
+                      WHERE e.id_curso = ?
+                        AND cm.id_curso = ?
+                        AND (pe.gestion = ?";
+$paramsCalificaciones = [$id_curso, $id_curso, $gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $sqlCalificaciones .= " OR pe.gestion = ?";
+    $paramsCalificaciones[] = $gestionAlternativa;
+}
+$sqlCalificaciones .= ")";
+
+$stmt_calificaciones = $conn->prepare($sqlCalificaciones);
+$stmt_calificaciones->execute($paramsCalificaciones);
+
+$parcialesPorTrimestre = [];
+foreach ($stmt_calificaciones->fetchAll(PDO::FETCH_ASSOC) as $filaCalificacion) {
+    if ($filaCalificacion['calificacion'] === null || $filaCalificacion['calificacion'] === '') {
+        continue;
+    }
+    $idEstudiante = (int)$filaCalificacion['id_estudiante'];
+    $idMateria = (int)$filaCalificacion['id_materia'];
+    $trimestreFila = (int)$filaCalificacion['trimestre'];
+    $parcialesPorTrimestre[$idEstudiante][$idMateria][$trimestreFila][] = (float)$filaCalificacion['calificacion'];
+}
+
+foreach ($parcialesPorTrimestre as $idEstudiante => $materiasParciales) {
+    foreach ($materiasParciales as $idMateria => $trimestresParciales) {
+        foreach ($trimestresParciales as $numeroTrimestre => $notasParciales) {
+            if (!empty($notasParciales)) {
+                $calificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = (string)round(array_sum($notasParciales) / count($notasParciales));
+            }
+        }
+    }
+}
+
+$materiasPadreConHijasIds = [];
+foreach ($materias_padre as $idPadreTmp => $padreTmp) {
+    if (!empty($padreTmp['hijas'])) {
+        $materiasPadreConHijasIds[$idPadreTmp] = true;
+    }
+}
+
+$notasTrimestralesExtras = [];
+$notasTrimestralesPadres = [];
+
+$sqlTrimestrales = "SELECT ct.id_estudiante, ct.id_materia, ct.trimestre, ct.autoevaluacion, ct.nota_extra
+                    FROM calificaciones_trimestrales ct
+                    INNER JOIN estudiantes e ON e.id_estudiante = ct.id_estudiante
+                    INNER JOIN cursos_materias cm ON cm.id_materia = ct.id_materia
+                    WHERE e.id_curso = ?
+                      AND cm.id_curso = ?
+                      AND (ct.gestion = ?";
+$paramsTrimestrales = [$id_curso, $id_curso, $gestionActual];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
+    $sqlTrimestrales .= " OR ct.gestion = ?";
+    $paramsTrimestrales[] = $gestionAlternativa;
+}
+$sqlTrimestrales .= ")";
+
+$stmt_trimestrales = $conn->prepare($sqlTrimestrales);
+$stmt_trimestrales->execute($paramsTrimestrales);
+
+foreach ($stmt_trimestrales->fetchAll(PDO::FETCH_ASSOC) as $filaTrimestral) {
+    $idEstTrim = (int)$filaTrimestral['id_estudiante'];
+    $idMatTrim = (int)$filaTrimestral['id_materia'];
+    $trimNumero = (int)$filaTrimestral['trimestre'];
+
+    $registro = [
+        'autoevaluacion' => $filaTrimestral['autoevaluacion'],
+        'nota_extra' => $filaTrimestral['nota_extra']
+    ];
+
+    if (isset($materiasPadreConHijasIds[$idMatTrim])) {
+        $notasTrimestralesPadres[$idEstTrim][$idMatTrim][$trimNumero] = $registro;
+    } else {
+        $notasTrimestralesExtras[$idEstTrim][$idMatTrim][$trimNumero] = $registro;
     }
 }
 
@@ -146,6 +231,62 @@ foreach ($estudiantes as $estudiante) {
             }
         }
     }
+}
+
+$aplicarNotasTrimestrales = static function (&$matrizCalificaciones, array $datosExtras) {
+    foreach ($datosExtras as $idEstudiante => $materiasExtras) {
+        foreach ($materiasExtras as $idMateria => $trimestresExtras) {
+            foreach ($trimestresExtras as $numeroTrimestre => $valoresExtras) {
+                $baseActual = $matrizCalificaciones[$idEstudiante][$idMateria][$numeroTrimestre] ?? '';
+                $baseNum = ($baseActual !== '' && $baseActual !== null)
+                    ? (float)str_replace(',', '', (string)$baseActual)
+                    : null;
+
+                $autoValor = $valoresExtras['autoevaluacion'];
+                $extraValor = $valoresExtras['nota_extra'];
+
+                $autoNum = ($autoValor !== null && $autoValor !== '') ? (float)$autoValor : null;
+                $extraNum = ($extraValor !== null && $extraValor !== '') ? (float)$extraValor : null;
+
+                if ($baseNum === null && $autoNum === null && $extraNum === null) {
+                    continue;
+                }
+
+                $total = ($baseNum ?? 0) + ($autoNum ?? 0) + ($extraNum ?? 0);
+                $matrizCalificaciones[$idEstudiante][$idMateria][$numeroTrimestre] = (string)round($total);
+            }
+        }
+    }
+};
+
+if (!empty($notasTrimestralesExtras)) {
+    $aplicarNotasTrimestrales($calificaciones, $notasTrimestralesExtras);
+
+    foreach ($estudiantes as $estudiante) {
+        foreach ($materias_padre as $padre) {
+            if (empty($padre['hijas'])) {
+                continue;
+            }
+            for ($t = 1; $t <= 3; $t++) {
+                $suma = 0;
+                $contador = 0;
+                foreach ($padre['hijas'] as $hija) {
+                    $nota_hija = $calificaciones[$estudiante['id_estudiante']][$hija['id_materia']][$t] ?? '';
+                    if ($nota_hija !== '') {
+                        $suma += floatval($nota_hija);
+                        $contador++;
+                    }
+                }
+                if ($contador > 0) {
+                    $calificaciones[$estudiante['id_estudiante']][$padre['id_materia']][$t] = (string)round($suma / $contador);
+                }
+            }
+        }
+    }
+}
+
+if (!empty($notasTrimestralesPadres)) {
+    $aplicarNotasTrimestrales($calificaciones, $notasTrimestralesPadres);
 }
 
 // Calcular promedios
