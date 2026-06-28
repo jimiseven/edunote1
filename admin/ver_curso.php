@@ -1443,16 +1443,20 @@ $estudiantes_ordenados = $estudiantes;
                         <a href="ver_trimestre.php?id_curso=<?= $id_curso ?>" class="btn btn-outline-info btn-sm">
                            <i class="bi bi-calendar-week"></i> Ver Trimestre
                        </a>
-                       <?php if ($esAdmin): ?>
-                       <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
-                           <i class="bi bi-pencil"></i> Editar
-                       </a>
-                       <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
-                           <i class="bi bi-file-earmark-excel"></i> Reporte Excel
-                       </a>
-                       <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
-                           <i class="bi bi-arrow-down-up"></i> Ordenar Materias
-                       </button>
+                        <?php if ($esAdmin): ?>
+                        <a href="editar_notas.php?id=<?= $id_curso ?>" class="btn btn-outline-warning btn-sm">
+                            <i class="bi bi-pencil"></i> Editar
+                        </a>
+                        <?php endif; ?>
+                        <?php if (in_array((int)$_SESSION['user_role'], [1, 4], true)): ?>
+                        <a href="repoEx.php?id_curso=<?= $id_curso ?>" class="btn btn-success btn-sm">
+                            <i class="bi bi-file-earmark-excel"></i> Reporte Excel
+                        </a>
+                        <?php endif; ?>
+                        <?php if ($esAdmin): ?>
+                        <button onclick="showOrderModal()" class="btn btn-primary btn-sm">
+                            <i class="bi bi-arrow-down-up"></i> Ordenar Materias
+                        </button>
                        <?php endif; ?>
                    </div>
                 </div>
