@@ -1275,6 +1275,13 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             padding: 0;
             font-size: 0.68rem;
             letter-spacing: 0.08em;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .page-header .periodo-toolbar-title .modo-activo-badge {
+            font-size: 0.72rem;
+            padding: 0.28rem 0.72rem;
         }
         .page-header .periodo-toolbar-title::before {
             content: '';
@@ -1447,6 +1454,105 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
         }
         .pill-btn.pill-trim:hover { background: #ede9fe; border-color: #a78bfa; }
         .pill-btn.pill-trim.active { background: #ddd6fe; border-color: #8b5cf6; font-weight: 700; }
+
+        /* ── TARJETA DE ESTADO DEL PERIODO ── */
+        .periodo-status-card {
+            grid-column: 2;
+            grid-row: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 14px;
+            min-width: 0;
+        }
+        .periodo-status-card.status-parcial {
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            color: #ffffff;
+            box-shadow: 0 8px 24px rgba(37, 99, 235, .35);
+        }
+        .periodo-status-card.status-trimestral {
+            background: linear-gradient(135deg, #7c3aed, #5b21b6);
+            color: #ffffff;
+            box-shadow: 0 8px 24px rgba(124, 58, 237, .35);
+        }
+        .periodo-status-card.status-locked {
+            filter: grayscale(0.3);
+        }
+        .periodo-status-trimestre {
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .periodo-status-detalle {
+            font-size: 1.2rem;
+            font-weight: 800;
+            line-height: 1.25;
+            text-align: center;
+        }
+        .periodo-status-sub {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            opacity: 0.85;
+            margin-top: 0.15rem;
+        }
+        .periodo-status-editable {
+            font-size: 0.7rem;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 0.32rem 0.75rem;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .status-editable .periodo-status-editable {
+            background: rgba(255,255,255,.18);
+        }
+        .status-locked .periodo-status-editable {
+            background: rgba(0,0,0,.18);
+        }
+        .periodo-status-dot {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+        .dot-active { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,.7); }
+        .dot-locked { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,.7); }
+        .mobile-status-card { display: none; }
+
+        /* ── FILA SELECTOR DE PERIODO ── */
+        .periodo-selector-row {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.5rem 0;
+            margin-bottom: 0.4rem;
+            flex-wrap: wrap;
+        }
+        .periodo-selector-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+        }
+        .periodo-selector-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem 0.55rem;
+            flex: 1;
+            min-width: 0;
+        }
+        .periodo-selector-gestion {
+            margin-left: auto;
+            flex-shrink: 0;
+        }
         .periodo-info {
             display: flex; flex-wrap: wrap; gap: 0.4rem;
             margin-top: 0.45rem; padding-top: 0.45rem;
@@ -2148,6 +2254,25 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             .page-header .periodo-toolbar {
                 display: block;
             }
+            .page-header .periodo-status-card {
+                grid-column: 1 / -1;
+                grid-row: auto;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.4rem;
+                padding: 0.6rem 1rem;
+                margin-top: 0.3rem;
+            }
+            .periodo-status-trimestre {
+                font-size: 1.4rem;
+            }
+            .periodo-status-detalle {
+                font-size: 1rem;
+            }
+            .periodo-selector-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
             .page-header .periodo-rows {
                 flex-wrap: wrap;
                 overflow-x: visible;
@@ -2222,6 +2347,90 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                 Ampliar
                             </button>
                         <?php endif; ?>
+                        <?php if ($periodoConfirmado): ?>
+                            <div class="periodo-status-card status-<?php echo $vistaActual; ?> <?php echo ($vistaActual === 'trimestral' ? $trimestreEditableParaVistaTrimestral : $periodoEditable) ? 'status-editable' : 'status-locked'; ?>">
+                                <div class="periodo-status-trimestre">TRIMESTRE <?php echo $trimestreSeleccionado; ?></div>
+                                <div class="periodo-status-detalle">
+                                    <?php if ($vistaActual === 'trimestral'): ?>
+                                        📋 VISTA TRIMESTRAL
+                                        <span class="periodo-status-sub">Autoevaluación + Nota extra</span>
+                                    <?php else: ?>
+                                        📝 PARCIAL <?php echo $parcialSeleccionado; ?>
+                                        <span class="periodo-status-sub">
+                                            <?php echo htmlspecialchars($periodoSeleccionado['nombre'] ?? "Parcial $parcialSeleccionado"); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="periodo-status-editable">
+                                    <?php
+                                    $esEditable = $vistaActual === 'trimestral' ? $trimestreEditableParaVistaTrimestral : $periodoEditable;
+                                    ?>
+                                    <?php if ($esEditable): ?>
+                                        <span class="periodo-status-dot dot-active"></span> HABILITADO — Puedes guardar
+                                    <?php else: ?>
+                                        <span class="periodo-status-dot dot-locked"></span> SOLO LECTURA — Periodo cerrado
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($periodoConfirmado): ?>
+                    <div class="periodo-selector-row">
+                        <div class="periodo-selector-label">Cambiar periodo:</div>
+                        <div class="periodo-selector-pills">
+                            <?php foreach ($periodosPorTrimestre as $trimestre => $parciales): ?>
+                                <div class="trim-row">
+                                    <span class="trim-label">T<?php echo (int)$trimestre; ?></span>
+                                    <?php if ($es_inicial): ?>
+                                        <?php
+                                        $primerParcialIni = array_key_first($parciales);
+                                        $periodoBotonIni = $parciales[$primerParcialIni];
+                                        $periodoBotonEditableIni = (int)$periodoBotonIni['esta_activo'] === 1 &&
+                                            (empty($periodoBotonIni['fecha_inicio']) || $hoy >= $periodoBotonIni['fecha_inicio']) &&
+                                            (empty($periodoBotonIni['fecha_fin']) || $hoy <= $periodoBotonIni['fecha_fin']);
+                                        $esTrimActualIni = (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
+                                        $pillClassesIni = 'pill-btn' . ($esTrimActualIni ? ' active' : '') . ($periodoBotonEditableIni ? ' pill-enabled' : ' pill-disabled');
+                                        ?>
+                                        <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialIni, ['confirmar' => 1])); ?>"
+                                           class="<?php echo $pillClassesIni; ?>"
+                                           title="Trimestre <?php echo (int)$trimestre; ?> — Comentario">
+                                            Comentario
+                                        </a>
+                                    <?php else: ?>
+                                        <?php foreach ($parciales as $parcial => $periodoBoton): ?>
+                                            <?php
+                                            $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
+                                                (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
+                                                (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
+                                            $esPeriodoActual = $vistaActual === 'parcial' && (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado && $periodoConfirmado;
+                                            $pillClasses = 'pill-btn' . ($esPeriodoActual ? ' active' : '') . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
+                                            ?>
+                                            <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$parcial, ['confirmar' => 1])); ?>"
+                                               class="<?php echo $pillClasses; ?>"
+                                               title="<?php echo htmlspecialchars($periodoBoton['nombre'] ?? ''); ?>">
+                                                P<?php echo (int)$parcial; ?>
+                                            </a>
+                                        <?php endforeach; ?>
+                                        <div class="pill-sep"></div>
+                                        <?php
+                                        $esTrimActual = $vistaActual === 'trimestral' && (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
+                                        $primerParcialTrim = array_key_first($parciales);
+                                        ?>
+                                        <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialTrim, ['confirmar' => 1, 'vista' => 'trimestral'])); ?>"
+                                           class="pill-btn pill-trim<?php echo $esTrimActual ? ' active' : ''; ?>"
+                                           title="Vista trimestral: autoevaluación y nota extra">
+                                            Trim
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="periodo-selector-gestion">
+                            <span class="badge bg-light text-dark border">Gestión <?php echo htmlspecialchars($gestionActual); ?></span>
+                        </div>
+                    </div>
+                    <?php else: ?>
                         <div class="top-row">
                             <div class="periodo-toolbar">
                                 <div class="periodo-toolbar-title">Selección de periodo</div>
@@ -2236,13 +2445,12 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                 $periodoBotonEditableIni = (int)$periodoBotonIni['esta_activo'] === 1 &&
                                                     (empty($periodoBotonIni['fecha_inicio']) || $hoy >= $periodoBotonIni['fecha_inicio']) &&
                                                     (empty($periodoBotonIni['fecha_fin']) || $hoy <= $periodoBotonIni['fecha_fin']);
-                                                $esTrimActualIni = (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
-                                                $pillClassesIni = 'pill-btn' . ($esTrimActualIni ? ' active' : '') . ($periodoBotonEditableIni ? ' pill-enabled' : ' pill-disabled');
+                                                $pillClassesIni = 'pill-btn' . ($periodoBotonEditableIni ? ' pill-enabled' : ' pill-disabled');
                                                 ?>
                                                 <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialIni, ['confirmar' => 1])); ?>"
                                                    class="<?php echo $pillClassesIni; ?>"
                                                    title="Trimestre <?php echo (int)$trimestre; ?> — Comentario">
-                                                    Trimestre <?php echo (int)$trimestre; ?>
+                                                    T<?php echo (int)$trimestre; ?>
                                                 </a>
                                             <?php else: ?>
                                                 <?php foreach ($parciales as $parcial => $periodoBoton): ?>
@@ -2250,22 +2458,18 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                     $periodoBotonEditable = (int)$periodoBoton['esta_activo'] === 1 &&
                                                         (empty($periodoBoton['fecha_inicio']) || $hoy >= $periodoBoton['fecha_inicio']) &&
                                                         (empty($periodoBoton['fecha_fin']) || $hoy <= $periodoBoton['fecha_fin']);
-                                                    $esPeriodoActual = $vistaActual === 'parcial' && (int)$trimestre === (int)$trimestreSeleccionado && (int)$parcial === (int)$parcialSeleccionado && $periodoConfirmado;
-                                                    $pillClasses = 'pill-btn' . ($esPeriodoActual ? ' active' : '') . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
+                                                    $pillClasses = 'pill-btn' . ($periodoBotonEditable ? ' pill-enabled' : ' pill-disabled');
                                                     ?>
                                                     <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$parcial, ['confirmar' => 1])); ?>"
                                                        class="<?php echo $pillClasses; ?>"
-                                                       title="<?php echo htmlspecialchars($periodoBoton['nombre']); ?>">
+                                                       title="<?php echo htmlspecialchars($periodoBoton['nombre'] ?? ''); ?>">
                                                         P<?php echo (int)$parcial; ?>
                                                     </a>
                                                 <?php endforeach; ?>
                                                 <div class="pill-sep"></div>
-                                                <?php
-                                                $esTrimActual = $vistaActual === 'trimestral' && (int)$trimestre === (int)$trimestreSeleccionado && $periodoConfirmado;
-                                                $primerParcialTrim = array_key_first($parciales);
-                                                ?>
+                                                <?php $primerParcialTrim = array_key_first($parciales); ?>
                                                 <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)$trimestre, (int)$primerParcialTrim, ['confirmar' => 1, 'vista' => 'trimestral'])); ?>"
-                                                   class="pill-btn pill-trim<?php echo $esTrimActual ? ' active' : ''; ?>"
+                                                   class="pill-btn pill-trim"
                                                    title="Vista trimestral: autoevaluación y nota extra">
                                                     Trim
                                                 </a>
@@ -2273,31 +2477,9 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
-                                <div class="periodo-info">
-                                    <?php if ($vistaActual === 'trimestral'): ?>
-                                        <span class="badge periodo-badge <?php echo $trimestreEditableParaVistaTrimestral ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
-                                            <?php echo $trimestreEditableParaVistaTrimestral ? '✓ Habilitado' : '✗ No habilitado'; ?>
-                                        </span>
-                                        <span class="badge bg-light text-dark border periodo-badge">Vista trimestral — T<?php echo $trimestreSeleccionado; ?></span>
-                                    <?php else: ?>
-                                        <span class="badge periodo-badge <?php echo $periodoEditable ? 'status-badge-enabled' : 'status-badge-disabled'; ?>">
-                                            <?php echo $periodoEditable ? '✓ Habilitado' : '✗ No habilitado'; ?>
-                                        </span>
-                                        <span class="badge bg-light text-dark border periodo-badge">
-                                            T<?php echo $trimestreSeleccionado; ?><?php echo !$es_inicial ? ' - P' . $parcialSeleccionado : ''; ?>
-                                        </span>
-                                    <?php endif; ?>
-                                    <span class="badge bg-light text-dark border periodo-badge">
-                                        Gestión <?php echo htmlspecialchars($gestionActual); ?>
-                                    </span>
-                                    <?php if (!$es_inicial && $es_materia_principal_complementada && $periodoEditable): ?>
-                                        <span class="badge bg-warning text-dark border" style="font-size:0.75rem;">
-                                            Bonus en sincronización…
-                                        </span>
-                                    <?php endif; ?>
-                                </div>
                             </div>
                         </div>
+                    <?php endif; ?>
                     </div>
 
                     <?php
