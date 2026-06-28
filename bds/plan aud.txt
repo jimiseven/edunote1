@@ -1,0 +1,117 @@
+PLAN DE AUDITORIA DE NOTAS
+
+Objetivo
+Registrar evidencia de cada cambio realizado sobre las notas para poder verificar reclamos como: "el profesor subio sus notas, pero ahora no aparecen".
+
+Problema actual
+Un backup diario ayuda a saber como estaba la base en un momento del dia, pero no muestra con detalle quien cambio una nota, cuando la cambio, ni cual era el valor anterior.
+
+Solucion recomendada
+Implementar una tabla de auditoria de notas y complementarla con un backup diario liviano solo de tablas de notas.
+
+Tabla propuesta: auditoria_notas
+Campos recomendados:
+- id_auditoria
+- fecha_hora
+- id_usuario
+- id_profesor
+- id_estudiante
+- id_curso
+- id_materia
+- id_periodo_evaluacion
+- gestion
+- trimestre
+- parcial
+- area
+- indice
+- accion
+- nota_anterior
+- nota_nueva
+- origen
+- ip_address
+- user_agent
+- session_id
+
+Acciones a registrar
+- insert: cuando se crea una nota nueva.
+- update: cuando se modifica una nota existente.
+- delete: cuando se elimina una nota.
+
+Tablas principales a auditar
+- calificaciones_parciales
+- calificaciones_parciales_detalle
+- calificaciones_trimestrales
+
+Archivos donde se deberia registrar auditoria
+- profesor/cargar_notas.php
+- admin/ajax_parcial_notas.php
+
+Informacion minima que debe guardarse
+- quien hizo el cambio
+- cuando lo hizo
+- estudiante afectado
+- materia y curso
+- trimestre y parcial
+- valor anterior
+- valor nuevo
+- accion realizada
+
+Ventajas
+- Permite comprobar si un profesor realmente subio una nota.
+- Permite saber si una nota fue modificada despues.
+- Permite identificar eliminaciones accidentales o cambios masivos sospechosos.
+- No depende solo de revisar backups diarios.
+
+Impacto en espacio
+La tabla no deberia ser pesada si se guardan IDs y valores numericos, no textos largos.
+Estimacion aproximada:
+- 10.000 cambios de notas al mes podrian ocupar entre 5 MB y 15 MB, dependiendo de indices y datos adicionales.
+
+Medidas para controlar el tamano
+- Guardar IDs en vez de nombres completos.
+- Evitar JSON grande salvo que sea necesario.
+- Mantener auditoria completa de la gestion actual.
+- Exportar o comprimir auditorias antiguas al cierre de gestion.
+- Opcionalmente limpiar registros de mas de 2 o 3 anos.
+
+Backup diario complementario
+Crear un backup diario comprimido solo de:
+- calificaciones_parciales
+- calificaciones_parciales_detalle
+- calificaciones_trimestrales
+- auditoria_notas
+
+Nombre sugerido del backup:
+backup_notas_YYYY-MM-DD.sql.gz
+
+Carpeta sugerida:
+backups/notas/
+
+Retencion sugerida
+- Mantener backups diarios de los ultimos 30 dias.
+- Mantener backups mensuales o anuales comprimidos si se requiere historial largo.
+
+Orden recomendado de implementacion
+1. Crear la tabla auditoria_notas.
+2. Registrar auditoria en profesor/cargar_notas.php.
+3. Registrar auditoria en admin/ajax_parcial_notas.php.
+4. Probar carga, modificacion y eliminacion de notas.
+5. Crear script de consulta de auditoria para administracion.
+6. Crear backup diario comprimido solo de notas y auditoria.
+7. Configurar tarea cron en cPanel.
+
+Consulta esperada para resolver reclamos
+Ejemplo de informacion que deberia poder verse:
+Profesor: Juan Perez
+Fecha: 2026-06-28 10:34:12
+Curso: 3A
+Materia: Matematicas
+Estudiante: Maria Lopez
+Trimestre: 2
+Parcial: 1
+Accion: update
+Nota anterior: vacia
+Nota nueva: 72
+
+Conclusion
+La auditoria es la mejor evidencia para reclamos diarios sobre notas. El backup diario debe usarse como respaldo adicional, no como unica herramienta de verificacion.

@@ -424,7 +424,11 @@ foreach ($periodos as $periodo) {
 $trimestreSeleccionado = isset($_REQUEST['trimestre']) ? (int)$_REQUEST['trimestre'] : 0;
 $parcialSeleccionado = isset($_REQUEST['parcial']) ? (int)$_REQUEST['parcial'] : 0;
 $periodoConfirmado = isset($_GET['confirmar']) && $_GET['confirmar'] === '1';
-$vistaActual = isset($_REQUEST['vista']) && $_REQUEST['vista'] === 'trimestral' ? 'trimestral' : 'parcial';
+$vistaActual = 'parcial';
+if (isset($_REQUEST['vista'])) {
+    if ($_REQUEST['vista'] === 'trimestral') $vistaActual = 'trimestral';
+    elseif ($_REQUEST['vista'] === 'centralizador') $vistaActual = 'centralizador';
+}
 
 if ($modalidadCarga === 'trimestres') {
     $parcialSeleccionado = 1;
@@ -855,6 +859,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $notaValor = (float)str_replace(',', '.', $valor);
+                    if ($notaValor < 0 || $notaValor > 95) {
+                        throw new Exception("Nota fuera de rango en la línea " . ($index + 1) . " (0 a 95).");
+                    }
                     $conn->prepare("INSERT INTO calificaciones_parciales
                                     (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, id_profesor)
                                     VALUES (?, ?, ?, ?, ?)
@@ -1454,6 +1461,12 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
         }
         .pill-btn.pill-trim:hover { background: #ede9fe; border-color: #a78bfa; }
         .pill-btn.pill-trim.active { background: #ddd6fe; border-color: #8b5cf6; font-weight: 700; }
+        .pill-btn.pill-centralizador {
+            background: #ecfdf5; border-color: #6ee7b7; color: #047857;
+            font-weight: 800; white-space: nowrap;
+        }
+        .pill-btn.pill-centralizador:hover { background: #d1fae5; border-color: #34d399; color: #065f46; }
+        .pill-btn.pill-centralizador.active { background: #059669; border-color: #047857; color: #fff; }
 
         /* ── TARJETA DE ESTADO DEL PERIODO ── */
         .periodo-status-card {
@@ -1476,6 +1489,11 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             background: linear-gradient(135deg, #7c3aed, #5b21b6);
             color: #ffffff;
             box-shadow: 0 8px 24px rgba(124, 58, 237, .35);
+        }
+        .periodo-status-card.status-centralizador {
+            background: linear-gradient(135deg, #059669, #047857);
+            color: #ffffff;
+            box-shadow: 0 8px 24px rgba(5, 150, 105, .35);
         }
         .periodo-status-card.status-locked {
             filter: grayscale(0.3);
@@ -1523,6 +1541,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
         }
         .dot-active { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,.7); }
         .dot-locked { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,.7); }
+        .dot-info { background: #60a5fa; box-shadow: 0 0 8px rgba(96,165,250,.7); }
         .mobile-status-card { display: none; }
 
         /* ── FILA SELECTOR DE PERIODO ── */
@@ -1652,6 +1671,44 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             background: #f8fbff;
             transform: translateY(-1px);
             outline: none;
+        }
+        .nota-input.input-out-of-range {
+            border-color: #dc2626 !important;
+            background: #fff1f2 !important;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, .14) !important;
+        }
+        .nota-range-alert {
+            position: absolute;
+            left: 50%;
+            top: calc(100% + 4px);
+            transform: translateX(-50%);
+            z-index: 400;
+            min-width: 120px;
+            max-width: 180px;
+            padding: 4px 7px;
+            border-radius: 8px;
+            background: #991b1b;
+            color: #fff;
+            font-size: 0.66rem;
+            font-weight: 800;
+            line-height: 1.2;
+            white-space: normal;
+            box-shadow: 0 8px 18px rgba(153, 27, 27, .24);
+            pointer-events: none;
+        }
+        .nota-range-alert::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: -5px;
+            transform: translateX(-50%);
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 5px solid #991b1b;
+        }
+        .table-container tbody td:has(.nota-range-alert) {
+            position: relative;
+            overflow: visible;
         }
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button {
@@ -1938,9 +1995,21 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             background-color: #e0efff !important;
             color: #0f3f7a;
         }
+        .table-container tbody tr.modified-row td {
+            background-color: #fff7ed !important;
+            box-shadow: inset 0 1px 0 rgba(245, 158, 11, .18), inset 0 -1px 0 rgba(245, 158, 11, .18);
+        }
+        .table-container tbody tr.modified-row .col-num,
+        .table-container tbody tr.modified-row .col-nombre {
+            background-color: #ffedd5 !important;
+            color: #9a3412;
+        }
         .nota-ref.total-final-50 { background: #dbeafe !important; color: #1d4ed8 !important; }
         .nota-ref.total-final-aplazado { background: #fee2e2 !important; color: #b91c1c !important; }
         .nota-ref.total-final-aprobado { background: #dcfce7 !important; color: #166534 !important; }
+        .nota-final-aprobado { background: #c6f6d5; color: #276749; font-weight: 900; border-radius:8px; min-width:48px; }
+        .nota-final-aplazado { background: #fed7d7; color: #9b2c2c; font-weight: 900; border-radius:8px; min-width:48px; }
+        .nota-null { color: #cbd5e0; font-weight: 500; }
         /* Filas zebra y hover */
         .table-container tbody tr:nth-child(even) td { background-color: #fafbfc; }
         .table-container tbody tr:nth-child(even) td:first-child,
@@ -2348,10 +2417,13 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                             </button>
                         <?php endif; ?>
                         <?php if ($periodoConfirmado): ?>
-                            <div class="periodo-status-card status-<?php echo $vistaActual; ?> <?php echo ($vistaActual === 'trimestral' ? $trimestreEditableParaVistaTrimestral : $periodoEditable) ? 'status-editable' : 'status-locked'; ?>">
-                                <div class="periodo-status-trimestre">TRIMESTRE <?php echo $trimestreSeleccionado; ?></div>
+                            <div class="periodo-status-card status-<?php echo $vistaActual; ?> <?php echo ($vistaActual === 'centralizador') ? 'status-editable' : (($vistaActual === 'trimestral' ? $trimestreEditableParaVistaTrimestral : $periodoEditable) ? 'status-editable' : 'status-locked'); ?>">
+                                <div class="periodo-status-trimestre"><?php echo $vistaActual === 'centralizador' ? 'CONSOLIDADO' : 'TRIMESTRE ' . $trimestreSeleccionado; ?></div>
                                 <div class="periodo-status-detalle">
-                                    <?php if ($vistaActual === 'trimestral'): ?>
+                                    <?php if ($vistaActual === 'centralizador'): ?>
+                                        📊 VISTA CENTRALIZADOR
+                                        <span class="periodo-status-sub">Nota final por trimestre</span>
+                                    <?php elseif ($vistaActual === 'trimestral'): ?>
                                         📋 VISTA TRIMESTRAL
                                         <span class="periodo-status-sub">Autoevaluación + Nota extra</span>
                                     <?php else: ?>
@@ -2362,6 +2434,9 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                     <?php endif; ?>
                                 </div>
                                 <div class="periodo-status-editable">
+                                    <?php if ($vistaActual === 'centralizador'): ?>
+                                        <span class="periodo-status-dot dot-info"></span> SOLO LECTURA — Vista consolidada
+                                    <?php else: ?>
                                     <?php
                                     $esEditable = $vistaActual === 'trimestral' ? $trimestreEditableParaVistaTrimestral : $periodoEditable;
                                     ?>
@@ -2369,6 +2444,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                         <span class="periodo-status-dot dot-active"></span> HABILITADO — Puedes guardar
                                     <?php else: ?>
                                         <span class="periodo-status-dot dot-locked"></span> SOLO LECTURA — Periodo cerrado
+                                    <?php endif; ?>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -2427,6 +2503,11 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                             <?php endforeach; ?>
                         </div>
                         <div class="periodo-selector-gestion">
+                            <?php $primerParcialDisponible = array_key_first(reset($periodosPorTrimestre) ?: []); ?>
+                            <a href="<?php echo htmlspecialchars(construirUrlPeriodo($id_curso_materia, (int)(array_key_first($periodosPorTrimestre) ?? 1), (int)($primerParcialDisponible ?? 1), ['confirmar' => 1, 'vista' => 'centralizador'])); ?>"
+                               class="pill-btn pill-centralizador<?php echo $vistaActual === 'centralizador' ? ' active' : ''; ?>">
+                                📊 Centralizador
+                            </a>
                             <span class="badge bg-light text-dark border">Gestión <?php echo htmlspecialchars($gestionActual); ?></span>
                         </div>
                     </div>
@@ -2502,7 +2583,70 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                         <?php endif; ?>
 
                     <?php if ($periodoConfirmado): ?>
-                        <?php if ($vistaActual === 'trimestral' && !$es_inicial): ?>
+                        <?php if ($vistaActual === 'centralizador'): ?>
+                            <div class="table-container">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="col-num">#</th>
+                                            <th class="col-nombre">Estudiante</th>
+                                            <th class="th-total" style="min-width:70px">TRIMESTRE 1</th>
+                                            <th class="th-total" style="min-width:70px">TRIMESTRE 2</th>
+                                            <th class="th-total" style="min-width:70px">TRIMESTRE 3</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php $n = 1; foreach ($estudiantes as $est): ?>
+                                            <?php $idEst = (int)$est['id_estudiante']; ?>
+                                            <tr>
+                                                <td class="col-num"><?php echo $n++; ?></td>
+                                                <td class="col-nombre"><?php echo htmlspecialchars($est['nombre']); ?></td>
+                                                <?php for ($t = 1; $t <= 3; $t++): ?>
+                                                    <?php
+                                                    $notaFinal = null;
+                                                    if ($es_inicial) {
+                                                        $notaFinal = $notas[$idEst][$t][1] ?? null;
+                                                        $notaFinal = ($notaFinal !== null && $notaFinal !== '') ? trim((string)$notaFinal) : null;
+                                                    } else {
+                                                        $p1 = $notas[$idEst][$t][1] ?? null;
+                                                        $p2 = $notas[$idEst][$t][2] ?? null;
+                                                        $p3 = $notas[$idEst][$t][3] ?? null;
+                                                        $parcialesVals = [];
+                                                        foreach ([$p1, $p2, $p3] as $pv) {
+                                                            if ($pv !== null && $pv !== '' && is_numeric($pv)) $parcialesVals[] = (float)$pv;
+                                                        }
+                                                        $prom = !empty($parcialesVals) ? array_sum($parcialesVals) / count($parcialesVals) : 0;
+                                                        $auto = $notasTrimestrales[$idEst][$t]['autoevaluacion'] ?? null;
+                                                        $auto = ($auto !== null && $auto !== '' && is_numeric($auto)) ? (float)$auto : 0;
+                                                        $extra = $notasTrimestrales[$idEst][$t]['nota_extra'] ?? null;
+                                                        $extra = ($extra !== null && $extra !== '' && is_numeric($extra)) ? (float)$extra : 0;
+                                                        if (!empty($parcialesVals) || $auto > 0 || $extra > 0) {
+                                                            $notaFinal = round($prom + $auto + $extra);
+                                                        }
+                                                    }
+                                                    $cls = '';
+                                                    if ($notaFinal === null) {
+                                                        $cls = 'nota-null';
+                                                        $display = '—';
+                                                    } elseif ($es_inicial) {
+                                                        $cls = 'text-muted';
+                                                        $display = mb_strlen($notaFinal) > 30 ? mb_substr($notaFinal, 0, 27) . '...' : $notaFinal;
+                                                    } else {
+                                                        $cls = $notaFinal >= 51 ? 'nota-final-aprobado' : 'nota-final-aplazado';
+                                                        $display = $notaFinal;
+                                                    }
+                                                    ?>
+                                                    <td class="nota-ref <?php echo $cls; ?>" style="font-weight:900;font-size:1.05rem;"><?php echo $display; ?></td>
+                                                <?php endfor; ?>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="action-buttons" style="justify-content:flex-end;background:transparent;border:none;box-shadow:none;">
+                                <small class="text-muted">Vista de solo lectura — Las notas mostradas son promedios de parciales + autoevaluación + extra</small>
+                            </div>
+                        <?php elseif ($vistaActual === 'trimestral' && !$es_inicial): ?>
                             <form method="post" class="grade-form" data-save-action="guardar_trimestral">
                                 <input type="hidden" name="trimestre" value="<?php echo $trimestreSeleccionado; ?>">
                                 <input type="hidden" name="parcial" value="<?php echo $parcialSeleccionado; ?>">
@@ -3059,6 +3203,23 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
         </div>
     </div>
     <?php endif; ?>
+    <div class="modal fade" id="confirmSaveGradesModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar guardado de notas</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="confirmSaveGradesSummary">Se estan modificando notas.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Revisar</button>
+                    <button type="button" class="btn btn-primary" id="confirmSaveGradesButton">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="modal fade" id="saveSwitchModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content">
@@ -3085,14 +3246,87 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             return nums.reduce((a, b) => a + b, 0) / nums.length;
         }
 
-        function clampNotaInput(input, min, max) {
-            if (input.readOnly || input.disabled) return;
-            const n = parseNumber(input.value);
-            if (n === null) return;
-            let v = n;
-            if (v < min) v = min;
-            if (v > max) v = max;
-            if (v !== n) input.value = String(v);
+        function getInputBounds(input) {
+            const min = input.min !== '' ? parseFloat(input.min) : null;
+            const max = input.max !== '' ? parseFloat(input.max) : null;
+            return { min, max };
+        }
+
+        function getAreaLabel(input) {
+            const area = input.dataset.area || 'Nota';
+            const index = input.dataset.index || '';
+            return index ? area + ' ' + index : area;
+        }
+
+        function getRangeText(input) {
+            const bounds = getInputBounds(input);
+            if (bounds.min !== null && bounds.max !== null) return bounds.min + ' a ' + bounds.max;
+            if (bounds.max !== null) return 'maximo ' + bounds.max;
+            if (bounds.min !== null) return 'minimo ' + bounds.min;
+            return '';
+        }
+
+        function showRangeAlert(input, message) {
+            const cell = input.closest('td');
+            if (!cell) return;
+            cell.style.position = 'relative';
+            cell.querySelectorAll('.nota-range-alert').forEach(el => el.remove());
+            const alert = document.createElement('div');
+            alert.className = 'nota-range-alert';
+            alert.textContent = message;
+            cell.appendChild(alert);
+        }
+
+        function hideRangeAlert(input) {
+            const cell = input.closest('td');
+            if (!cell) return;
+            cell.querySelectorAll('.nota-range-alert').forEach(el => el.remove());
+        }
+
+        function validateNotaInputBounds(input) {
+            if (!input || input.disabled || input.readOnly) return null;
+            const value = parseNumber(input.value);
+            if (value === null) {
+                input.classList.remove('input-out-of-range');
+                input.setCustomValidity('');
+                hideRangeAlert(input);
+                return null;
+            }
+
+            const bounds = getInputBounds(input);
+            if (bounds.min !== null && value < bounds.min) {
+                input.classList.add('input-out-of-range');
+                input.setCustomValidity('Valor fuera de rango');
+                const message = 'Rango permitido: ' + getRangeText(input);
+                showRangeAlert(input, message);
+                return getAreaLabel(input) + ' no puede ser menor a ' + bounds.min + '.';
+            }
+            if (bounds.max !== null && value > bounds.max) {
+                input.classList.add('input-out-of-range');
+                input.setCustomValidity('Valor fuera de rango');
+                const message = 'Rango permitido: ' + getRangeText(input);
+                showRangeAlert(input, message);
+                return getAreaLabel(input) + ' no puede ser mayor a ' + bounds.max + '.';
+            }
+
+            input.classList.remove('input-out-of-range');
+            input.setCustomValidity('');
+            hideRangeAlert(input);
+            return null;
+        }
+
+        function validateGradeInputs(form) {
+            if (!form) return null;
+            const inputs = Array.from(form.querySelectorAll('input.nota-input[type="number"]'));
+            for (const input of inputs) {
+                const message = validateNotaInputBounds(input);
+                if (message) {
+                    input.focus();
+                    try { input.select(); } catch (e) {}
+                    return message;
+                }
+            }
+            return null;
         }
 
         function updateRowTotals(row) {
@@ -3244,6 +3478,11 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
 
             const saveSwitchModalEl = document.getElementById('saveSwitchModal');
             const saveSwitchModal = saveSwitchModalEl ? new bootstrap.Modal(saveSwitchModalEl) : null;
+            const confirmSaveModalEl = document.getElementById('confirmSaveGradesModal');
+            const confirmSaveModal = confirmSaveModalEl ? new bootstrap.Modal(confirmSaveModalEl) : null;
+            const confirmSaveSummary = document.getElementById('confirmSaveGradesSummary');
+            const confirmSaveButton = document.getElementById('confirmSaveGradesButton');
+            let pendingSaveForm = null;
 
             const trackedFieldSelector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), textarea, select';
             document.querySelectorAll('form.grade-form').forEach(form => {
@@ -3264,34 +3503,105 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                 return false;
             }
 
-            function getLowGradeWarning(form) {
-                if (!form || form.dataset.saveAction !== 'guardar_notas') return '';
-                const totalCells = Array.from(form.querySelectorAll('tbody .total-95'));
-                if (!totalCells.length) return '';
-
-                const lowCells = totalCells.filter(cell => {
-                    const value = parseNumber(cell.textContent);
-                    return value !== null && value > 0 && value <= 5;
+            function getChangedStudentCount(form) {
+                if (!form) return 0;
+                const changedStudents = new Set();
+                form.querySelectorAll('[name^="notas["]').forEach(field => {
+                    if ((field.dataset.initialValue ?? '') === field.value) return;
+                    const match = field.name.match(/^notas\[(\d+)\]/);
+                    if (match) changedStudents.add(match[1]);
                 });
-                const lowCount = lowCells.length;
-                if (lowCount < 5 && lowCount < Math.ceil(totalCells.length * 0.2)) return '';
-
-                return 'Se detectaron ' + lowCount + ' estudiantes con nota final del parcial entre 1 y 5.\n\n' +
-                    'Esto puede indicar una carga accidental o un pegado incorrecto.\n\n' +
-                    '¿Deseas guardar de todas formas?';
+                form.querySelectorAll('[name^="auto["], [name^="extra["]').forEach(field => {
+                    if ((field.dataset.initialValue ?? '') === field.value) return;
+                    const match = field.name.match(/^(?:auto|extra)\[(\d+)\]/);
+                    if (match) changedStudents.add(match[1]);
+                });
+                return changedStudents.size;
             }
 
-            document.querySelectorAll('form.grade-form[data-save-action="guardar_notas"]').forEach(form => {
-                form.addEventListener('submit', function(event) {
-                    if (form.dataset.lowGradeConfirmed === 'true') {
-                        form.dataset.lowGradeConfirmed = '';
-                        return;
+            function rowHasModifiedGrade(row) {
+                if (!row) return false;
+                const fields = row.querySelectorAll('input.nota-input, textarea.coment-textarea, textarea.inicial-textarea');
+                for (let i = 0; i < fields.length; i++) {
+                    const field = fields[i];
+                    if ((field.dataset.initialValue ?? '') !== field.value) {
+                        return true;
                     }
+                }
+                return false;
+            }
 
-                    const warning = getLowGradeWarning(form);
-                    if (warning && !window.confirm(warning)) {
-                        event.preventDefault();
+            function updateModifiedRow(row) {
+                if (!row) return;
+                row.classList.toggle('modified-row', rowHasModifiedGrade(row));
+            }
+
+            function updateAllModifiedRows(form) {
+                if (!form) return;
+                form.querySelectorAll('tbody tr').forEach(updateModifiedRow);
+            }
+
+            function ensureSaveActionInput(form) {
+                if (!form) return;
+                const saveAction = form.dataset.saveAction;
+                if (!saveAction || form.querySelector(`input[name="${saveAction}"]`)) return;
+                const actionInput = document.createElement('input');
+                actionInput.type = 'hidden';
+                actionInput.name = saveAction;
+                actionInput.value = '1';
+                form.appendChild(actionInput);
+            }
+
+            function submitConfirmedForm(form) {
+                ensureSaveActionInput(form);
+                if (saveSwitchModal) {
+                    saveSwitchModal.show();
+                }
+                setTimeout(() => {
+                    form.submit();
+                }, 300);
+            }
+
+            function showSaveConfirmation(form) {
+                if (!form) return;
+                const validationMessage = validateGradeInputs(form);
+                if (validationMessage) {
+                    alert(validationMessage + '\n\nCorrige la nota antes de guardar.');
+                    return;
+                }
+                if (!confirmSaveModal || !confirmSaveSummary) {
+                    submitConfirmedForm(form);
+                    return;
+                }
+
+                pendingSaveForm = form;
+                const changedCount = getChangedStudentCount(form);
+                const studentWord = changedCount === 1 ? 'estudiante' : 'estudiantes';
+
+                confirmSaveSummary.textContent = changedCount > 0
+                    ? 'Se guardaran los cambios de ' + changedCount + ' ' + studentWord + '. Confirma para aprobar el guardado.'
+                    : 'No se detectaron estudiantes con notas modificadas. Confirma solo si deseas guardar otros cambios.';
+
+                confirmSaveModal.show();
+            }
+
+            if (confirmSaveButton) {
+                confirmSaveButton.addEventListener('click', function() {
+                    const form = pendingSaveForm;
+                    pendingSaveForm = null;
+                    if (confirmSaveModal) {
+                        confirmSaveModal.hide();
                     }
+                    if (form) {
+                        submitConfirmedForm(form);
+                    }
+                });
+            }
+
+            document.querySelectorAll('form.grade-form').forEach(form => {
+                form.addEventListener('submit', function(event) {
+                    event.preventDefault();
+                    showSaveConfirmation(form);
                 });
             });
 
@@ -3325,50 +3635,49 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                         return;
                     }
 
-                    if (saveAction && !activeForm.querySelector(`input[name="${saveAction}"]`)) {
-                        const actionInput = document.createElement('input');
-                        actionInput.type = 'hidden';
-                        actionInput.name = saveAction;
-                        actionInput.value = '1';
-                        activeForm.appendChild(actionInput);
-                    }
-
-                    const warning = getLowGradeWarning(activeForm);
-                    if (warning && !window.confirm(warning)) {
-                        return;
-                    }
-
-                    activeForm.dataset.lowGradeConfirmed = 'true';
-
-                    if (saveSwitchModal) {
-                        saveSwitchModal.show();
-                    }
-
-                    setTimeout(() => {
-                        activeForm.submit();
-                    }, 1000);
+                    ensureSaveActionInput(activeForm);
+                    showSaveConfirmation(activeForm);
                 });
             });
 
             document.querySelectorAll('tbody tr').forEach(tr => {
                 updateRowTotals(tr);
                 updateTrimestralRow(tr);
+                updateModifiedRow(tr);
             });
 
             document.querySelectorAll('input.area-ser, input.area-saber, input.area-hacer').forEach(input => {
                 input.addEventListener('input', function() {
-                    updateRowTotals(this.closest('tr'));
+                    const row = this.closest('tr');
+                    validateNotaInputBounds(this);
+                    updateRowTotals(row);
+                    updateModifiedRow(row);
                 });
                 input.addEventListener('blur', function() {
-                    if (this.classList.contains('area-ser')) clampNotaInput(this, 0, 10);
-                    else if (this.classList.contains('area-saber')) clampNotaInput(this, 0, 45);
-                    else if (this.classList.contains('area-hacer')) clampNotaInput(this, 0, 40);
-                    updateRowTotals(this.closest('tr'));
+                    validateNotaInputBounds(this);
+                    const row = this.closest('tr');
+                    updateRowTotals(row);
+                    updateModifiedRow(row);
                 });
             });
             document.querySelectorAll('input.area-auto, input.area-extra').forEach(input => {
                 input.addEventListener('input', function() {
-                    updateTrimestralRow(this.closest('tr'));
+                    const row = this.closest('tr');
+                    validateNotaInputBounds(this);
+                    updateTrimestralRow(row);
+                    updateModifiedRow(row);
+                });
+                input.addEventListener('blur', function() {
+                    validateNotaInputBounds(this);
+                    const row = this.closest('tr');
+                    updateTrimestralRow(row);
+                    updateModifiedRow(row);
+                });
+            });
+
+            document.querySelectorAll('textarea.coment-textarea, textarea.inicial-textarea').forEach(textarea => {
+                textarea.addEventListener('input', function() {
+                    updateModifiedRow(this.closest('tr'));
                 });
             });
 
@@ -3634,17 +3943,39 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                         return;
                     }
 
+                    const invalidLines = [];
+                    rawLines.forEach((line, idx) => {
+                        let value = (line.split('\t')[0] ?? '').trim();
+                        if (value === '') return;
+                        const numericValue = parseNumber(value);
+                        if (numericValue === null) {
+                            invalidLines.push('Fila ' + (idx + 1) + ': valor no numerico');
+                            return;
+                        }
+                        if (numericValue < pasteContext.min || numericValue > pasteContext.max) {
+                            invalidLines.push('Fila ' + (idx + 1) + ': ' + numericValue + ' fuera de rango (' + pasteContext.min + ' a ' + pasteContext.max + ')');
+                        }
+                    });
+
+                    if (invalidLines.length) {
+                        alert(
+                            'No se aplicaron cambios porque hay notas fuera del rango permitido para ' + pasteTargetLabel.textContent + '.\n\n' +
+                            invalidLines.slice(0, 8).join('\n') +
+                            (invalidLines.length > 8 ? '\n...' : '')
+                        );
+                        return;
+                    }
+
                     pasteContext.inputs.forEach((input, idx) => {
                         const line = rawLines[idx] ?? '';
                         let value = line.split('\t')[0] ?? '';
                         value = value.trim();
 
                         input.value = value;
-                        if (value !== '') {
-                            clampNotaInput(input, pasteContext.min, pasteContext.max);
-                        }
+                        validateNotaInputBounds(input);
                         input.dispatchEvent(new Event('input', { bubbles: true }));
                         input.dispatchEvent(new Event('change', { bubbles: true }));
+                        updateModifiedRow(input.closest('tr'));
                     });
 
                     pasteModal.hide();
