@@ -128,7 +128,7 @@ foreach ($estudiantes as $estudiante) {
     }
 }
 
-$sqlCalificaciones = "SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, cp.calificacion
+$sqlCalificaciones = "SELECT cp.id_estudiante, cp.id_materia, pe.trimestre, pe.parcial, cp.calificacion
                       FROM calificaciones_parciales cp
                       INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
                       INNER JOIN estudiantes e ON e.id_estudiante = cp.id_estudiante
@@ -141,7 +141,8 @@ if ($gestionAlternativa !== null && $gestionAlternativa !== $gestionActual) {
     $sqlCalificaciones .= " OR pe.gestion = ?";
     $paramsCalificaciones[] = $gestionAlternativa;
 }
-$sqlCalificaciones .= ")";
+$sqlCalificaciones .= ")
+                      ORDER BY pe.trimestre ASC, pe.parcial ASC";
 
 $stmt_calificaciones = $conn->prepare($sqlCalificaciones);
 $stmt_calificaciones->execute($paramsCalificaciones);
@@ -154,7 +155,8 @@ foreach ($stmt_calificaciones->fetchAll(PDO::FETCH_ASSOC) as $filaCalificacion) 
     $idEstudiante = (int)$filaCalificacion['id_estudiante'];
     $idMateria = (int)$filaCalificacion['id_materia'];
     $trimestreFila = (int)$filaCalificacion['trimestre'];
-    $parcialesPorTrimestre[$idEstudiante][$idMateria][$trimestreFila][] = (float)$filaCalificacion['calificacion'];
+    $parcialFila = (int)$filaCalificacion['parcial'];
+    $parcialesPorTrimestre[$idEstudiante][$idMateria][$trimestreFila][$parcialFila] = (float)$filaCalificacion['calificacion'];
 }
 
 foreach ($parcialesPorTrimestre as $idEstudiante => $materiasParciales) {

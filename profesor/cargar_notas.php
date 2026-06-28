@@ -668,10 +668,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $conn->prepare("INSERT INTO calificaciones_parciales
-                                    (id_estudiante, id_materia, id_periodo_evaluacion, comentario)
-                                    VALUES (?, ?, ?, ?)
-                                    ON DUPLICATE KEY UPDATE comentario = VALUES(comentario)")
-                         ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado, $valor]);
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, comentario, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE comentario = VALUES(comentario), id_profesor = VALUES(id_profesor)")
+                         ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado, $valor, $profesor_id]);
                 } else {
                     if (!is_array($datosEstudiante)) {
                         continue;
@@ -750,14 +750,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $calificacion = round($serProm + $saberProm + $hacerProm, 2);
 
                     $conn->prepare("INSERT INTO calificaciones_parciales
-                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, ser_total, saber_total, hacer_total)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, ser_total, saber_total, hacer_total, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                                     ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion),
                                                             ser_total = VALUES(ser_total),
                                                             saber_total = VALUES(saber_total),
-                                                            hacer_total = VALUES(hacer_total)")
+                                                            hacer_total = VALUES(hacer_total),
+                                                            id_profesor = VALUES(id_profesor)")
                          ->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado,
-                                    $calificacion, $serTotal, $saberTotal, $hacerTotal]);
+                                    $calificacion, $serTotal, $saberTotal, $hacerTotal, $profesor_id]);
 
                     if ($tieneDetalleCalificaciones && $stmtGetCalifId && $stmtUpsertDetalle && $stmtDeleteDetalle) {
                         $stmtGetCalifId->execute([$idEstudiante, $curso['id_materia'], $idPeriodoSeleccionado]);
@@ -835,10 +836,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $conn->prepare("INSERT INTO calificaciones_parciales
-                                    (id_estudiante, id_materia, id_periodo_evaluacion, comentario)
-                                    VALUES (?, ?, ?, ?)
-                                    ON DUPLICATE KEY UPDATE comentario = VALUES(comentario)")
-                         ->execute([$estudiante['id_estudiante'], $curso['id_materia'], $idPeriodoSeleccionado, $valor]);
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, comentario, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE comentario = VALUES(comentario), id_profesor = VALUES(id_profesor)")
+                         ->execute([$estudiante['id_estudiante'], $curso['id_materia'], $idPeriodoSeleccionado, $valor, $profesor_id]);
                 } else {
                     if ($valor === '') {
                         $conn->prepare("DELETE FROM calificaciones_parciales
@@ -855,10 +856,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $notaValor = (float)str_replace(',', '.', $valor);
                     $conn->prepare("INSERT INTO calificaciones_parciales
-                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion)
-                                    VALUES (?, ?, ?, ?)
-                                    ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion)")
-                         ->execute([$estudiante['id_estudiante'], $curso['id_materia'], $idPeriodoSeleccionado, $notaValor]);
+                                    (id_estudiante, id_materia, id_periodo_evaluacion, calificacion, id_profesor)
+                                    VALUES (?, ?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE calificacion = VALUES(calificacion), id_profesor = VALUES(id_profesor)")
+                         ->execute([$estudiante['id_estudiante'], $curso['id_materia'], $idPeriodoSeleccionado, $notaValor, $profesor_id]);
                 }
             }
         }
@@ -3081,6 +3082,37 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                 return false;
             }
 
+            function getLowGradeWarning(form) {
+                if (!form || form.dataset.saveAction !== 'guardar_notas') return '';
+                const totalCells = Array.from(form.querySelectorAll('tbody .total-95'));
+                if (!totalCells.length) return '';
+
+                const lowCells = totalCells.filter(cell => {
+                    const value = parseNumber(cell.textContent);
+                    return value !== null && value > 0 && value <= 5;
+                });
+                const lowCount = lowCells.length;
+                if (lowCount < 5 && lowCount < Math.ceil(totalCells.length * 0.2)) return '';
+
+                return 'Se detectaron ' + lowCount + ' estudiantes con nota final del parcial entre 1 y 5.\n\n' +
+                    'Esto puede indicar una carga accidental o un pegado incorrecto.\n\n' +
+                    '¿Deseas guardar de todas formas?';
+            }
+
+            document.querySelectorAll('form.grade-form[data-save-action="guardar_notas"]').forEach(form => {
+                form.addEventListener('submit', function(event) {
+                    if (form.dataset.lowGradeConfirmed === 'true') {
+                        form.dataset.lowGradeConfirmed = '';
+                        return;
+                    }
+
+                    const warning = getLowGradeWarning(form);
+                    if (warning && !window.confirm(warning)) {
+                        event.preventDefault();
+                    }
+                });
+            });
+
             document.querySelectorAll('.periodo-toolbar a.pill-btn').forEach(link => {
                 link.addEventListener('click', function(event) {
                     const targetUrl = this.getAttribute('href');
@@ -3118,6 +3150,13 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                         actionInput.value = '1';
                         activeForm.appendChild(actionInput);
                     }
+
+                    const warning = getLowGradeWarning(activeForm);
+                    if (warning && !window.confirm(warning)) {
+                        return;
+                    }
+
+                    activeForm.dataset.lowGradeConfirmed = 'true';
 
                     if (saveSwitchModal) {
                         saveSwitchModal.show();
