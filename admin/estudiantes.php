@@ -8,6 +8,8 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], tr
     exit();
 }
 
+$puedeModificarEstudiantes = (int)$_SESSION['user_role'] === 1;
+
 if (isset($_GET['action']) && $_GET['action'] === 'buscar_responsable') {
     header('Content-Type: application/json; charset=utf-8');
 
@@ -170,9 +172,11 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             });
                         }
                         </script>
-                        <button type="button" class="btn-nuevo" data-bs-toggle="modal" data-bs-target="#modalNuevoEstudiante">
-                            <i class="bi bi-plus-lg"></i> Nuevo Estudiante
-                        </button>
+                        <?php if ($puedeModificarEstudiantes): ?>
+                            <button type="button" class="btn-nuevo" data-bs-toggle="modal" data-bs-target="#modalNuevoEstudiante">
+                                <i class="bi bi-plus-lg"></i> Nuevo Estudiante
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -201,15 +205,19 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td><?php echo htmlspecialchars($estudiante['rude']); ?></td>
                                     <td>
                                         <div class="acciones-cell">
-                                            <a href="editar_estudiante.php?id=<?php echo $estudiante['id_estudiante']; ?>"
-                                               class="btn btn-accion btn-editar" title="Editar">
-                                               <i class="bi bi-pencil"></i>
-                                            </a>
-                                            <a href="eliminar_estudiante.php?id=<?php echo $estudiante['id_estudiante']; ?>"
-                                               class="btn btn-accion btn-eliminar"
-                                               onclick="return confirm('¿Está seguro de eliminar este estudiante?')" title="Eliminar">
-                                               <i class="bi bi-trash"></i>
-                                            </a>
+                                            <?php if ($puedeModificarEstudiantes): ?>
+                                                <a href="editar_estudiante.php?id=<?php echo $estudiante['id_estudiante']; ?>"
+                                                   class="btn btn-accion btn-editar" title="Editar">
+                                                   <i class="bi bi-pencil"></i>
+                                                </a>
+                                                <a href="eliminar_estudiante.php?id=<?php echo $estudiante['id_estudiante']; ?>"
+                                                   class="btn btn-accion btn-eliminar"
+                                                   onclick="return confirm('¿Está seguro de eliminar este estudiante?')" title="Eliminar">
+                                                   <i class="bi bi-trash"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <span class="text-muted small">Solo lectura</span>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
@@ -222,6 +230,7 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
+    <?php if ($puedeModificarEstudiantes): ?>
     <!-- Modal Nuevo Estudiante -->
     <div class="modal fade" id="modalNuevoEstudiante" tabindex="-1" aria-labelledby="modalNuevoEstudianteLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
@@ -364,8 +373,10 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <script src="../js/bootstrap.bundle.min.js"></script>
+    <?php if ($puedeModificarEstudiantes): ?>
     <script>
         function getResponsableElements(idx) {
             return {
@@ -419,5 +430,6 @@ $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         });
     </script>
+    <?php endif; ?>
 </body>
 </html>
