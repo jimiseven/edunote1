@@ -537,7 +537,7 @@ foreach ($estudiantes as $estudiante) {
         }
     }
     $promedios_generales[$estudiante['id_estudiante']] = ($contador > 0)
-        ? (string)round($suma_promedios / $contador) : '-';
+        ? number_format($suma_promedios / $contador, 2, '.', '') : '-';
 
     $suma_trimestre = 0;
     $contador_trimestre = 0;
@@ -555,15 +555,21 @@ foreach ($estudiantes as $estudiante) {
 }
 // Posiciones
 $promedios_ordenados = $promedios_generales;
-arsort($promedios_ordenados);
+uasort($promedios_ordenados, static function ($a, $b) {
+    $valorA = is_numeric($a) ? (float)$a : -1;
+    $valorB = is_numeric($b) ? (float)$b : -1;
+
+    if ($valorA === $valorB) {
+        return 0;
+    }
+
+    return $valorA < $valorB ? 1 : -1;
+});
 $posiciones = [];
 $pos_actual = 1;
-$prom_anterior = null;
 foreach ($promedios_ordenados as $id_est => $prom) {
-    if ($prom_anterior !== null && $prom < $prom_anterior)
-        $pos_actual++;
     $posiciones[$id_est] = $pos_actual;
-    $prom_anterior = $prom;
+    $pos_actual++;
 }
 $estudiantes_ordenados = $estudiantes;
 ?>
@@ -1122,14 +1128,14 @@ $estudiantes_ordenados = $estudiantes;
 
         body.dark-mode .centralizador-table tbody tr.top-performer-row td.number-cell,
         body.dark-mode .centralizador-table tbody tr.top-performer-row td.position-cell,
-        body-dark-mode .centralizador-table tbody tr.top-performer-row td.student-name {
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.student-name {
             background: rgba(134, 239, 172, 0.55) !important;
             color: #064e3b !important;
             box-shadow: 1px 0 0 rgba(134, 239, 172, 0.4) !important;
         }
 
         body.dark-mode .centralizador-table tbody tr.top-performer-row td.average-cell,
-        body-dark-mode .centralizador-table tbody tr.top-performer-row td.final-average {
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.final-average {
             background: rgba(134, 239, 172, 0.55) !important;
             color: #064e3b !important;
         }
@@ -1244,6 +1250,62 @@ $estudiantes_ordenados = $estudiantes;
             background: #e9ecef !important;
             z-index: 25;
             box-shadow: 1px 0 0 #cbd5e1;
+        }
+
+        .centralizador-table tbody tr.top-performer-row td,
+        .centralizador-table tbody tr.top-performer-row td:nth-child(1),
+        .centralizador-table tbody tr.top-performer-row td:nth-child(2),
+        .centralizador-table tbody tr.top-performer-row td:nth-child(3),
+        .centralizador-table tbody tr.top-performer-row td.average-cell,
+        .centralizador-table tbody tr.top-performer-row td.final-average,
+        .centralizador-table tbody tr.top-performer-row td.nota-baja,
+        .centralizador-table tbody tr.top-performer-row td.materia-extra {
+            background: #dcfce7 !important;
+            color: #14532d !important;
+            box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.28) !important;
+        }
+
+        .centralizador-table tbody tr.top-performer-row td.position-cell {
+            background: #16a34a !important;
+            color: #ffffff !important;
+            font-weight: 800;
+            font-size: 1rem;
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+            box-shadow: inset 0 0 0 2px #15803d, 1px 0 0 rgba(22, 163, 74, 0.35) !important;
+        }
+
+        .centralizador-table tbody tr.top-performer-row td.number-cell,
+        .centralizador-table tbody tr.top-performer-row td.student-name,
+        .centralizador-table tbody tr.top-performer-row td.final-average {
+            background: #bbf7d0 !important;
+            color: #14532d !important;
+            font-weight: 800;
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td:nth-child(1),
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td:nth-child(2),
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td:nth-child(3),
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.average-cell,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.final-average,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.nota-baja,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.materia-extra {
+            background: #064e3b !important;
+            color: #dcfce7 !important;
+            box-shadow: inset 0 0 0 1px rgba(134, 239, 172, 0.32) !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.position-cell {
+            background: #22c55e !important;
+            color: #052e16 !important;
+            box-shadow: inset 0 0 0 2px #86efac, 1px 0 0 rgba(134, 239, 172, 0.45) !important;
+        }
+
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.number-cell,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.student-name,
+        body.dark-mode .centralizador-table tbody tr.top-performer-row td.final-average {
+            background: #166534 !important;
+            color: #ecfdf5 !important;
         }
 
         /* Responsive para diferentes tamaños de pantalla */

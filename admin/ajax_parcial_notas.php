@@ -478,9 +478,9 @@ if ($method === 'POST') {
         json_response([
             'success' => true,
             'data' => [
-                'parcial_formatted' => $calificacionParcial !== null ? number_format((float)$calificacionParcial, 2) : '--',
+                'parcial_formatted' => $calificacionParcial !== null ? (string)round((float)$calificacionParcial) : '--',
                 'es_nota_baja' => $calificacionParcial !== null ? ((float)$calificacionParcial < 51.0) : false,
-                'promedio_materia_formatted' => $promedioMateria !== null ? number_format($promedioMateria, 2) : null,
+                'promedio_materia_formatted' => $promedioMateria !== null ? (string)round($promedioMateria) : null,
                 'autoevaluacion' => $notaTrimestral['autoevaluacion'],
                 'nota_extra' => $notaTrimestral['nota_extra'],
             ],

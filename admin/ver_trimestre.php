@@ -270,7 +270,7 @@ foreach ($stmt_calificaciones->fetchAll(PDO::FETCH_ASSOC) as $filaCalificacion) 
     $idEstudiante = (int)$filaCalificacion['id_estudiante'];
     $idMateria = (int)$filaCalificacion['id_materia'];
     $parcial = (int)$filaCalificacion['parcial'];
-    $calificacionesParciales[$idEstudiante][$idMateria][$parcial] = number_format((float)$filaCalificacion['calificacion'], 2);
+    $calificacionesParciales[$idEstudiante][$idMateria][$parcial] = (string)round((float)$filaCalificacion['calificacion']);
 }
 
 foreach ($estudiantes as $estudiante) {
@@ -330,7 +330,7 @@ foreach ($estudiantes as $estudiante) {
                     $cont++;
                 }
             }
-            $calificacionesParciales[$estudiante['id_estudiante']][$idPadre][$parcial] = $cont > 0 ? number_format($suma / $cont, 2) : '';
+            $calificacionesParciales[$estudiante['id_estudiante']][$idPadre][$parcial] = $cont > 0 ? (string)round($suma / $cont) : '';
         }
 
         foreach ($padre['hijas'] as $hija) {
@@ -1057,8 +1057,8 @@ foreach ($estudiantes as $estudiante) {
                         <i class="bi bi-moon-stars"></i>
                         <span>Vista nocturna</span>
                     </button>
-                    <a href="exportar_excel.php?id=<?= $id_curso ?>&trimestre=<?= $trimestre ?>" class="btn btn-success btn-sm">
-                        <i class="bi bi-file-excel"></i> Excel
+                    <a href="exportar_excel_anual.php?id=<?= $id_curso ?>&v=3t" class="btn btn-success btn-sm">
+                        <i class="bi bi-file-excel"></i> Excel 3 trimestres
                     </a>
                 </div>
             </div>
