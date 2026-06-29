@@ -22,6 +22,15 @@ if ($id_curso <= 0) {
     exit('ID de curso invalido.');
 }
 
+$modoV2 = ($_GET['modo_calculo'] ?? '') === 'v2';
+
+if (!function_exists('valor_excel_entero')) {
+    function valor_excel_entero(float $valor, bool $truncar = false): int
+    {
+        return $truncar ? (int)$valor : (int)round($valor);
+    }
+}
+
 if (!function_exists('determinar_prioridad_gestion')) {
     function determinar_prioridad_gestion(?string $gestionValor, string $gestionActual, ?string $gestionAlternativa): int
     {
@@ -51,7 +60,8 @@ function calcular_datos_trimestre_excel(
     array $materiasPadreConHijas,
     array $materias,
     string $gestionActual,
-    ?string $gestionAlternativa
+    ?string $gestionAlternativa,
+    bool $modoV2 = false
 ): array {
     $idsMaterias = array_map('intval', array_column($todasMaterias, 'id_materia'));
     $calificacionesParciales = [];
@@ -131,7 +141,10 @@ function calcular_datos_trimestre_excel(
             $prioridad = determinar_prioridad_gestion($fila['gestion'] ?? null, $gestionActual, $gestionAlternativa);
             if (!isset($prioridadParcial[$idEstudiante][$idMateria][$parcial]) || $prioridad > $prioridadParcial[$idEstudiante][$idMateria][$parcial]) {
                 $prioridadParcial[$idEstudiante][$idMateria][$parcial] = $prioridad;
-                $calificacionesParciales[$idEstudiante][$idMateria][$parcial] = (float)$fila['calificacion'];
+                $notaParcial = (float)$fila['calificacion'];
+                $calificacionesParciales[$idEstudiante][$idMateria][$parcial] = $modoV2
+                    ? ($notaParcial * 31.6) / 95
+                    : $notaParcial;
             }
         }
     }
@@ -146,7 +159,11 @@ function calcular_datos_trimestre_excel(
             });
 
             if (!empty($parcialesValidos)) {
-                $promediosMateriaTrimestre[$idEstudiante][$idMateria] = round(array_sum(array_map('floatval', $parcialesValidos)) / count($parcialesValidos));
+                if ($modoV2) {
+                    $promediosMateriaTrimestre[$idEstudiante][$idMateria] = array_sum(array_map('floatval', $parcialesValidos));
+                } else {
+                    $promediosMateriaTrimestre[$idEstudiante][$idMateria] = round(array_sum(array_map('floatval', $parcialesValidos)) / count($parcialesValidos));
+                }
             }
         }
     }
@@ -168,7 +185,9 @@ function calcular_datos_trimestre_excel(
                 $baseNum = $tieneBase ? (float)$promedioBase : 0.0;
                 $autoNum = $tieneAuto ? (float)$autoVal : 0.0;
                 $extraNum = $tieneExtra ? (float)$extraVal : 0.0;
-                $promediosMateriaTrimestre[$idEstudiante][$idMateria] = round($baseNum + $autoNum + $extraNum);
+                $promediosMateriaTrimestre[$idEstudiante][$idMateria] = $modoV2
+                    ? ($baseNum + $autoNum + $extraNum)
+                    : round($baseNum + $autoNum + $extraNum);
             } else {
                 $promediosMateriaTrimestre[$idEstudiante][$idMateria] = '';
             }
@@ -190,7 +209,11 @@ function calcular_datos_trimestre_excel(
                         $contador++;
                     }
                 }
-                $calificacionesParciales[$idEstudiante][$idPadre][$parcial] = $contador > 0 ? round($suma / $contador) : '';
+                if ($contador > 0) {
+                    $calificacionesParciales[$idEstudiante][$idPadre][$parcial] = $modoV2 ? ($suma / $contador) : round($suma / $contador);
+                } else {
+                    $calificacionesParciales[$idEstudiante][$idPadre][$parcial] = '';
+                }
             }
 
             $sumatoriaPromediosHijas = 0;
@@ -202,7 +225,13 @@ function calcular_datos_trimestre_excel(
                     $contadorHijas++;
                 }
             }
-            $promediosMateriaTrimestre[$idEstudiante][$idPadre] = $contadorHijas > 0 ? round($sumatoriaPromediosHijas / $contadorHijas) : '';
+            if ($contadorHijas > 0) {
+                $promediosMateriaTrimestre[$idEstudiante][$idPadre] = $modoV2
+                    ? ($sumatoriaPromediosHijas / $contadorHijas)
+                    : round($sumatoriaPromediosHijas / $contadorHijas);
+            } else {
+                $promediosMateriaTrimestre[$idEstudiante][$idPadre] = '';
+            }
         }
     }
 
@@ -221,7 +250,11 @@ function calcular_datos_trimestre_excel(
                 $contador++;
             }
         }
-        $promediosTrimestre[$idEstudiante] = $contador > 0 ? round($suma / $contador) : '';
+        if ($contador > 0) {
+            $promediosTrimestre[$idEstudiante] = $modoV2 ? ($suma / $contador) : round($suma / $contador);
+        } else {
+            $promediosTrimestre[$idEstudiante] = '';
+        }
     }
 
     return [
@@ -316,7 +349,8 @@ try {
             $materiasPadreConHijas,
             $materias,
             $gestionActual,
-            $gestionAlternativa
+            $gestionAlternativa,
+            $modoV2
         );
     }
 
@@ -372,7 +406,7 @@ try {
         $sheet->getRowDimension(1)->setRowHeight(30);
 
         $sheet->mergeCells("A2:{$ultimaColumna}2");
-        $sheet->setCellValue('A2', 'CENTRALIZADOR - TRIMESTRE ' . $trimestre);
+        $sheet->setCellValue('A2', ($modoV2 ? 'CENTRALIZADOR V2 - TRIMESTRE ' : 'CENTRALIZADOR - TRIMESTRE ') . $trimestre);
         $sheet->getStyle('A2')->applyFromArray($titleStyle);
         $sheet->getStyle('A2')->getFont()->setSize(13)->setColor(new Color('000000'));
         $sheet->getRowDimension(2)->setRowHeight(22);
@@ -440,7 +474,7 @@ try {
                     $cell = "{$col}{$row}";
                     $nota = $datos['parciales'][$idEstudiante][$idMateria][$parcial] ?? '';
                     if ($nota !== '' && $nota !== null) {
-                        $sheet->setCellValue($cell, round((float)$nota));
+                        $sheet->setCellValue($cell, valor_excel_entero((float)$nota, $modoV2));
                         $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('0');
                         if ((float)$nota < 51) {
                             $sheet->getStyle($cell)->applyFromArray($lowGradeStyle);
@@ -454,7 +488,7 @@ try {
                 $cell = "{$col}{$row}";
                 $promedioMateria = $datos['promedios_materia'][$idEstudiante][$idMateria] ?? '';
                 if ($promedioMateria !== '' && $promedioMateria !== null) {
-                    $sheet->setCellValue($cell, round((float)$promedioMateria));
+                    $sheet->setCellValue($cell, valor_excel_entero((float)$promedioMateria, $modoV2));
                     $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('0');
                     if ((float)$promedioMateria < 51) {
                         $sheet->getStyle($cell)->applyFromArray($lowGradeStyle);
@@ -467,7 +501,7 @@ try {
             $cellPromedio = $colPromedio . $row;
             $promedioTrimestre = $datos['promedios_trimestre'][$idEstudiante] ?? '';
             if ($promedioTrimestre !== '' && $promedioTrimestre !== null) {
-                $sheet->setCellValue($cellPromedio, round((float)$promedioTrimestre));
+                $sheet->setCellValue($cellPromedio, valor_excel_entero((float)$promedioTrimestre, $modoV2));
                 $sheet->getStyle($cellPromedio)->getNumberFormat()->setFormatCode('0');
             }
             $sheet->getStyle($cellPromedio)->applyFromArray($averageStyle);
@@ -495,7 +529,7 @@ try {
     $sheetResumen->getRowDimension(1)->setRowHeight(30);
 
     $sheetResumen->mergeCells("A2:{$ultimaColumnaResumen}2");
-    $sheetResumen->setCellValue('A2', 'RESUMEN ANUAL');
+    $sheetResumen->setCellValue('A2', $modoV2 ? 'RESUMEN ANUAL V2' : 'RESUMEN ANUAL');
     $sheetResumen->getStyle('A2')->applyFromArray($titleStyle);
     $sheetResumen->getStyle('A2')->getFont()->setSize(13)->setColor(new Color('000000'));
     $sheetResumen->getRowDimension(2)->setRowHeight(22);
@@ -546,13 +580,13 @@ try {
             $cell = $col . $rowResumen;
             $promedioTrimestre = $datosPorTrimestre[$trimestre]['promedios_trimestre'][$idEstudiante] ?? '';
             if ($promedioTrimestre !== '' && $promedioTrimestre !== null) {
-                $notaTrim = round((float)$promedioTrimestre);
+                $notaTrim = valor_excel_entero((float)$promedioTrimestre, $modoV2);
                 $sheetResumen->setCellValue($cell, $notaTrim);
                 $sheetResumen->getStyle($cell)->getNumberFormat()->setFormatCode('0');
                 if ($notaTrim < 51) {
                     $sheetResumen->getStyle($cell)->applyFromArray($lowGradeStyle);
                 }
-                $sumatoriaAnual += $notaTrim;
+                $sumatoriaAnual += (float)$promedioTrimestre;
                 $contadorAnual++;
             }
             $sheetResumen->getStyle($cell)->applyFromArray($cellStyle);
@@ -560,7 +594,7 @@ try {
 
         $cellAnual = 'F' . $rowResumen;
         if ($contadorAnual > 0) {
-            $notaAnual = round($sumatoriaAnual / $contadorAnual);
+            $notaAnual = valor_excel_entero($sumatoriaAnual / $contadorAnual, $modoV2);
             $sheetResumen->setCellValue($cellAnual, $notaAnual);
             $sheetResumen->getStyle($cellAnual)->getNumberFormat()->setFormatCode('0');
             if ($notaAnual < 51) {
@@ -580,7 +614,8 @@ try {
     }
 
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header("Content-Disposition: attachment;filename=\"Centralizador_{$nombreArchivoCurso}_3_Trimestres.xlsx\"");
+    $sufijoArchivo = $modoV2 ? '3_Trimestres_V2' : '3_Trimestres';
+    header("Content-Disposition: attachment;filename=\"Centralizador_{$nombreArchivoCurso}_{$sufijoArchivo}.xlsx\"");
     header('Cache-Control: max-age=0');
 
     $writer = new Xlsx($spreadsheet);

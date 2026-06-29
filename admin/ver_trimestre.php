@@ -1060,6 +1060,9 @@ foreach ($estudiantes as $estudiante) {
                     <a href="exportar_excel_anual.php?id=<?= $id_curso ?>&v=3t" class="btn btn-success btn-sm">
                         <i class="bi bi-file-excel"></i> Excel 3 trimestres
                     </a>
+                    <a href="exportar_excel_anual_v2.php?id=<?= $id_curso ?>" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-file-excel"></i> Excel v2
+                    </a>
                 </div>
             </div>
         </div>
