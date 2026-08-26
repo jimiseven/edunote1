@@ -550,16 +550,10 @@ try {
     // Table may not exist yet — ignore
 }
 
-$trimestreEditableParaVistaTrimestral = false;
-if ($vistaActual === 'trimestral') {
-    $parcialesTrim = $periodosPorTrimestre[$trimestreSeleccionado] ?? [];
-    foreach ($parcialesTrim as $p) {
-        $activo = (int)$p['esta_activo'] === 1 &&
-                  (empty($p['fecha_inicio']) || $hoy >= $p['fecha_inicio']) &&
-                  (empty($p['fecha_fin']) || $hoy <= $p['fecha_fin']);
-        if ($activo) { $trimestreEditableParaVistaTrimestral = true; break; }
-    }
-}
+// La autoevaluación y la nota extra son valores trimestrales; su edición no debe
+// depender de qué parciales estén habilitados, por lo que la vista trimestral
+// queda siempre habilitada para cargar estos dos campos.
+$trimestreEditableParaVistaTrimestral = true;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -580,7 +574,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            (empty($periodoValidado['fecha_inicio']) || $hoy >= $periodoValidado['fecha_inicio']) &&
                            (empty($periodoValidado['fecha_fin']) || $hoy <= $periodoValidado['fecha_fin']);
 
-        if (!$periodoEditable) {
+        // La vista trimestral solo guarda autoevaluación y nota extra, valores que no
+        // dependen de la habilitación de los parciales, por lo que no debe bloquearse aquí.
+        $esGuardadoTrimestral = isset($_POST['guardar_trimestral']);
+
+        if (!$periodoEditable && !$esGuardadoTrimestral) {
             if ($modalidadCarga === 'trimestres') {
                 throw new Exception("El trimestre $trimestreSeleccionado no está habilitado para carga de notas");
             }

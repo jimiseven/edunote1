@@ -1,4 +1,2 @@
-# Taste (Continuously Learned by [CommandCode][cmd])
-
-[cmd]: https://commandcode.ai/
-
+- Prefers "yolo" mode: skip confirmations and proceed autonomously rather than asking before acting. Confidence: 0.8
+- Communicates in Spanish and expects responses in Spanish. Confidence: 0.8
