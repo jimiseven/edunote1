@@ -3,7 +3,12 @@ session_start();
 require_once '../config/database.php';
 
 // Verificar permisos de administrador
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], true)) {
+if (!isset($_SESSION['user_id']) || (int)($_SESSION['user_role'] ?? 0) !== 1) {
+    if (isset($_SESSION['user_id']) && (int)($_SESSION['user_role'] ?? 0) === 4) {
+        $_SESSION['error'] = 'El usuario invitado no puede eliminar estudiantes.';
+        header('Location: estudiantes.php');
+        exit();
+    }
     header('Location: ../index.php');
     exit();
 }

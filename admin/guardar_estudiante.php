@@ -3,7 +3,7 @@ session_start();
 require_once '../config/database.php';
 
 // Solo para administrador
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['user_role'], [1, 4], true)) {
+if (!isset($_SESSION['user_id']) || (int)($_SESSION['user_role'] ?? 0) !== 1) {
     header('Location: ../index.php');
     exit();
 }
