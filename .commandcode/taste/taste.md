@@ -1,2 +1,5 @@
-- Prefers "yolo" mode: skip confirmations and proceed autonomously rather than asking before acting. Confidence: 0.8
+- Prefers "yolo" mode: skip confirmations and proceed autonomously rather than asking before acting. Confidence: 0.9
 - Communicates in Spanish and expects responses in Spanish. Confidence: 0.8
+- Prefers reusing existing libraries and code patterns already present in the project rather than introducing new ones. Confidence: 0.8
+- When improving/redesigning a UI, prefers preserving the existing color palette and design model/conventions and only reorganizing the layout for clarity. Confidence: 0.9
+- Prefers data tables to use the maximum available screen space: full-height layout with a fixed top header (title, subtitle, search, buttons) and the table expanding to fill the remaining height with its own internal scroll and sticky column headers. Confidence: 0.7
