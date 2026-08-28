@@ -1,0 +1,109 @@
+-- ========================================================
+-- SCRIPT ÚNICO PARA CREAR/ACTUALIZAR LA TABLA "dias_no_lectivos"
+-- (Días en los que NO se controla asistencia - soporta rangos)
+-- ========================================================
+-- INSTRUCCIONES:
+-- 1) Abrí cPanel -> phpMyAdmin.
+-- 2) Seleccioná la base de datos de producción (ej: silasmic_28ago).
+-- 3) Pestaña "Importar" o pestaña "SQL".
+-- 4) Pegá TODO este archivo (o importalo) y ejecutá.
+-- 5) Debe terminar sin errores. Si la tabla no existía, la crea.
+--    Si ya existía, la deja con el formato de rango (fecha_inicio/fecha_fin).
+-- Este script es re-ejecutable (idempotente): no da error si se corre dos veces.
+-- ========================================================
+
+-- 1) Crea la tabla si no existe (formato de rango).
+CREATE TABLE IF NOT EXISTS `dias_no_lectivos` (
+  `id_dia_no_lectivo` int(11) NOT NULL,
+  `fecha_inicio` date NOT NULL COMMENT 'Inicio del día o rango sin asistencia',
+  `fecha_fin` date NOT NULL COMMENT 'Fin del rango sin asistencia (igual a fecha_inicio si es un solo día)',
+  `motivo` varchar(150) NOT NULL DEFAULT '' COMMENT 'Descripción del motivo (vacación, feriado, etc.)',
+  `estado` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1=activo (suspende asistencia), 0=inactivo',
+  `creado_por` int(11) DEFAULT NULL COMMENT 'FK a personal',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 2) Convierte el esquema antiguo (columna "fecha") al nuevo de rango, si aplica.
+SET @col_fecha := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND COLUMN_NAME = 'fecha');
+SET @sql := IF(@col_fecha > 0,
+    'ALTER TABLE `dias_no_lectivos` CHANGE COLUMN `fecha` `fecha_inicio` date NOT NULL COMMENT ''Inicio del día o rango sin asistencia'', ADD COLUMN `fecha_fin` date NOT NULL DEFAULT ''1970-01-01'' COMMENT ''Fin del rango sin asistencia'' AFTER `fecha_inicio`;',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 3) Los registros existentes quedan como día puntual (inicio = fin).
+UPDATE `dias_no_lectivos` SET `fecha_fin` = `fecha_inicio` WHERE `fecha_fin` = '1970-01-01';
+
+-- 4) Índices (solo si no existen, para que sea re-ejecutable sin errores).
+SET @idx := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND INDEX_NAME = 'PRIMARY');
+SET @sql := IF(@idx = 0,
+    'ALTER TABLE `dias_no_lectivos` ADD PRIMARY KEY (`id_dia_no_lectivo`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND INDEX_NAME = 'uk_dia_no_lectivo_rango');
+SET @sql := IF(@idx = 0,
+    'ALTER TABLE `dias_no_lectivos` ADD UNIQUE KEY `uk_dia_no_lectivo_rango` (`fecha_inicio`,`fecha_fin`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND INDEX_NAME = 'idx_dia_no_lectivo_estado');
+SET @sql := IF(@idx = 0,
+    'ALTER TABLE `dias_no_lectivos` ADD KEY `idx_dia_no_lectivo_estado` (`estado`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND INDEX_NAME = 'idx_dia_no_lectivo_rango_estado');
+SET @sql := IF(@idx = 0,
+    'ALTER TABLE `dias_no_lectivos` ADD KEY `idx_dia_no_lectivo_rango_estado` (`fecha_inicio`,`fecha_fin`,`estado`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND INDEX_NAME = 'fk_dias_no_lectivos_personal');
+SET @sql := IF(@idx = 0,
+    'ALTER TABLE `dias_no_lectivos` ADD KEY `fk_dias_no_lectivos_personal` (`creado_por`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 5) AUTO_INCREMENT (idempotente).
+ALTER TABLE `dias_no_lectivos` MODIFY `id_dia_no_lectivo` int(11) NOT NULL AUTO_INCREMENT;
+
+-- 6) Clave foránea (solo si no existe Y la tabla `personal` existe).
+SET @fk := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'dias_no_lectivos' AND CONSTRAINT_NAME = 'fk_dias_no_lectivos_personal');
+SET @tabla_personal := (SELECT COUNT(*) FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'personal');
+SET @sql := IF(@fk = 0 AND @tabla_personal > 0,
+    'ALTER TABLE `dias_no_lectivos` ADD CONSTRAINT `fk_dias_no_lectivos_personal` FOREIGN KEY (`creado_por`) REFERENCES `personal` (`id_personal`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 7) Limpieza de variables temporales.
+SET @col_fecha := NULL;
+SET @idx := NULL;
+SET @fk := NULL;
+SET @tabla_personal := NULL;
+SET @sql := NULL;
+
+-- ========================================================
+-- FIN DEL SCRIPT
+-- ========================================================
+-- ALCANCE DE ESTE CAMBIO (confirmación):
+-- - Crea/actualiza SOLO la tabla `dias_no_lectivos`.
+-- - No toca ninguna otra tabla ni datos existentes.
+-- - Solo afecta a los días marcados desde la sección "Días No Lectivos"
+--   (actualmente marcada como beta): esos días NO se controlará asistencia.
+-- - Soporta un solo día (fecha_inicio = fecha_fin) o un rango
+--   (fecha_inicio a fecha_fin).
+-- - Los días que NO estén marcados siguen funcionando igual que antes.
+-- - No elimina ni modifica registros de asistencia ya existentes.
+-- ADVERTENCIA:
+-- - La sección "Días No Lectivos" está en BETA. Se recomienda no usarla
+--   hasta validar el comportamiento en producción.
+-- ========================================================

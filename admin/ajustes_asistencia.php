@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/dias_no_lectivos.php';
 
 if (!isset($_SESSION['user_id']) || !in_array((int)($_SESSION['user_role'] ?? 0), [1, 4], true)) {
     header('Location: ../index.php');
@@ -259,6 +260,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'action' => $action,
             ];
         }
+
+        if ($action === 'crear_dia_no_lectivo') {
+            $fechaInicio = trim((string)($_POST['fecha_dia_no_lectivo'] ?? ''));
+            $fechaFin = trim((string)($_POST['fecha_fin_dia_no_lectivo'] ?? ''));
+            $motivo = trim((string)($_POST['motivo_dia_no_lectivo'] ?? ''));
+            $creadoPor = (int)$_SESSION['user_id'];
+
+            if ($fechaInicio === '') {
+                throw new RuntimeException('Debe seleccionar la fecha inicial.');
+            }
+            if ($fechaFin === '') {
+                $fechaFin = $fechaInicio;
+            }
+            if ($fechaFin < $fechaInicio) {
+                throw new RuntimeException('La fecha fin no puede ser anterior a la fecha inicio.');
+            }
+
+            $stmtExiste = $conn->prepare("SELECT id_dia_no_lectivo, motivo FROM dias_no_lectivos WHERE fecha_inicio = ? AND fecha_fin = ? LIMIT 1");
+            $stmtExiste->execute([$fechaInicio, $fechaFin]);
+            $existente = $stmtExiste->fetch(PDO::FETCH_ASSOC);
+
+            if ($existente) {
+                $stmtUpd = $conn->prepare("UPDATE dias_no_lectivos SET motivo = ?, estado = 1, creado_por = ? WHERE id_dia_no_lectivo = ?");
+                $stmtUpd->execute([$motivo !== '' ? $motivo : $existente['motivo'], $creadoPor, (int)$existente['id_dia_no_lectivo']]);
+                $idDia = (int)$existente['id_dia_no_lectivo'];
+                $nuevo = false;
+            } else {
+                $stmtIns = $conn->prepare("INSERT INTO dias_no_lectivos (fecha_inicio, fecha_fin, motivo, estado, creado_por) VALUES (?, ?, ?, 1, ?)");
+                $stmtIns->execute([$fechaInicio, $fechaFin, $motivo, $creadoPor]);
+                $idDia = (int)$conn->lastInsertId();
+                $nuevo = true;
+            }
+
+            $_SESSION['ajustes_asistencia_flash'] = [
+                'type' => 'success',
+                'message' => 'Día no lectivo ' . ($nuevo ? 'creado' : 'actualizado') . ' correctamente.'
+            ];
+            $ajaxPayload = [
+                'ok' => true,
+                'message' => 'Día no lectivo guardado.',
+                'action' => $action,
+                'id_dia_no_lectivo' => $idDia,
+            ];
+        }
+
+        if ($action === 'quitar_dia_no_lectivo') {
+            $idDia = (int)($_POST['id_dia_no_lectivo'] ?? 0);
+            if ($idDia <= 0) {
+                throw new RuntimeException('Día no lectivo inválido.');
+            }
+
+            $conn->prepare("DELETE FROM dias_no_lectivos WHERE id_dia_no_lectivo = ?")->execute([$idDia]);
+
+            $_SESSION['ajustes_asistencia_flash'] = [
+                'type' => 'success',
+                'message' => 'Día no lectivo eliminado correctamente.'
+            ];
+            $ajaxPayload = [
+                'ok' => true,
+                'message' => 'Día no lectivo eliminado.',
+                'action' => $action,
+                'id_dia_no_lectivo' => $idDia,
+            ];
+        }
     } catch (Throwable $e) {
         if ($conn->inTransaction()) {
             $conn->rollBack();
@@ -344,6 +409,24 @@ if ($tablaDiasTurnoExiste) {
             $diasTardeCurso[$cid][$dia] = true;
         }
     }
+}
+
+// Días no lectivos registrados (días en los que no se toma asistencia)
+$diasNoLectivos = [];
+$tablaDiasNoLectivosExiste = false;
+try {
+    $stmtTblDNL = $conn->prepare("SHOW TABLES LIKE 'dias_no_lectivos'");
+    $stmtTblDNL->execute();
+    $tablaDiasNoLectivosExiste = (bool)$stmtTblDNL->fetchColumn();
+} catch (Throwable $e) {
+    $tablaDiasNoLectivosExiste = false;
+}
+if ($tablaDiasNoLectivosExiste) {
+    $diasNoLectivos = $conn->query("SELECT dni.id_dia_no_lectivo, dni.fecha_inicio, dni.fecha_fin, dni.motivo, dni.estado, dni.created_at,
+            CONCAT(p.nombres, ' ', p.apellidos) AS creado_por_nombre
+        FROM dias_no_lectivos dni
+        LEFT JOIN personal p ON p.id_personal = dni.creado_por
+        ORDER BY dni.fecha_inicio DESC, dni.fecha_fin DESC")->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 <!DOCTYPE html>
@@ -662,6 +745,99 @@ if ($tablaDiasTurnoExiste) {
                         </div>
                     </div>
                     </div>
+
+                    <div class="col-12">
+                        <div class="section-block">
+                            <div class="section-title"><span class="step">5</span>Días No Lectivos <span class="badge bg-warning text-dark align-middle ms-1">beta, aún no usar</span></div>
+                            <div class="section-help">Registra los días en los que <strong>no se tomará asistencia</strong> (vacaciones, feriados, suspensión de actividades). Se aplica a todos los cursos y bloquea el registro ese día.</div>
+                            <div class="card mb-4">
+                                <div class="card-header"><strong>Agregar día no lectivo</strong></div>
+                                <div class="card-body">
+                                    <?php if (!$tablaDiasNoLectivosExiste): ?>
+                                        <div class="alert alert-warning mb-0">
+                                            No existe la tabla <code>dias_no_lectivos</code>. Ejecuta la migración <code>bds/26 ago/dias_no_lectivos.sql</code> para habilitar esta funcionalidad.
+                                        </div>
+                                    <?php else: ?>
+                                    <form method="POST" action="" class="row g-3 js-async-form" data-async-action="crear_dia_no_lectivo">
+                                        <input type="hidden" name="action" value="crear_dia_no_lectivo">
+
+                                        <div class="col-md-4">
+                                            <label class="form-label">Fecha inicio</label>
+                                            <input type="date" name="fecha_dia_no_lectivo" class="form-control" required>
+                                        </div>
+
+                                        <div class="col-md-4">
+                                            <label class="form-label">Fecha fin <small class="text-muted">(opcional)</small></label>
+                                            <input type="date" name="fecha_fin_dia_no_lectivo" class="form-control">
+                                        </div>
+
+                                        <div class="col-md-2">
+                                            <label class="form-label">Motivo</label>
+                                            <input type="text" name="motivo_dia_no_lectivo" class="form-control" placeholder="Ej: Vacación" maxlength="150">
+                                        </div>
+
+                                        <div class="col-md-2 d-flex align-items-end">
+                                            <button type="submit" class="btn btn-primary w-100">Agregar</button>
+                                        </div>
+                                    </form>
+
+                                    <hr>
+
+                                    <div class="table-responsive">
+                                        <table class="table table-striped mb-0 align-middle">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Rango</th>
+                                                    <th>Motivo</th>
+                                                    <th>Registrado por</th>
+                                                    <th>Registrado en</th>
+                                                    <th style="width: 140px;">Acción</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php if (empty($diasNoLectivos)): ?>
+                                                    <tr>
+                                                        <td colspan="5" class="text-center py-4">No hay días no lectivos registrados.</td>
+                                                    </tr>
+                                                <?php else: ?>
+                                                    <?php foreach ($diasNoLectivos as $dni):
+                                                        $fInicio = (string)($dni['fecha_inicio'] ?? '');
+                                                        $fFin = (string)($dni['fecha_fin'] ?? $fInicio);
+                                                        $esRango = ($fInicio !== '' && $fFin !== '' && $fFin !== $fInicio);
+                                                        $incluyeHoy = ($fInicio !== '' && $fFin !== '' && $hoy >= $fInicio && $hoy <= $fFin);
+                                                    ?>
+                                                        <tr>
+                                                            <td>
+                                                                <strong><?= htmlspecialchars(date('d/m/Y', strtotime($fInicio))) ?></strong>
+                                                                <?php if ($esRango): ?>
+                                                                    → <strong><?= htmlspecialchars(date('d/m/Y', strtotime($fFin))) ?></strong>
+                                                                    <span class="text-muted"> (<?= (int)((strtotime($fFin) - strtotime($fInicio)) / 86400) + 1 ?> días)</span>
+                                                                <?php endif; ?>
+                                                            </td>
+                                                            <td><?= htmlspecialchars($dni['motivo'] !== '' ? $dni['motivo'] : '—') ?></td>
+                                                            <td><?= htmlspecialchars((string)($dni['creado_por_nombre'] ?? '') ?: '—') ?></td>
+                                                            <td><?= htmlspecialchars((string)$dni['created_at']) ?></td>
+                                                            <td>
+                                                                <?php if ($incluyeHoy): ?>
+                                                                    <span class="badge bg-danger mb-2 d-inline-block">HOY (sin asistencia)</span>
+                                                                <?php endif; ?>
+                                                                <form method="POST" action="" class="d-inline js-async-form" data-async-action="quitar_dia_no_lectivo" data-remove-on-success="tr">
+                                                                    <input type="hidden" name="action" value="quitar_dia_no_lectivo">
+                                                                    <input type="hidden" name="id_dia_no_lectivo" value="<?= (int)$dni['id_dia_no_lectivo'] ?>">
+                                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Quitar</button>
+                                                                </form>
+                                                            </td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
@@ -867,6 +1043,17 @@ if ($tablaDiasTurnoExiste) {
 
                     if (json.ok && (form.dataset.asyncAction || '') === 'toggle_estado_global') {
                         updateToggleFormState(form, Number(json.estado_nuevo));
+                    }
+
+                    if (json.ok && (form.dataset.asyncAction || '') === 'quitar_dia_no_lectivo') {
+                        const row = form.closest('tr');
+                        const tbody = row ? row.parentElement : null;
+                        if (form.dataset.removeOnSuccess === 'tr' && row) {
+                            row.remove();
+                        }
+                        if (tbody && tbody.querySelectorAll('tr').length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4">No hay días no lectivos registrados.</td></tr>';
+                        }
                     }
                 } catch (err) {
                     showResult(false, 'No se pudo procesar la solicitud. Verifique la conexion e intente nuevamente.');

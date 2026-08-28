@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/asistencia_auth.php';
+require_once '../includes/dias_no_lectivos.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
@@ -590,6 +591,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $hoy = date('Y-m-d');
         $hora_actual = date('H:i:s');
 
+        // Bloquear registro si hoy es un dia no lectivo (salvo excepcion manual del admin)
+        $permitirSobreescrituraManual = (($isAdminAsistencia) && (($_POST['forzar_dia_no_lectivo'] ?? '') === '1'));
+        if (dias_no_lectivos_fecha_no_habilitada($conn, $hoy) && !$permitirSobreescrituraManual) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Hoy es un día no lectivo y no se registra asistencia.'
+            ]);
+            exit();
+        }
+
         try {
             $puntualidad = asistencia_resolver_turno_y_puntualidad($conn, $idCursoEscaneado, $id_estudiante, $hoy, $hora_actual, $turnoForzado);
         } catch (Throwable $e) {
@@ -629,19 +640,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
 
             // Registrar asistencia
+            $tipoRegistro = $permitirSobreescrituraManual ? 'MANUAL' : 'QR';
             $stmt = $conn->prepare("INSERT INTO asistencia
-                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
-                VALUES (?, ?, ?, ?, 'QR', ?, ?, ?)");
+                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min, registrado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, " . ($permitirSobreescrituraManual ? '?' : 'NULL') . ")");
             try {
-                $insertOk = $stmt->execute([
+                $paramsRegistro = [
                     $id_estudiante,
                     $hoy,
                     $puntualidad['turno'],
                     $hora_actual,
+                    $tipoRegistro,
                     $puntualidad['estado_puntualidad'],
                     $puntualidad['hora_ingreso_programada'],
                     $puntualidad['tolerancia_min']
-                ]);
+                ];
+                if ($permitirSobreescrituraManual) {
+                    $paramsRegistro[] = $userId;
+                }
+                $insertOk = $stmt->execute($paramsRegistro);
 
                 if ($insertOk) {
                     $stmt_est = $conn->prepare("SELECT nombres, apellido_paterno, apellido_materno FROM estudiantes WHERE id_estudiante = ?");
@@ -1694,6 +1711,14 @@ if ($id_curso) {
                                 <div class="manual-id-help">
                                     Usar cuando el estudiante no tenga su QR. Solo ingrese el ID del estudiante.
                                 </div>
+                                <?php if ($isAdminAsistencia): ?>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="forzarDiaNoLectivo" value="1">
+                                    <label class="form-check-label small" for="forzarDiaNoLectivo">
+                                        Registrar igual (excepción en día no lectivo)
+                                    </label>
+                                </div>
+                                <?php endif; ?>
                                 <div class="speed-tip" id="scanSpeedTip">
                                     Flujo rapido: escriba ID -> Enter -> siguiente ID.
                                 </div>
@@ -2703,7 +2728,7 @@ if ($id_curso) {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: 'action=scan_qr&qr_data=' + encodeURIComponent(payload)
+                body: 'action=scan_qr&qr_data=' + encodeURIComponent(payload) + '&forzar_dia_no_lectivo=' + (document.getElementById('forzarDiaNoLectivo') && document.getElementById('forzarDiaNoLectivo').checked ? '1' : '0')
             })
             .then(response => response.json())
             .then(renderScanResult)

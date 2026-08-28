@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/asistencia_auth.php';
+require_once '../includes/dias_no_lectivos.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php');
@@ -239,6 +240,7 @@ if (!$isAdminAsistencia && !$lectorInfo) {
 // Procesar registro de asistencia (cuando se escanea un QR)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
     $raw_qr = trim((string)$_POST['qr_data']);
+    $permitirSobreescrituraManual = (($isAdminAsistencia) && (($_POST['forzar_dia_no_lectivo'] ?? '') === '1'));
     $turnoManual = strtoupper(trim((string)($_POST['turno_manual'] ?? 'AUTO')));
     if (!in_array($turnoManual, ['AUTO', 'MANANA', 'TARDE'], true)) {
         $turnoManual = 'AUTO';
@@ -275,7 +277,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
             exit();
         }
 
+        // Bloquear registro si hoy es un dia no lectivo (vacaciones, feriados, etc.)
         $hoy = date('Y-m-d');
+        if (dias_no_lectivos_fecha_no_habilitada($conn, $hoy) && !$permitirSobreescrituraManual) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Hoy es un día no lectivo y no se registra asistencia.'
+            ]);
+            exit();
+        }
         $hora_actual = date('H:i:s');
         
         try {
@@ -317,19 +327,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['qr_data'])) {
         } else {
 
             // Registrar asistencia
+            $tipoRegistro = $permitirSobreescrituraManual ? 'MANUAL' : 'QR';
             $stmt = $conn->prepare("INSERT INTO asistencia
-                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min)
-                VALUES (?, ?, ?, ?, 'QR', ?, ?, ?)");
+                (id_estudiante, fecha, turno, hora_entrada, tipo_registro, estado_puntualidad, hora_ingreso_programada, tolerancia_min, registrado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, " . ($permitirSobreescrituraManual ? '?' : 'NULL') . ")");
             try {
-                $stmt->execute([
+                $paramsRegistro = [
                     $id_estudiante,
                     $hoy,
                     $puntualidad['turno'],
                     $hora_actual,
+                    $tipoRegistro,
                     $puntualidad['estado_puntualidad'],
                     $puntualidad['hora_ingreso_programada'],
-                    $puntualidad['tolerancia_min']
-                ]);
+                    $puntualidad['tolerancia_min'],
+                ];
+                if ($permitirSobreescrituraManual) {
+                    $paramsRegistro[] = $userId;
+                }
+                $stmt->execute($paramsRegistro);
 
                 echo json_encode([
                     'success' => true,
@@ -492,6 +508,15 @@ if ($id_curso) {
                             <strong>Turno automatico:</strong> el sistema calcula MANANA o TARDE automaticamente segun la configuracion del curso y del dia.
                         </div>
 
+                        <?php if ($isAdminAsistencia): ?>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="forzarDiaNoLectivo" value="1">
+                            <label class="form-check-label" for="forzarDiaNoLectivo">
+                                Registrar igual (excepción en día no lectivo)
+                            </label>
+                        </div>
+                        <?php endif; ?>
+
                         <!-- Scanner -->
                         <div class="scanner-container mb-4">
                             <div id="reader"></div>
@@ -580,7 +605,7 @@ if ($id_curso) {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: 'qr_data=' + encodeURIComponent(decodedText)
+                body: 'qr_data=' + encodeURIComponent(decodedText) + '&forzar_dia_no_lectivo=' + (document.getElementById('forzarDiaNoLectivo') && document.getElementById('forzarDiaNoLectivo').checked ? '1' : '0')
             })
             .then(response => response.json())
             .then(data => {

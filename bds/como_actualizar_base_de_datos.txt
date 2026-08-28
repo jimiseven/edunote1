@@ -1,0 +1,67 @@
+========================================================
+ PASOS PARA ACTUALIZAR LA BASE DE DATOS (cPanel / phpMyAdmin)
+ Aplicable a la funcionalidad "Días no lectivos" de asistencia
+========================================================
+
+1) PRIMERO: saber qué esquema tiene la tabla `dias_no_lectivos` en el servidor
+-----------------------------------------------------------------------------
+- Entrá a cPanel.
+- Sección "Bases de datos" -> "phpMyAdmin".
+- En el panel izquierdo, hacé clic en la base de datos (por defecto: wiredcom_uni3t).
+  NO sobre una tabla, sino sobre el nombre de la base.
+- Buscá la tabla `dias_no_lectivos` y hacé clic:
+   * Si NO aparece la tabla  -> la tabla aún no existe en el servidor.
+   * Si aparece -> entrá a la pestaña "Estructura" y mirá la primera columna de fecha.
+
+2) ELEGIR EL ARCHIVO SEGÚN LO QUE VISTE
+-----------------------------------------------------------------------------
+ CASO A) La tabla NO existe en el servidor
+   -> Usar el archivo:   bds/26 ago/dias_no_lectivos.sql
+      (este ya trae el formato por rango de fechas: fecha_inicio y fecha_fin).
+
+ CASO B) La tabla existe y su columna de fecha se llama `fecha`
+   -> Usar el archivo:    bds/26 ago/dias_no_lectivos_rangos.sql
+      (convierte el esquema antiguo "un solo día" al nuevo por rango).
+
+ CASO C) La tabla existe y ya tiene `fecha_inicio` Y `fecha_fin`
+   -> NO hace falta hacer nada. Ya está actualizada.
+
+3) CÓMO IMPORTAR EL ARCHIVO .sql EN phpMyAdmin
+-----------------------------------------------------------------------------
+- En phpMyAdmin, hacé clic en el nombre de la base de datos.
+- Pestaña "Importar".
+- Botón "Examinar / Elegir archivo" y seleccioná el .sql correcto.
+- Dejá el formato en "SQL" (por defecto).
+- Click en "Continuar".
+- Debe aparecer el mensaje "La consulta SQL se ha ejecutado correctamente".
+
+4) VALIDAR QUE QUEDÓ BIEN
+-----------------------------------------------------------------------------
+- Entrá a phpMyAdmin -> tabla `dias_no_lectivos` -> pestaña "Estructura".
+- Debe mostrar las columnas:
+   id_dia_no_lectivo
+   fecha_inicio
+   fecha_fin
+   motivo
+   estado
+   creado_por
+   created_at
+   updated_at
+- Y un índice ÚNICO llamado uk_dia_no_lectivo_rango sobre (fecha_inicio, fecha_fin).
+
+5) NOTAS IMPORTANTES
+-----------------------------------------------------------------------------
+- El archivo base `dias_no_lectivos.sql` SIEMPRE se debe ejecutar UNA sola vez
+  (crea la tabla). No se debe ejecutar dos veces sobre la misma base.
+- El archivo `dias_no_lectivos_rangos.sql` solo debe usarse cuando la tabla YA
+  existía con el formato antiguo (columna `fecha`) y se quiere pasar a rango.
+- Si un día se marca en la opción "Días No Lectivos" de Ajustes de Asistencia,
+  ese día NO se registrará asistencia. Si se deja "Fecha fin" vacía, cuenta como
+  un solo día. Si se llena, todo el rango queda sin asistencia.
+- Después de importar, conviene probar en el sitio: ir a Ajustes -> Días No
+  Lectivos, agregar una fecha y ver que aparece en la tabla.
+
+Archivos de referencia en esta carpeta:
+   bds/26 ago/dias_no_lectivos.sql          -> esquema nuevo (rango) desde cero
+   bds/26 ago/dias_no_lectivos_rangos.sql   -> conversión del esquema antiguo
+========================================================

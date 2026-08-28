@@ -1,0 +1,28 @@
+========================================================
+ CPNAL - NOTAS DE VERSIÓN
+========================================================
+
+Versión: 28 ago
+Rama de GitHub: asistenciaBoletines
+
+Últimos cambios aprobados en esta rama:
+
+1) Nueva vista de estudiantes
+   - admin/estudiantes.php rediseñado: tabla a pantalla completa,
+     header fijo con título, subtítulo, búsqueda, botones de
+     Exportar Excel y Nuevo Estudiante.
+   - Se agregó la columna Curso al listado.
+   - Contador de resultados y estado vacío mejorado.
+
+2) Cambios para asistencia
+   - Control de días no lectivos (beta): días en los que NO se
+     controla asistencia (vacaciones, feriados, suspensiones).
+     Soporta un día puntual o un rango de fechas.
+   - Bloqueo de registro de asistencia en días no lectivos, con
+     opción de excepción manual para administradores (se guarda
+     como registro MANUAL).
+   - Nueva tabla: dias_no_lectivos (ver bds/crear_dias_no_lectivos.txt).
+   - Ajustes de Asistencia: sección "Días No Lectivos" (marcada
+     como beta, aún no usar).
+
+========================================================
