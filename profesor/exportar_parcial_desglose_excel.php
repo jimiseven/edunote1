@@ -178,13 +178,13 @@ echo "\xEF\xBB\xBF";
     <tr>
         <td class="num"><?php echo $n++; ?></td>
         <td class="nombre"><?php echo htmlspecialchars($est['nombre']); ?></td>
-        <?php for ($i=1;$i<=4;$i++): ?><td><?php echo isset($det['SER'][$i]) ? number_format((float)$det['SER'][$i], 2) : ''; ?></td><?php endfor; ?>
-        <td><?php echo number_format((float)$tot['ser_total'], 2); ?></td>
-        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['SABER'][$i]) ? number_format((float)$det['SABER'][$i], 2) : ''; ?></td><?php endfor; ?>
-        <td><?php echo number_format((float)$tot['saber_total'], 2); ?></td>
-        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['HACER'][$i]) ? number_format((float)$det['HACER'][$i], 2) : ''; ?></td><?php endfor; ?>
-        <td><?php echo number_format((float)$tot['hacer_total'], 2); ?></td>
-        <td style="font-weight:bold"><?php echo number_format((float)$tot['calificacion'], 2); ?></td>
+        <?php for ($i=1;$i<=4;$i++): ?><td><?php echo isset($det['SER'][$i]) ? (int)round((float)$det['SER'][$i]) : ''; ?></td><?php endfor; ?>
+        <td><?php echo (int)round((float)$tot['ser_total']); ?></td>
+        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['SABER'][$i]) ? (int)round((float)$det['SABER'][$i]) : ''; ?></td><?php endfor; ?>
+        <td><?php echo (int)round((float)$tot['saber_total']); ?></td>
+        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['HACER'][$i]) ? (int)round((float)$det['HACER'][$i]) : ''; ?></td><?php endfor; ?>
+        <td><?php echo (int)round((float)$tot['hacer_total']); ?></td>
+        <td style="font-weight:bold"><?php echo (int)round((float)$tot['calificacion']); ?></td>
     </tr>
     <?php endforeach; ?>
 </table>

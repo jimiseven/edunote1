@@ -1,2 +1,4 @@
 - Prefers to communicate in Spanish (es); expects responses, summaries, and sub-agent prompts in Spanish as well. Confidence: 0.95
 - Writes in informal Spanish with little punctuation: no accents, no capitalization, minimal or no periods, often run-on sentences separated by line breaks. Tolerance: 0.85
+- Works on a local XAMPP stack (Windows, `C:\xampp\htdocs\edunote1\...`) for the edunote1 school-grades project (PHP/MySQL). Confidence: 0.7
+- Cares about not altering the database when doing report/export changes; expects export/visual format changes to be read-only with respect to DB rows. Confidence: 0.75

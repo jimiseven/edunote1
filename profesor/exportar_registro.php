@@ -357,7 +357,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
   <Style ss:ID="nota">
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
-   <NumberFormat ss:Format="0.00"/>
+   <NumberFormat ss:Format="0"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
@@ -368,7 +368,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
   <Style ss:ID="notaBold">
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
-   <NumberFormat ss:Format="0.00"/>
+   <NumberFormat ss:Format="0"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
@@ -380,7 +380,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
    <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
-   <NumberFormat ss:Format="0.00"/>
+   <NumberFormat ss:Format="0"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
@@ -392,7 +392,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
    <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
-   <NumberFormat ss:Format="0.00"/>
+   <NumberFormat ss:Format="0"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
@@ -518,13 +518,13 @@ for ($px = 1; $px <= $maxParcial; $px++):
     <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEsc($est['nombre']); ?></Data></Cell>
 <?php if ($es_inicial): ?>
     <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEsc($data['valor'] ?? ''); ?></Data></Cell>
-<?php elseif ($hasAreaColumns && $data): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (float)($data['ser_total'] ?? 0); ?></Data></Cell>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (float)($data['saber_total'] ?? 0); ?></Data></Cell>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (float)($data['hacer_total'] ?? 0); ?></Data></Cell>
-    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (float)($data['valor'] ?? 0); ?></Data></Cell>
+ <?php elseif ($hasAreaColumns && $data): ?>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round((float)($data['ser_total'] ?? 0)); ?></Data></Cell>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round((float)($data['saber_total'] ?? 0)); ?></Data></Cell>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round((float)($data['hacer_total'] ?? 0)); ?></Data></Cell>
+    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)($data['valor'] ?? 0)); ?></Data></Cell>
 <?php elseif ($data && $data['valor'] !== null && $data['valor'] !== ''): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (float)$data['valor']; ?></Data></Cell>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round((float)$data['valor']); ?></Data></Cell>
 <?php else: ?>
     <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
@@ -621,7 +621,7 @@ for ($px = 1; $px <= $maxParcial; $px++):
     <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEsc($est['nombre']); ?></Data></Cell>
 <?php for ($px = 1; $px <= $maxParcial; $px++): ?>
 <?php if ($parcialesVals[$px] !== null): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo $parcialesVals[$px]; ?></Data></Cell>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round($parcialesVals[$px]); ?></Data></Cell>
 <?php else: ?>
     <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
@@ -756,13 +756,13 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php foreach ($trimestresAnuales as $trim): ?>
 <?php $totalTrim = $totalesPorTrimestre[$trim]; ?>
 <?php if ($totalTrim !== null): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo round($totalTrim, 2); ?></Data></Cell>
+   <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round($totalTrim); ?></Data></Cell>
 <?php else: ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
+   <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
 <?php endforeach; ?>
 <?php if ($promAnual !== null): ?>
-    <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo round($promAnual, 2); ?></Data></Cell>
+   <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo (int)round($promAnual); ?></Data></Cell>
 <?php else: ?>
     <Cell ss:StyleID="notaFinal"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
