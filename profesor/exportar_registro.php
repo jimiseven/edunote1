@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once __DIR__ . '/nota_extra_helper.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     header('Location: ../index.php');
@@ -597,8 +598,8 @@ for ($px = 1; $px <= $maxParcial; $px++):
     <Cell ss:StyleID="hTotal"><Data ss:Type="String">TOTAL</Data></Cell>
    </Row>
 <?php $n = 1; ?>
-<?php foreach ($estudiantes as $est): ?>
-<?php
+ <?php foreach ($estudiantes as $est): ?>
+ <?php
     $idEst = (int)$est['id_estudiante'];
     $parcialesVals = [];
     for ($px = 1; $px <= $maxParcial; $px++) {
@@ -606,22 +607,26 @@ for ($px = 1; $px <= $maxParcial; $px++):
         $parcialesVals[$px] = ($d && $d['valor'] !== null && $d['valor'] !== '' && is_numeric($d['valor']))
             ? (float)$d['valor'] : null;
     }
-    $valsNoNull = array_filter($parcialesVals, fn($v) => $v !== null);
+    // Aplicar reparto de nota_extra*3 al parcial más bajo.
+    $trimDataR = $notasTrimestrales[$idEst] ?? [];
+    $extraR = isset($trimDataR['nota_extra']) && $trimDataR['nota_extra'] !== null ? (float)$trimDataR['nota_extra'] : 0.0;
+    $parcialesRep = repartirNotaExtra($parcialesVals, $extraR);
+    $valsNoNull = array_filter($parcialesRep, fn($v) => $v !== null);
     $prom95 = count($valsNoNull) > 0 ? array_sum($valsNoNull) / count($valsNoNull) : null;
 
     $trimData = $notasTrimestrales[$idEst] ?? [];
     $autoVal = isset($trimData['autoevaluacion']) && $trimData['autoevaluacion'] !== null ? (float)$trimData['autoevaluacion'] : null;
-    $extraVal = isset($trimData['nota_extra']) && $trimData['nota_extra'] !== null ? (float)$trimData['nota_extra'] : null;
+    $extraVal = 0.0; // ya se aplicó el reparto sobre los parciales; no se suma aquí.
 
-    $total = ($prom95 ?? 0) + ($autoVal ?? 0) + ($extraVal ?? 0);
-    $hasAnyData = $prom95 !== null || $autoVal !== null || $extraVal !== null;
+    $total = ($prom95 ?? 0) + ($autoVal ?? 0) + $extraVal;
+    $hasAnyData = $prom95 !== null || $autoVal !== null;
 ?>
    <Row>
     <Cell ss:StyleID="num"><Data ss:Type="Number"><?php echo $n++; ?></Data></Cell>
     <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEsc($est['nombre']); ?></Data></Cell>
 <?php for ($px = 1; $px <= $maxParcial; $px++): ?>
-<?php if ($parcialesVals[$px] !== null): ?>
-    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round($parcialesVals[$px]); ?></Data></Cell>
+<?php if ($parcialesRep[$px] !== null): ?>
+    <Cell ss:StyleID="nota"><Data ss:Type="Number"><?php echo (int)round($parcialesRep[$px]); ?></Data></Cell>
 <?php else: ?>
     <Cell ss:StyleID="nota"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
@@ -636,11 +641,7 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php else: ?>
     <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
-<?php if ($extraVal !== null): ?>
-    <Cell ss:StyleID="notaEntera"><Data ss:Type="Number"><?php echo round($extraVal); ?></Data></Cell>
-<?php else: ?>
     <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
-<?php endif; ?>
 <?php if ($hasAnyData): ?>
     <Cell ss:StyleID="notaFinalEntera"><Data ss:Type="Number"><?php echo round($total); ?></Data></Cell>
 <?php else: ?>
@@ -725,25 +726,39 @@ for ($px = 1; $px <= $maxParcial; $px++):
     <Cell ss:StyleID="hAuto"><Data ss:Type="String">Promedio Anual</Data></Cell>
    </Row>
 <?php $n = 1; ?>
-<?php foreach ($estudiantes as $est): ?>
-<?php
+ <?php foreach ($estudiantes as $est): ?>
+ <?php
     $idEst = (int)$est['id_estudiante'];
     $totalesPorTrimestre = [];
     foreach ($trimestresAnuales as $trim) {
-        $prom95 = null;
+        // Construir mapa parcial=>nota a partir de lo agregado, y aplicar reparto.
+        $parcialesMapa = [1 => null, 2 => null, 3 => null];
         if (isset($agregadoTrimestres[$idEst][$trim])) {
             $dataTrim = $agregadoTrimestres[$idEst][$trim];
+            // El "promedio" calculado arriba ya es el promedio de los parciales; para el reparto
+            // usamos esa misma magnitud dividida entre los parciales que tenga. Pero como el
+            // objetivo aqui es el promedio del trimestre (no los parciales individuales), el
+            // reparto se aplica sumando al trimestre completo y manteniendo el promedio mejorado.
+            // Para mantener consistencia con la pantalla, recalculamos el promedio mejorado
+            // partiendo del promedio original + nota_extra*3 (limitado por 95 - promedio).
+            $prom95 = null;
             if ($dataTrim['contador'] > 0) {
                 $prom95 = $dataTrim['suma'] / $dataTrim['contador'];
             }
+            // Distribuir como si fuera un solo "parcial" igual al promedio, para visualizar el efecto.
+            // Si el promedio es, p.ej., 70 y nota_extra=3 (bono=9), el "parcial" sube a 79.
+            $extraDataA = $notasTrimestralesPorTrimestre[$idEst][$trim]['nota_extra'] ?? null;
+            $extraA = ($extraDataA !== null && $extraDataA !== '' && is_numeric($extraDataA)) ? (float)$extraDataA : 0.0;
+            $rep = repartirNotaExtra([1 => $prom95], $extraA);
+            $prom95ConBono = $rep[1] ?? null;
+        } else {
+            $prom95ConBono = null;
         }
         $autoData = $notasTrimestralesPorTrimestre[$idEst][$trim]['autoevaluacion'] ?? null;
-        $extraData = $notasTrimestralesPorTrimestre[$idEst][$trim]['nota_extra'] ?? null;
         $autoVal = ($autoData !== null && $autoData !== '' && is_numeric($autoData)) ? (float)$autoData : null;
-        $extraVal = ($extraData !== null && $extraData !== '' && is_numeric($extraData)) ? (float)$extraData : null;
         $totalTrim = null;
-        if ($prom95 !== null || $autoVal !== null || $extraVal !== null) {
-            $totalTrim = ($prom95 ?? 0) + ($autoVal ?? 0) + ($extraVal ?? 0);
+        if ($prom95ConBono !== null || $autoVal !== null) {
+            $totalTrim = ($prom95ConBono ?? 0) + ($autoVal ?? 0);
         }
         $totalesPorTrimestre[$trim] = $totalTrim;
     }

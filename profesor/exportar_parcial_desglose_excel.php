@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once __DIR__ . '/nota_extra_helper.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['user_role'] != 2) {
     header('Location: ../index.php');
@@ -120,6 +121,35 @@ if ($hasDetalle) {
     }
 }
 
+// Cargar las 3 calificaciones de los parciales del trimestre para aplicar el reparto de nota_extra.
+// Tambien cargar nota_extra del trimestre y mapear id_estudiante => parcial=>calificacion.
+$detalleNotasCal = []; // id_est => [parcial => calificacion]
+$stmtCalPorTrimestre = $conn->prepare("SELECT cp.id_estudiante, pe.parcial, cp.calificacion
+    FROM calificaciones_parciales cp
+    INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
+    WHERE cp.id_materia = ? AND pe.trimestre = ? AND (pe.gestion = ?" . ($gestionAlternativa !== null && $gestionAlternativa !== $gestion ? " OR pe.gestion = ?" : "") . ")");
+$paramsCal = [(int)$curso['id_materia'], $trimestre, $gestion];
+if ($gestionAlternativa !== null && $gestionAlternativa !== $gestion) {
+    $paramsCal[] = $gestionAlternativa;
+}
+$stmtCalPorTrimestre->execute($paramsCal);
+foreach ($stmtCalPorTrimestre->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $detalleNotasCal[(int)$row['id_estudiante']][(int)$row['parcial']] = $row['calificacion'];
+}
+
+$notaExtraTrimestre = [];
+try {
+    $stmtExtra = $conn->prepare("SELECT id_estudiante, nota_extra
+        FROM calificaciones_trimestrales
+        WHERE id_materia = ? AND gestion = ? AND trimestre = ?");
+    $stmtExtra->execute([(int)$curso['id_materia'], $gestion, $trimestre]);
+    foreach ($stmtExtra->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $notaExtraTrimestre[(int)$row['id_estudiante']] = (float)$row['nota_extra'];
+    }
+} catch (PDOException $e) {
+    // ignore
+}
+
 $nombreArchivo = 'Parcial_T' . $trimestre . '_P' . $parcial . '_' .
     preg_replace('/[^a-zA-Z0-9_]/', '_', $curso['curso_nombre']) . '_' .
     preg_replace('/[^a-zA-Z0-9_]/', '_', $curso['nombre_materia']) . '.xls';
@@ -174,6 +204,19 @@ echo "\xEF\xBB\xBF";
         $idEst = (int)$est['id_estudiante'];
         $det = $detalleNotas[$idEst] ?? [];
         $tot = $totales[$idEst] ?? ['ser_total' => 0, 'saber_total' => 0, 'hacer_total' => 0, 'calificacion' => 0];
+        // Aplicar reparto de nota_extra (x3) al parcial más bajo del trimestre actual.
+        // Se necesitan los 3 parciales para calcular el total con el reparto incluido en el promedio.
+        $p1 = $detalleNotasCal[$idEst][1] ?? null;
+        $p2 = $detalleNotasCal[$idEst][2] ?? null;
+        $p3 = $detalleNotasCal[$idEst][3] ?? null;
+        $extraE = $notaExtraTrimestre[$idEst] ?? 0.0;
+        $rep = repartirNotaExtra([
+            1 => ($p1 !== null && $p1 !== '' && is_numeric($p1)) ? (float)$p1 : null,
+            2 => ($p2 !== null && $p2 !== '' && is_numeric($p2)) ? (float)$p2 : null,
+            3 => ($p3 !== null && $p3 !== '' && is_numeric($p3)) ? (float)$p3 : null,
+        ], (float)$extraE);
+        $valsRep = array_filter($rep, fn($v) => $v !== null);
+        $promConBono = !empty($valsRep) ? array_sum($valsRep) / count($valsRep) : (float)$tot['calificacion'];
     ?>
     <tr>
         <td class="num"><?php echo $n++; ?></td>
@@ -184,7 +227,7 @@ echo "\xEF\xBB\xBF";
         <td><?php echo (int)round((float)$tot['saber_total']); ?></td>
         <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['HACER'][$i]) ? (int)round((float)$det['HACER'][$i]) : ''; ?></td><?php endfor; ?>
         <td><?php echo (int)round((float)$tot['hacer_total']); ?></td>
-        <td style="font-weight:bold"><?php echo (int)round((float)$tot['calificacion']); ?></td>
+        <td style="font-weight:bold"><?php echo (int)round($promConBono); ?></td>
     </tr>
     <?php endforeach; ?>
 </table>

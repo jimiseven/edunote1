@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once __DIR__ . '/nota_extra_helper.php';
 
 function calcularPromedioTrimestre($notasTrimestre, $esInicial = false) {
     if ($esInicial) {
@@ -247,7 +248,8 @@ function aplicarBonusComplementario(
 
         $compData = $trimestralComp[$idEst] ?? ['autoevaluacion' => null, 'nota_extra' => null];
         $autoComp = $compData['autoevaluacion'] !== null ? max(min((float)$compData['autoevaluacion'], 5.0), 0.0) : 0.0;
-        $extraComp = $compData['nota_extra'] !== null ? max((float)$compData['nota_extra'], 0.0) : 0.0;
+        // La nota extra ya no se considera en esta fórmula (se reparte al parcial más bajo).
+        $extraComp = 0.0;
 
         $notaFinalComplementaria = $parcial + $autoComp + $extraComp;
         if ($notaFinalComplementaria > 100) {
@@ -549,6 +551,25 @@ try {
 } catch (PDOException $e) {
     // Table may not exist yet — ignore
 }
+
+// No se borra nota_extra de la BD: el valor histórico se sigue usando para el reparto
+// (nota_extra*3 al parcial más bajo). Solo los registros NUEVOS se guardan con 0.
+
+// Mapa id_estudiante => parciales (en el trimestre seleccionado) para el reparto de la nota extra.
+// Solo se usa para la vista trimestral con el helper repartirNotaExtraPorEstudiante().
+$parcialesPorEstudiante = [];
+$notaExtraPorEstudiante = [];
+foreach ($estudiantes as $est) {
+    $idEstMap = (int)$est['id_estudiante'];
+    $parcialesPorEstudiante[$idEstMap] = [];
+    for ($pxm = 1; $pxm <= 3; $pxm++) {
+        $valM = $notas[$idEstMap][$trimestreSeleccionado][$pxm] ?? null;
+        $parcialesPorEstudiante[$idEstMap][$pxm] = ($valM !== null && $valM !== '' && is_numeric($valM)) ? (float)$valM : null;
+    }
+    $ne = $notasTrimestrales[$idEstMap][$trimestreSeleccionado]['nota_extra'] ?? 0;
+    $notaExtraPorEstudiante[$idEstMap] = ($ne !== null && $ne !== '' && is_numeric($ne)) ? (float)$ne : 0.0;
+}
+$parcialesRepartidosPorEstudiante = repartirNotaExtraPorEstudiante($parcialesPorEstudiante, $notaExtraPorEstudiante);
 
 // La autoevaluación y la nota extra son valores trimestrales; su edición no debe
 // depender de qué parciales estén habilitados, por lo que la vista trimestral
@@ -888,36 +909,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $autoNum = ($autoVal !== '' && is_numeric(str_replace(',', '.', $autoVal)))
                     ? (float)str_replace(',', '.', $autoVal) : null;
-                $extraNum = ($extraVal !== '' && is_numeric(str_replace(',', '.', $extraVal)))
-                    ? (float)str_replace(',', '.', $extraVal) : null;
-
-                if ($es_materia_principal_complementada && ($extraVal === '' || $extraNum === null)) {
-                    $exPrev = $notasTrimestrales[$idEst][$trimestreSeleccionado]['nota_extra'] ?? null;
-                    if ($exPrev !== null && $exPrev !== '' && is_numeric($exPrev)) {
-                        $extraNum = (float)$exPrev;
-                    }
-                }
+                $extraNum = 0.0;
 
                 if ($autoNum !== null) {
                     if ($autoNum < 0 || $autoNum > 5) {
                         throw new Exception('La autoevaluación debe estar entre 0 y 5 puntos: ' . $estudiante['nombre']);
                     }
                 }
-                if ($extraNum !== null) {
-                    if ($extraNum < 0 || $extraNum > 5) {
-                        throw new Exception('El puntaje extra debe estar entre 0 y 5 puntos: ' . $estudiante['nombre']);
-                    }
-                }
 
                 $prom95 = $promedioParcialesTrimestre($idEst);
                 $promPart = $prom95 !== null ? $prom95 : 0.0;
-                $totalTrim = $promPart + ($autoNum ?? 0) + ($extraNum ?? 0);
+                $totalTrim = $promPart + ($autoNum ?? 0) + $extraNum;
                 if ($totalTrim > 100.00001) {
                     throw new Exception(
                         'La nota trimestral total no puede superar 100 puntos: ' . $estudiante['nombre']
                         . ' (promedio parciales ' . number_format($promPart, 2)
                         . ' + auto ' . number_format((float)($autoNum ?? 0), 2)
-                        . ' + extra ' . number_format((float)($extraNum ?? 0), 2)
                         . ' = ' . number_format($totalTrim, 2) . ').'
                     );
                 }
@@ -928,9 +935,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($estudiantes as $estudiante) {
                 $idEst = (int)$estudiante['id_estudiante'];
                 $autoNum = $trimestralAGuardar[$idEst]['auto'];
-                $extraNum = $trimestralAGuardar[$idEst]['extra'];
+                $extraNum = 0.0;
 
-                if ($autoNum === null && $extraNum === null) {
+                if ($autoNum === null) {
                     $conn->prepare("DELETE FROM calificaciones_trimestrales
                                     WHERE id_estudiante = ? AND id_materia = ? AND gestion = ? AND trimestre = ?")
                          ->execute([$idEst, $curso['id_materia'], $gestionActual, $trimestreSeleccionado]);
@@ -971,9 +978,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($estudiantes as $estudiante) {
                         $idEst = (int)$estudiante['id_estudiante'];
                         $autoNum = $trimestralAGuardar[$idEst]['auto'];
-                        $extraNum = $trimestralAGuardar[$idEst]['extra'];
+                        $extraNum = 0.0;
 
-                        if ($autoNum === null && $extraNum === null) {
+                        if ($autoNum === null) {
                             $stmtDeleteTrimestralCompartida->execute([$idEst, $idMateriaCompartida, $gestionActual, $trimestreSeleccionado]);
                         } else {
                             $stmtUpsertTrimestralCompartida->execute([$idEst, $idMateriaCompartida, $gestionActual, $trimestreSeleccionado, $autoNum, $extraNum, $profesor_id]);
@@ -2610,16 +2617,24 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                         $p2 = $notas[$idEst][$t][2] ?? null;
                                                         $p3 = $notas[$idEst][$t][3] ?? null;
                                                         $parcialesVals = [];
-                                                        foreach ([$p1, $p2, $p3] as $pv) {
-                                                            if ($pv !== null && $pv !== '' && is_numeric($pv)) $parcialesVals[] = (float)$pv;
+                                                        $parcialesMap = [1 => null, 2 => null, 3 => null];
+                                                        foreach ([1 => $p1, 2 => $p2, 3 => $p3] as $pxk => $pv) {
+                                                            if ($pv !== null && $pv !== '' && is_numeric($pv)) {
+                                                                $v = (float)$pv;
+                                                                $parcialesVals[] = $v;
+                                                                $parcialesMap[$pxk] = $v;
+                                                            }
                                                         }
-                                                        $prom = !empty($parcialesVals) ? array_sum($parcialesVals) / count($parcialesVals) : 0;
+                                                        // Aplicar reparto nota_extra*3 al parcial más bajo.
+                                                        $extraT = $notasTrimestrales[$idEst][$t]['nota_extra'] ?? null;
+                                                        $extraT = ($extraT !== null && $extraT !== '' && is_numeric($extraT)) ? (float)$extraT : 0.0;
+                                                        $parcialesRep = repartirNotaExtra($parcialesMap, $extraT);
+                                                        $valsRep = array_filter($parcialesRep, fn($v) => $v !== null);
+                                                        $prom = !empty($valsRep) ? array_sum($valsRep) / count($valsRep) : 0;
                                                         $auto = $notasTrimestrales[$idEst][$t]['autoevaluacion'] ?? null;
                                                         $auto = ($auto !== null && $auto !== '' && is_numeric($auto)) ? (float)$auto : 0;
-                                                        $extra = $notasTrimestrales[$idEst][$t]['nota_extra'] ?? null;
-                                                        $extra = ($extra !== null && $extra !== '' && is_numeric($extra)) ? (float)$extra : 0;
-                                                        if (!empty($parcialesVals) || $auto > 0 || $extra > 0) {
-                                                            $notaFinal = round($prom + $auto + $extra);
+                                                        if (!empty($parcialesVals) || $auto > 0) {
+                                                            $notaFinal = round($prom + $auto);
                                                         }
                                                     }
                                                     $cls = '';
@@ -2642,7 +2657,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                 </table>
                             </div>
                             <div class="action-buttons" style="justify-content:flex-end;background:transparent;border:none;box-shadow:none;">
-                                <small class="text-muted">Vista de solo lectura — Las notas mostradas son promedios de parciales + autoevaluación + extra</small>
+                                <small class="text-muted">Vista de solo lectura — Las notas mostradas son promedios de parciales (con reparto de nota extra al parcial más bajo) + autoevaluación</small>
                             </div>
                         <?php elseif ($vistaActual === 'trimestral' && !$es_inicial): ?>
                             <form method="post" class="grade-form" data-save-action="guardar_trimestral">
@@ -2696,24 +2711,6 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                                 </button>
                                                             <?php endif; ?>
                                                 </th>
-                                                <?php if ($es_materia_principal_complementada): ?>
-                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">Bonus Inglés (<?php echo $porcentajeTransferenciaPrincipal; ?>)</th>
-                                                <?php else: ?>
-                                                <th style="background:#e0e7ff!important;color:#3730a3!important;min-width:55px">
-                                                    Extra
-                                                    <?php if ($trimestreEditableParaVistaTrimestral): ?>
-                                                                <button type="button"
-                                                                    class="paste-col-btn btn-paste-column"
-                                                                    data-area="EXTRA"
-                                                                    data-index="1"
-                                                                    data-min="0"
-                                                                    data-max="5"
-                                                                    title="Pegar columna en EXTRA">
-                                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-2"/><rect x="4" y="2" width="12" height="12" rx="2" ry="2"/></svg>
-                                                                </button>
-                                                            <?php endif; ?>
-                                                </th>
-                                                <?php endif; ?>
                                                 <th class="th-total" style="min-width:55px">TOTAL</th>
                                             </tr>
                                         </thead>
@@ -2724,18 +2721,18 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                 $idEst = (int)$est['id_estudiante'];
                                                 $trimData = $notasTrimestrales[$idEst][$trimestreSeleccionado] ?? [];
                                                 $autoVal = $trimData['autoevaluacion'] ?? '';
-                                                $extraVal = $trimData['nota_extra'] ?? '';
                                                 $parciales95 = [];
                                                 for ($px = 1; $px <= 3; $px++) {
                                                     $parciales95[$px] = isset($notas[$idEst][$trimestreSeleccionado][$px]) && is_numeric($notas[$idEst][$trimestreSeleccionado][$px])
                                                         ? (float)$notas[$idEst][$trimestreSeleccionado][$px] : null;
                                                 }
 
-                                                $vals95 = array_filter($parciales95, fn($v) => $v !== null);
+                                                // Parciales ya con el reparto aplicado (nota_extra * N al más bajo, sin pasar 95).
+                                                $parcialesConBono = $parcialesRepartidosPorEstudiante[$idEst] ?? $parciales95;
+                                                $vals95 = array_filter($parcialesConBono, fn($v) => $v !== null);
                                                 $prom95 = count($vals95) ? array_sum($vals95) / count($vals95) : null;
                                                 $autoNum = ($autoVal !== '' && $autoVal !== null) ? (float)$autoVal : null;
-                                                $extraNum = ($extraVal !== '' && $extraVal !== null) ? (float)$extraVal : null;
-                                                $totalFinal = ($prom95 !== null ? $prom95 : 0) + ($autoNum ?? 0) + ($extraNum ?? 0);
+                                                $totalFinal = ($prom95 !== null ? $prom95 : 0) + ($autoNum ?? 0);
                                                 $totalFinalRedondeado = round($totalFinal, 2);
                                                 $claseTotalFinal = '';
                                                 if ($totalFinalRedondeado == 50.0) {
@@ -2750,7 +2747,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                     <td class="col-num"><?php echo $contador++; ?></td>
                                                     <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
                                                     <?php for ($px = 1; $px <= 3; $px++): ?>
-                                                        <td class="nota-ref"><?php echo $parciales95[$px] !== null ? (int)round((float)$parciales95[$px]) : '--'; ?></td>
+                                                        <td class="nota-ref" data-parcial="<?php echo $px; ?>" data-original="<?php echo $parciales95[$px] !== null ? (int)round((float)$parciales95[$px]) : ''; ?>" data-bono="<?php echo ($parcialesConBono[$px] ?? null) !== null ? ((int)round((float)$parcialesConBono[$px]) - (int)round((float)$parciales95[$px])) : 0; ?>"><?php echo ($parcialesConBono[$px] ?? null) !== null ? (int)round((float)$parcialesConBono[$px]) : '--'; ?></td>
                                                     <?php endfor; ?>
                                                     <td class="nota-ref total-95"><?php echo $prom95 !== null ? (int)round((float)$prom95) : '--'; ?></td>
                                                     <td>
@@ -2762,22 +2759,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                                step="0.01" min="0" max="5"
                                                                <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                     </td>
-                                                    <td>
-                                                        <?php if ($es_materia_principal_complementada): ?>
-                                                            <div class="form-control nota-input nota-disabled text-center" style="width:auto;min-width:55px;">
-                                                                <?php echo $extraVal !== null && $extraVal !== '' ? (int)round((float)$extraVal) : '0'; ?>
-                                                            </div>
-                                                        <?php else: ?>
-                                                            <input type="number" name="extra[<?php echo $idEst; ?>]"
-                                                                   class="form-control nota-input area-extra <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
-                                                                   value="<?php echo htmlspecialchars($extraVal === null ? '' : $extraVal); ?>"
-                                                                   data-area="EXTRA"
-                                                                   data-index="1"
-                                                                   step="0.01" min="0" max="5"
-                                                                   <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
-                                                        <?php endif; ?>
-                                                    </td>
-                                                    <td class="nota-ref total-final<?php echo $claseTotalFinal; ?>" data-prom95="<?php echo $prom95 !== null ? (int)round((float)$prom95) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? (int)round((float)$extraNum) : '0'; ?>">
+                                                    <td class="nota-ref total-final<?php echo $claseTotalFinal; ?>" data-prom95="<?php echo $prom95 !== null ? (int)round((float)$prom95) : '0'; ?>" data-bonus="0">
                                                         <?php echo (int)round($totalFinal); ?>
                                                     </td>
                                                 </tr>
