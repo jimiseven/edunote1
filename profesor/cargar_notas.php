@@ -2750,9 +2750,9 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                     <td class="col-num"><?php echo $contador++; ?></td>
                                                     <td class="col-nombre" title="<?php echo htmlspecialchars($est['nombre']); ?>"><?php echo htmlspecialchars($est['nombre']); ?></td>
                                                     <?php for ($px = 1; $px <= 3; $px++): ?>
-                                                        <td class="nota-ref"><?php echo $parciales95[$px] !== null ? number_format($parciales95[$px], 2) : '--'; ?></td>
+                                                        <td class="nota-ref"><?php echo $parciales95[$px] !== null ? (int)round((float)$parciales95[$px]) : '--'; ?></td>
                                                     <?php endfor; ?>
-                                                    <td class="nota-ref total-95"><?php echo $prom95 !== null ? number_format($prom95, 2) : '--'; ?></td>
+                                                    <td class="nota-ref total-95"><?php echo $prom95 !== null ? (int)round((float)$prom95) : '--'; ?></td>
                                                     <td>
                                                         <input type="number" name="auto[<?php echo $idEst; ?>]"
                                                                class="form-control nota-input area-auto <?php echo !$trimestreEditableParaVistaTrimestral ? 'nota-disabled' : ''; ?>"
@@ -2765,7 +2765,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                     <td>
                                                         <?php if ($es_materia_principal_complementada): ?>
                                                             <div class="form-control nota-input nota-disabled text-center" style="width:auto;min-width:55px;">
-                                                                <?php echo $extraVal !== null && $extraVal !== '' ? number_format((float)$extraVal, 2) : '0.00'; ?>
+                                                                <?php echo $extraVal !== null && $extraVal !== '' ? (int)round((float)$extraVal) : '0'; ?>
                                                             </div>
                                                         <?php else: ?>
                                                             <input type="number" name="extra[<?php echo $idEst; ?>]"
@@ -2777,8 +2777,8 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                                    <?php echo !$trimestreEditableParaVistaTrimestral ? 'readonly disabled' : ''; ?>>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td class="nota-ref total-final<?php echo $claseTotalFinal; ?>" data-prom95="<?php echo $prom95 !== null ? number_format($prom95, 2) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? number_format($extraNum, 2) : '0'; ?>">
-                                                        <?php echo number_format($totalFinal, 2); ?>
+                                                    <td class="nota-ref total-final<?php echo $claseTotalFinal; ?>" data-prom95="<?php echo $prom95 !== null ? (int)round((float)$prom95) : '0'; ?>" data-bonus="<?php echo $extraNum !== null ? (int)round((float)$extraNum) : '0'; ?>">
+                                                        <?php echo (int)round($totalFinal); ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -3042,7 +3042,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                             </td>
                                                         <?php endfor; ?>
                                                         <td class="nota-ref ser-total" data-valor="<?php echo htmlspecialchars($totalesFila['ser_total']); ?>">
-                                                            <?php echo number_format((float)$totalesFila['ser_total'], 2); ?>
+                                                            <?php echo (int)round((float)$totalesFila['ser_total']); ?>
                                                         </td>
                                                         <?php for ($i = 1; $i <= 8; $i++): ?>
                                                             <?php $valor = $detalleFila['SABER'][$i] ?? ''; ?>
@@ -3059,7 +3059,7 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                             </td>
                                                         <?php endfor; ?>
                                                         <td class="nota-ref saber-total" data-valor="<?php echo htmlspecialchars($totalesFila['saber_total']); ?>">
-                                                            <?php echo number_format((float)$totalesFila['saber_total'], 2); ?>
+                                                            <?php echo (int)round((float)$totalesFila['saber_total']); ?>
                                                         </td>
                                                         <?php for ($i = 1; $i <= 8; $i++): ?>
                                                             <?php $valor = $detalleFila['HACER'][$i] ?? ''; ?>
@@ -3076,10 +3076,10 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
                                                             </td>
                                                         <?php endfor; ?>
                                                         <td class="nota-ref hacer-total" data-valor="<?php echo htmlspecialchars($totalesFila['hacer_total']); ?>">
-                                                            <?php echo number_format((float)$totalesFila['hacer_total'], 2); ?>
+                                                            <?php echo (int)round((float)$totalesFila['hacer_total']); ?>
                                                         </td>
                                                         <td class="nota-ref total-95" data-valor="<?php echo htmlspecialchars($totalesFila['calificacion']); ?>">
-                                                            <?php echo number_format((float)$totalesFila['calificacion'], 2); ?>
+                                                            <?php echo (int)round((float)$totalesFila['calificacion']); ?>
                                                         </td>
                                                     <?php endif; ?>
                                                 </tr>
@@ -3348,10 +3348,15 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             const hacerCell = row.querySelector('.hacer-total');
             const totalCell = row.querySelector('.total-95');
 
-            if (serCell) serCell.textContent = serProm.toFixed(2);
-            if (saberCell) saberCell.textContent = saberProm.toFixed(2);
-            if (hacerCell) hacerCell.textContent = hacerProm.toFixed(2);
-            if (totalCell) totalCell.textContent = total95.toFixed(2);
+            const serDisplay = Math.round(serProm);
+            const saberDisplay = Math.round(saberProm);
+            const hacerDisplay = Math.round(hacerProm);
+            const totalDisplay = Math.round(total95);
+
+            if (serCell) serCell.textContent = serDisplay;
+            if (saberCell) saberCell.textContent = saberDisplay;
+            if (hacerCell) hacerCell.textContent = hacerDisplay;
+            if (totalCell) totalCell.textContent = totalDisplay;
         }
 
         function updateTrimestralRow(row) {
@@ -3364,16 +3369,16 @@ if (defined('CARGAR_NOTAS_CEL_VIEW') && CARGAR_NOTAS_CEL_VIEW) {
             let extraVal = 0;
             if (extraInput) {
                 extraVal = parseNumber(extraInput.value) ?? 0;
-                totalCell.dataset.bonus = extraVal.toFixed(2);
+                totalCell.dataset.bonus = Math.round(extraVal);
             } else if (totalCell.dataset.bonus !== undefined) {
                 extraVal = parseNumber(totalCell.dataset.bonus) ?? 0;
             }
             const totalFinal = +(prom95 + autoVal + extraVal).toFixed(2);
-            totalCell.textContent = totalFinal.toFixed(2);
+            totalCell.textContent = Math.round(totalFinal);
             totalCell.classList.remove('total-final-50', 'total-final-aplazado', 'total-final-aprobado');
-            if (totalFinal === 50) {
+            if (Math.round(totalFinal) === 50) {
                 totalCell.classList.add('total-final-50');
-            } else if (totalFinal < 50) {
+            } else if (Math.round(totalFinal) < 50) {
                 totalCell.classList.add('total-final-aplazado');
             } else {
                 totalCell.classList.add('total-final-aprobado');
