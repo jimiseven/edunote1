@@ -3,3 +3,5 @@
 - Prefers reusing existing libraries and code patterns already present in the project rather than introducing new ones. Confidence: 0.8
 - When improving/redesigning a UI, prefers preserving the existing color palette and design model/conventions and only reorganizing the layout for clarity. Confidence: 0.9
 - Prefers data tables to use the maximum available screen space: full-height layout with a fixed top header (title, subtitle, search, buttons) and the table expanding to fill the remaining height with its own internal scroll and sticky column headers. Confidence: 0.7
+- Reports should only flag missing/incomplete data for periods or features that are actually enabled or already have prior records — unenabled/future items must not count as "missing" to avoid false positives. Confidence: 0.9
+- When overriding Bootstrap 5 default styles, use high-specificity selectors (e.g., element IDs like `#dashboardTabs .nav-link`) AND `!important` on critical properties like `color` — Bootstrap's minified CSS can still override ID selectors without it. Confidence: 0.9
