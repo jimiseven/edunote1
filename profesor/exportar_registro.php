@@ -214,9 +214,8 @@ if ($hasAreaColumns) {
 $wNombreResumen = 220;
 $wProm95 = 48;
 $wAuto = 42;
-$wExtra = 42;
 $wTotal = 48;
-$remainingResumen = $printableWidth - ($wNum + $wNombreResumen + $wProm95 + $wAuto + $wExtra + $wTotal);
+$remainingResumen = $printableWidth - ($wNum + $wNombreResumen + $wProm95 + $wAuto + $wTotal);
 $wParcialResumen = $maxParcial > 0 ? max(30, (int)floor($remainingResumen / $maxParcial)) : 36;
 
 $trimestresAnualesTmp = [1, 2, 3];
@@ -314,17 +313,6 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
    </Borders>
   </Style>
   <Style ss:ID="hAuto">
-   <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
-   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
-   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
-   <Borders>
-    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
-    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
-    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
-    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
-   </Borders>
-  </Style>
-  <Style ss:ID="hExtra">
    <Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#000000"/>
    <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
@@ -567,23 +555,22 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php endfor; ?>
    <Column ss:Width="<?php echo $wProm95; ?>"/>
    <Column ss:Width="<?php echo $wAuto; ?>"/>
-   <Column ss:Width="<?php echo $wExtra; ?>"/>
    <Column ss:Width="<?php echo $wTotal; ?>"/>
    <Row>
-    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
+    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="<?php echo 2 + $maxParcial + 2; ?>"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEsc($profesor_nombre); ?></Data></Cell>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 2; ?>"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEsc($profesor_nombre); ?></Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="<?php echo 2 + $maxParcial + 2; ?>"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
    </Row>
    <Row/>
    <Row>
-    <Cell ss:StyleID="titulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+    <Cell ss:StyleID="titulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 2; ?>"><Data ss:Type="String"><?php echo xmlEsc($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
    </Row>
    <Row>
-    <Cell ss:StyleID="subtitulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 3; ?>"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Resumen Trimestre <?php echo $trimestreExportar; ?></Data></Cell>
+    <Cell ss:StyleID="subtitulo" ss:MergeAcross="<?php echo 2 + $maxParcial + 2; ?>"><Data ss:Type="String">Gestión <?php echo xmlEsc($gestionActual); ?> — Resumen Trimestre <?php echo $trimestreExportar; ?></Data></Cell>
    </Row>
    <Row/>
    <Row>
@@ -594,7 +581,6 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php endfor; ?>
     <Cell ss:StyleID="hTotal"><Data ss:Type="String">Prom 95</Data></Cell>
     <Cell ss:StyleID="hAuto"><Data ss:Type="String">Auto (5)</Data></Cell>
-    <Cell ss:StyleID="hExtra"><Data ss:Type="String">Extra</Data></Cell>
     <Cell ss:StyleID="hTotal"><Data ss:Type="String">TOTAL</Data></Cell>
    </Row>
 <?php $n = 1; ?>
@@ -616,9 +602,8 @@ for ($px = 1; $px <= $maxParcial; $px++):
 
     $trimData = $notasTrimestrales[$idEst] ?? [];
     $autoVal = isset($trimData['autoevaluacion']) && $trimData['autoevaluacion'] !== null ? (float)$trimData['autoevaluacion'] : null;
-    $extraVal = 0.0; // ya se aplicó el reparto sobre los parciales; no se suma aquí.
 
-    $total = ($prom95 ?? 0) + ($autoVal ?? 0) + $extraVal;
+    $total = ($prom95 ?? 0) + ($autoVal ?? 0);
     $hasAnyData = $prom95 !== null || $autoVal !== null;
 ?>
    <Row>
@@ -641,7 +626,6 @@ for ($px = 1; $px <= $maxParcial; $px++):
 <?php else: ?>
     <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
 <?php endif; ?>
-    <Cell ss:StyleID="notaEntera"><Data ss:Type="String"></Data></Cell>
 <?php if ($hasAnyData): ?>
     <Cell ss:StyleID="notaFinalEntera"><Data ss:Type="Number"><?php echo round($total); ?></Data></Cell>
 <?php else: ?>
