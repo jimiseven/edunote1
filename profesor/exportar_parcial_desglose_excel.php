@@ -58,6 +58,28 @@ if ($idPeriodo <= 0) {
     die('Periodo no encontrado.');
 }
 
+// Cargar etiquetas de actividades
+$etiquetasActividades = ['SER' => [], 'SABER' => [], 'HACER' => []];
+for ($i = 1; $i <= 4; $i++) {
+    $etiquetasActividades['SER'][$i] = 'SER ' . $i;
+}
+for ($i = 1; $i <= 8; $i++) {
+    $etiquetasActividades['SABER'][$i] = 'SABER ' . $i;
+    $etiquetasActividades['HACER'][$i] = 'HACER ' . $i;
+}
+
+$stmtEtiquetas = $conn->prepare('SELECT area, indice, etiqueta
+    FROM parciales_etiquetas_actividades
+    WHERE id_curso = ? AND id_materia = ? AND id_periodo_evaluacion = ?');
+$stmtEtiquetas->execute([(int)$curso['id_curso'], (int)$curso['id_materia'], $idPeriodo]);
+foreach ($stmtEtiquetas->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $area = $row['area'];
+    $idx = (int)$row['indice'];
+    if (!empty($row['etiqueta'])) {
+        $etiquetasActividades[$area][$idx] = $row['etiqueta'];
+    }
+}
+
 $stmtEst = $conn->prepare("SELECT id_estudiante,
     CASE
         WHEN (apellido_paterno IS NULL OR apellido_paterno = '') AND (apellido_materno IS NOT NULL AND apellido_materno != '')
@@ -121,9 +143,7 @@ if ($hasDetalle) {
     }
 }
 
-// Cargar las 3 calificaciones de los parciales del trimestre para aplicar el reparto de nota_extra.
-// Tambien cargar nota_extra del trimestre y mapear id_estudiante => parcial=>calificacion.
-$detalleNotasCal = []; // id_est => [parcial => calificacion]
+$detalleNotasCal = [];
 $stmtCalPorTrimestre = $conn->prepare("SELECT cp.id_estudiante, pe.parcial, cp.calificacion
     FROM calificaciones_parciales cp
     INNER JOIN periodos_evaluacion pe ON pe.id_periodo_evaluacion = cp.id_periodo_evaluacion
@@ -147,7 +167,6 @@ try {
         $notaExtraTrimestre[(int)$row['id_estudiante']] = (float)$row['nota_extra'];
     }
 } catch (PDOException $e) {
-    // ignore
 }
 
 $nombreArchivo = 'Parcial_T' . $trimestre . '_P' . $parcial . '_' .
@@ -158,78 +177,330 @@ header('Content-Type: application/vnd.ms-excel; charset=utf-8');
 header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
 header('Cache-Control: max-age=0');
 header('Pragma: public');
-echo "\xEF\xBB\xBF";
+
+function xmlEscape($str) {
+    return htmlspecialchars((string)$str, ENT_QUOTES, 'UTF-8');
+}
+
+// SpreadsheetML expresa ss:Width en puntos, no en cantidad de caracteres.
+// El ancho se calcula desde el nombre más largo y conserva margen para evitar solapamiento.
+$maxNombreLen = 0;
+foreach ($estudiantes as $est) {
+    $nombreLen = mb_strlen(trim((string)$est['nombre']), 'UTF-8');
+    if ($nombreLen > $maxNombreLen) {
+        $maxNombreLen = $nombreLen;
+    }
+}
+$wNombreParcial = max(220, ($maxNombreLen + 4) * 7.2);
+
+$wNum = 24;
+$wAreaDet = 18;
+$wProm = 22;
+$wTotal = 26;
+
+echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
 ?>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<style>
-    th { border: 1px solid #999; padding: 4px 6px; font-size: 11px; text-align: center; font-weight: 700; }
-    td { border: 1px solid #ccc; padding: 3px 5px; font-size: 11px; text-align: center; }
-    .nombre { text-align: left; min-width: 220px; }
-    .th-ser { background:#dcfce7; color:#166534; }
-    .th-saber { background:#dbeafe; color:#1e40af; }
-    .th-hacer { background:#ffedd5; color:#9a3412; }
-    .th-total { background:#f3e8ff; color:#6b21a8; }
-    .num { width: 36px; }
-    .unidad { font-size: 14px; font-weight: bold; text-align: center; }
-    .info { font-size: 12px; text-align: center; }
-    .titulo { font-size: 13px; font-weight: bold; text-align: center; }
-    .subtitulo { font-size: 12px; text-align: center; }
-</style>
-</head>
-<body>
-<table>
-    <tr><td colspan="27" class="unidad">Unidad Educativa "Simón Bolívar"</td></tr>
-    <tr><td colspan="27" class="info">Nombre del profesor/a: <?php echo htmlspecialchars($profesor_nombre); ?></td></tr>
-    <tr><td colspan="27" class="info">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</td></tr>
-    <tr><td colspan="27"></td></tr>
-    <tr><td colspan="27" class="titulo"><?php echo htmlspecialchars($curso['curso_nombre']); ?> - <?php echo htmlspecialchars($curso['nombre_materia']); ?></td></tr>
-    <tr><td colspan="27" class="subtitulo">Gestion <?php echo htmlspecialchars($gestion); ?> - Trimestre <?php echo (int)$trimestre; ?> - Parcial <?php echo (int)$parcial; ?></td></tr>
-    <tr><td colspan="27"></td></tr>
-    <tr>
-        <th rowspan="2">#</th>
-        <th rowspan="2">Estudiante</th>
-        <th class="th-ser" colspan="5">SER</th>
-        <th class="th-saber" colspan="9">SABER</th>
-        <th class="th-hacer" colspan="9">HACER</th>
-        <th class="th-total" rowspan="2">TOTAL 95</th>
-    </tr>
-    <tr>
-        <th class="th-ser">1</th><th class="th-ser">2</th><th class="th-ser">3</th><th class="th-ser">4</th><th class="th-ser">Prom</th>
-        <th class="th-saber">1</th><th class="th-saber">2</th><th class="th-saber">3</th><th class="th-saber">4</th><th class="th-saber">5</th><th class="th-saber">6</th><th class="th-saber">7</th><th class="th-saber">8</th><th class="th-saber">Prom</th>
-        <th class="th-hacer">1</th><th class="th-hacer">2</th><th class="th-hacer">3</th><th class="th-hacer">4</th><th class="th-hacer">5</th><th class="th-hacer">6</th><th class="th-hacer">7</th><th class="th-hacer">8</th><th class="th-hacer">Prom</th>
-    </tr>
-    <?php $n = 1; foreach ($estudiantes as $est):
-        $idEst = (int)$est['id_estudiante'];
-        $det = $detalleNotas[$idEst] ?? [];
-        $tot = $totales[$idEst] ?? ['ser_total' => 0, 'saber_total' => 0, 'hacer_total' => 0, 'calificacion' => 0];
-        // Aplicar reparto de nota_extra (x3) al parcial más bajo del trimestre actual.
-        // Se necesitan los 3 parciales para calcular el total con el reparto incluido en el promedio.
-        $p1 = $detalleNotasCal[$idEst][1] ?? null;
-        $p2 = $detalleNotasCal[$idEst][2] ?? null;
-        $p3 = $detalleNotasCal[$idEst][3] ?? null;
-        $extraE = $notaExtraTrimestre[$idEst] ?? 0.0;
-        $rep = repartirNotaExtra([
-            1 => ($p1 !== null && $p1 !== '' && is_numeric($p1)) ? (float)$p1 : null,
-            2 => ($p2 !== null && $p2 !== '' && is_numeric($p2)) ? (float)$p2 : null,
-            3 => ($p3 !== null && $p3 !== '' && is_numeric($p3)) ? (float)$p3 : null,
-        ], (float)$extraE);
-        $valsRep = array_filter($rep, fn($v) => $v !== null);
-        $promConBono = !empty($valsRep) ? array_sum($valsRep) / count($valsRep) : (float)$tot['calificacion'];
-    ?>
-    <tr>
-        <td class="num"><?php echo $n++; ?></td>
-        <td class="nombre"><?php echo htmlspecialchars($est['nombre']); ?></td>
-        <?php for ($i=1;$i<=4;$i++): ?><td><?php echo isset($det['SER'][$i]) ? (int)round((float)$det['SER'][$i]) : ''; ?></td><?php endfor; ?>
-        <td><?php echo (int)round((float)$tot['ser_total']); ?></td>
-        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['SABER'][$i]) ? (int)round((float)$det['SABER'][$i]) : ''; ?></td><?php endfor; ?>
-        <td><?php echo (int)round((float)$tot['saber_total']); ?></td>
-        <?php for ($i=1;$i<=8;$i++): ?><td><?php echo isset($det['HACER'][$i]) ? (int)round((float)$det['HACER'][$i]) : ''; ?></td><?php endfor; ?>
-        <td><?php echo (int)round((float)$tot['hacer_total']); ?></td>
-        <td style="font-weight:bold"><?php echo (int)round($promConBono); ?></td>
-    </tr>
-    <?php endforeach; ?>
-</table>
-</body>
-</html>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Alignment ss:Vertical="Bottom"/>
+  </Style>
+  <Style ss:ID="num">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="9" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="nombre">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:Indent="1"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="nota">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="notaTotal">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="notaFinal">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="header">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="unidadEducativa">
+   <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="infoHeader">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="titulo">
+   <Font ss:FontName="Calibri" ss:Size="13" ss:Bold="1" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="subtitulo">
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="hSer">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#166534"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hSaber">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#1E40AF"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hHacer">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#9A3412"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Interior ss:Color="#FFEDD5" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hTotal">
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#6B21A8"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Interior ss:Color="#F3E8FF" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hSerVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#166534"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/>
+   <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hSaberVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#1E40AF"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/>
+   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hHacerVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#9A3412"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/>
+   <Interior ss:Color="#FFEDD5" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hSerPromVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#166534"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90"/>
+   <Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hSaberPromVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#1E40AF"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90"/>
+   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hHacerPromVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#9A3412"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90"/>
+   <Interior ss:Color="#FFEDD5" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="hTotalVert">
+   <Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#6B21A8"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90"/>
+   <Interior ss:Color="#F3E8FF" ss:Pattern="Solid"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Parcial <?php echo (int)$parcial; ?>">
+  <Table>
+   <Column ss:Width="<?php echo $wNum; ?>"/>
+   <Column ss:Width="<?php echo $wNombreParcial; ?>"/>
+<?php for ($px = 1; $px <= 4; $px++): ?>
+   <Column ss:Width="<?php echo $wAreaDet; ?>"/>
+<?php endfor; ?>
+   <Column ss:Width="<?php echo $wProm; ?>"/>
+<?php for ($px = 1; $px <= 8; $px++): ?>
+   <Column ss:Width="<?php echo $wAreaDet; ?>"/>
+<?php endfor; ?>
+   <Column ss:Width="<?php echo $wProm; ?>"/>
+<?php for ($px = 1; $px <= 8; $px++): ?>
+   <Column ss:Width="<?php echo $wAreaDet; ?>"/>
+<?php endfor; ?>
+   <Column ss:Width="<?php echo $wProm; ?>"/>
+   <Column ss:Width="<?php echo $wTotal; ?>"/>
+   <Row>
+    <Cell ss:StyleID="unidadEducativa" ss:MergeAcross="25"><Data ss:Type="String">Unidad Educativa "Simón Bolívar"</Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="25"><Data ss:Type="String">Nombre del profesor/a: <?php echo xmlEscape($profesor_nombre); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="infoHeader" ss:MergeAcross="25"><Data ss:Type="String">Nombre de la directora: Lic. NORKA MALDONADO ROCHA</Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="titulo" ss:MergeAcross="25"><Data ss:Type="String"><?php echo xmlEscape($curso['curso_nombre'] . ' — ' . $curso['nombre_materia']); ?></Data></Cell>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="subtitulo" ss:MergeAcross="25"><Data ss:Type="String">Gestión <?php echo xmlEscape($gestion); ?> — Trimestre <?php echo (int)$trimestre; ?> — Parcial <?php echo (int)$parcial; ?></Data></Cell>
+   </Row>
+   <Row/>
+   <Row>
+    <Cell ss:StyleID="header" ss:Index="3" ss:MergeAcross="4"><Data ss:Type="String">SER</Data></Cell>
+    <Cell ss:StyleID="header" ss:MergeAcross="8"><Data ss:Type="String">SABER</Data></Cell>
+    <Cell ss:StyleID="header" ss:MergeAcross="8"><Data ss:Type="String">HACER</Data></Cell>
+   </Row>
+   <Row ss:Height="100">
+    <Cell ss:StyleID="header"><Data ss:Type="String">#</Data></Cell>
+    <Cell ss:StyleID="header"><Data ss:Type="String">Estudiante</Data></Cell>
+<?php for ($px = 1; $px <= 4; $px++): ?>
+    <Cell ss:StyleID="hSerVert"><Data ss:Type="String"><?php echo xmlEscape($etiquetasActividades['SER'][$px]); ?></Data></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="hSerPromVert"><Data ss:Type="String">Prom</Data></Cell>
+<?php for ($px = 1; $px <= 8; $px++): ?>
+    <Cell ss:StyleID="hSaberVert"><Data ss:Type="String"><?php echo xmlEscape($etiquetasActividades['SABER'][$px]); ?></Data></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="hSaberPromVert"><Data ss:Type="String">Prom</Data></Cell>
+<?php for ($px = 1; $px <= 8; $px++): ?>
+    <Cell ss:StyleID="hHacerVert"><Data ss:Type="String"><?php echo xmlEscape($etiquetasActividades['HACER'][$px]); ?></Data></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="hHacerPromVert"><Data ss:Type="String">Prom</Data></Cell>
+    <Cell ss:StyleID="hTotalVert"><Data ss:Type="String">TOTAL 95</Data></Cell>
+   </Row>
+<?php $n = 1; foreach ($estudiantes as $est):
+    $idEst = (int)$est['id_estudiante'];
+    $det = $detalleNotas[$idEst] ?? [];
+    $tot = $totales[$idEst] ?? ['ser_total' => 0, 'saber_total' => 0, 'hacer_total' => 0, 'calificacion' => 0];
+    $p1 = $detalleNotasCal[$idEst][1] ?? null;
+    $p2 = $detalleNotasCal[$idEst][2] ?? null;
+    $p3 = $detalleNotasCal[$idEst][3] ?? null;
+    $extraE = $notaExtraTrimestre[$idEst] ?? 0.0;
+    $rep = repartirNotaExtra([
+        1 => ($p1 !== null && $p1 !== '' && is_numeric($p1)) ? (float)$p1 : null,
+        2 => ($p2 !== null && $p2 !== '' && is_numeric($p2)) ? (float)$p2 : null,
+        3 => ($p3 !== null && $p3 !== '' && is_numeric($p3)) ? (float)$p3 : null,
+    ], (float)$extraE);
+    $valsRep = array_filter($rep, fn($v) => $v !== null);
+    $promConBono = !empty($valsRep) ? array_sum($valsRep) / count($valsRep) : (float)$tot['calificacion'];
+?>
+   <Row>
+    <Cell ss:StyleID="num"><Data ss:Type="Number"><?php echo $n++; ?></Data></Cell>
+    <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEscape($est['nombre']); ?></Data></Cell>
+<?php for ($i = 1; $i <= 4; $i++): ?>
+    <Cell ss:StyleID="nota"><?php if (isset($det['SER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['ser_total']); ?></Data></Cell>
+<?php for ($i = 1; $i <= 8; $i++): ?>
+    <Cell ss:StyleID="nota"><?php if (isset($det['SABER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SABER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['saber_total']); ?></Data></Cell>
+<?php for ($i = 1; $i <= 8; $i++): ?>
+    <Cell ss:StyleID="nota"><?php if (isset($det['HACER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['HACER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+<?php endfor; ?>
+    <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['hacer_total']); ?></Data></Cell>
+    <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo (int)round($promConBono); ?></Data></Cell>
+   </Row>
+<?php endforeach; ?>
+  </Table>
+  <PageSetup ss:Orientation="Landscape" ss:PaperSize="1" ss:FitToWidth="1" ss:FitToHeight="0"/>
+  <PrintOptions ss:FitToPage="1"/>
+ </Worksheet>
+</Workbook>
