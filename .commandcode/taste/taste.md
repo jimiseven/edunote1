@@ -19,3 +19,8 @@
 - When diagnosing visual/rendering bugs, shares a screenshot or image at a file path and expects the assistant to open and visually inspect it, not just reason from the code alone. Confidence: 0.7
 - Excel exports should target a total printable width approximately fitting one letter-size page (typically landscape); to achieve this, reduce the widths of activity and subactivity columns before sacrificing the student-name column, which should remain wide enough to avoid truncation. Confidence: 0.9
 - When proposing multiple possible modifications, prefers them presented as a numbered list so they can choose which items to implement. Confidence: 0.95
+- Prefers Excel exports to include automatic filters, but does not want header rows frozen/immobilized while scrolling. Confidence: 0.95
+- Prefers Excel export headers to use Excel's automatic row-height adjustment (`AutoFitHeight`) based on the activity labels, avoiding unnecessarily tall header rows while keeping the table's existing structure intact. Confidence: 0.9
+- Prefers missing or blank activity grades in Excel to be visibly highlighted with a soft color, while leaving populated grades unchanged. Confidence: 0.9
+- Prefers summary columns such as Prom and TOTAL to have distinct visual styling from ordinary grade columns, while preserving each area's existing color scheme. Confidence: 0.85
+- When a new implementation breaks functionality, prefers rolling back to the last known working version—ideally reverting only the most recent change—and validating the restored version afterward. Confidence: 0.9

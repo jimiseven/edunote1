@@ -197,6 +197,8 @@ $wNum = 24;
 $wAreaDet = 18;
 $wProm = 22;
 $wTotal = 26;
+$ultimaFila = count($estudiantes) + 9;
+$rangoFiltro = 'R9C1:R' . $ultimaFila . 'C26';
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
@@ -254,6 +256,17 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
   <Style ss:ID="notaFinal">
    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
    <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#000000"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="notaVacia">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="10" ss:Color="#7F6000"/>
+   <Interior ss:Color="#FFF2CC" ss:Pattern="Solid"/>
    <Borders>
     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#000000"/>
@@ -412,7 +425,7 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
  <Worksheet ss:Name="Parcial <?php echo (int)$parcial; ?>">
   <Table>
    <Column ss:Width="<?php echo $wNum; ?>"/>
-   <Column ss:Width="<?php echo $wNombreParcial; ?>"/>
+   <Column ss:Width="<?php echo $wNombreParcial; ?>" ss:AutoFitWidth="1"/>
 <?php for ($px = 1; $px <= 4; $px++): ?>
    <Column ss:Width="<?php echo $wAreaDet; ?>"/>
 <?php endfor; ?>
@@ -448,8 +461,8 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
     <Cell ss:StyleID="header" ss:MergeAcross="8"><Data ss:Type="String">SABER</Data></Cell>
     <Cell ss:StyleID="header" ss:MergeAcross="8"><Data ss:Type="String">HACER</Data></Cell>
    </Row>
-   <Row ss:Height="100">
-    <Cell ss:StyleID="header"><Data ss:Type="String">#</Data></Cell>
+<Row ss:AutoFitHeight="1">
+     <Cell ss:StyleID="header"><Data ss:Type="String">#</Data></Cell>
     <Cell ss:StyleID="header"><Data ss:Type="String">Estudiante</Data></Cell>
 <?php for ($px = 1; $px <= 4; $px++): ?>
     <Cell ss:StyleID="hSerVert"><Data ss:Type="String"><?php echo xmlEscape($etiquetasActividades['SER'][$px]); ?></Data></Cell>
@@ -485,21 +498,22 @@ echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
     <Cell ss:StyleID="num"><Data ss:Type="Number"><?php echo $n++; ?></Data></Cell>
     <Cell ss:StyleID="nombre"><Data ss:Type="String"><?php echo xmlEscape($est['nombre']); ?></Data></Cell>
 <?php for ($i = 1; $i <= 4; $i++): ?>
-    <Cell ss:StyleID="nota"><?php if (isset($det['SER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+    <Cell ss:StyleID="<?php echo isset($det['SER'][$i]) ? 'nota' : 'notaVacia'; ?>"><?php if (isset($det['SER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
 <?php endfor; ?>
     <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['ser_total']); ?></Data></Cell>
 <?php for ($i = 1; $i <= 8; $i++): ?>
-    <Cell ss:StyleID="nota"><?php if (isset($det['SABER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SABER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+    <Cell ss:StyleID="<?php echo isset($det['SABER'][$i]) ? 'nota' : 'notaVacia'; ?>"><?php if (isset($det['SABER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['SABER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
 <?php endfor; ?>
     <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['saber_total']); ?></Data></Cell>
 <?php for ($i = 1; $i <= 8; $i++): ?>
-    <Cell ss:StyleID="nota"><?php if (isset($det['HACER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['HACER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
+    <Cell ss:StyleID="<?php echo isset($det['HACER'][$i]) ? 'nota' : 'notaVacia'; ?>"><?php if (isset($det['HACER'][$i])): ?><Data ss:Type="Number"><?php echo (int)round((float)$det['HACER'][$i]); ?></Data><?php else: ?><Data ss:Type="String"></Data><?php endif; ?></Cell>
 <?php endfor; ?>
     <Cell ss:StyleID="notaTotal"><Data ss:Type="Number"><?php echo (int)round((float)$tot['hacer_total']); ?></Data></Cell>
     <Cell ss:StyleID="notaFinal"><Data ss:Type="Number"><?php echo (int)round($promConBono); ?></Data></Cell>
    </Row>
 <?php endforeach; ?>
   </Table>
+  <AutoFilter x:Range="<?php echo $rangoFiltro; ?>"/>
   <PageSetup ss:Orientation="Landscape" ss:PaperSize="1" ss:FitToWidth="1" ss:FitToHeight="0"/>
   <PrintOptions ss:FitToPage="1"/>
  </Worksheet>
